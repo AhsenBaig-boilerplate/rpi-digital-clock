@@ -52,21 +52,36 @@ class PygameClock:
         self.color = self.hex_to_rgb(display_config.get('color', '#00FF00'))
         self.bg_color = (0, 0, 0)  # Black background
         
-        # Font sizes
-        self.time_font_size = display_config.get('time_font_size', 180)  # Increased from 120
-        self.date_font_size = display_config.get('date_font_size', 60)   # Increased from 40
-        self.weather_font_size = display_config.get('weather_font_size', 40)  # Increased from 30
+        # Calculate font scaling based on screen resolution
+        # Base sizes designed for 1920x1200, scale proportionally for other resolutions
+        base_width = 1920
+        base_height = 1200
+        scale_factor = min(self.screen_width / base_width, self.screen_height / base_height)
+        
+        logging.info(f"Font scale factor: {scale_factor:.2f} (based on {self.screen_width}x{self.screen_height})")
+        
+        # Font sizes - scale based on resolution for optimal space usage
+        base_time_size = display_config.get('time_font_size', 180)
+        base_date_size = display_config.get('date_font_size', 60)
+        base_weather_size = display_config.get('weather_font_size', 40)
+        base_status_size = 22
+        
+        self.time_font_size = int(base_time_size * scale_factor)
+        self.date_font_size = int(base_date_size * scale_factor)
+        self.weather_font_size = int(base_weather_size * scale_factor)
+        self.status_font_size = int(base_status_size * scale_factor)
+        
+        logging.info(f"Scaled font sizes: time={self.time_font_size}, date={self.date_font_size}, weather={self.weather_font_size}, status={self.status_font_size}")
         
         # Time format
         time_config = config.get('time', {})
         self.format_12h = time_config.get('format_12h', True)
         self.show_seconds = display_config.get('show_seconds', True)
         
-        # Initialize fonts
+        # Initialize fonts (must be after font size definitions)
         self.init_fonts()
         
         # Status bar configuration
-        self.status_font_size = 22  # Slightly larger for better visibility
         self.show_status_bar = True
         self.status_color = tuple(int(c * 0.6) for c in self.color)  # Dimmer version of main color
         
