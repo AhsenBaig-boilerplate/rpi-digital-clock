@@ -43,7 +43,26 @@ A production-ready digital clock display for Raspberry Pi Zero (1st gen) with we
 
 ## 🚀 Quick Start
 
-### 1. Setup balena Account
+You can one-click-deploy this project to balena using the button below:
+
+[![Deploy with balena](https://www.balena.io/deploy.svg)](https://dashboard.balena-cloud.com/deploy?repoUrl=https://github.com/AhsenBaig-forks/rpi-digital-clock)
+
+### Environment Variables Setup
+
+After deployment, configure the following environment variables in your balena dashboard:
+
+**Required:**
+- `WEATHER_API_KEY`: Your OpenWeatherMap API key (get one free at [OpenWeatherMap](https://openweathermap.org/api))
+- `WEATHER_LOCATION`: Your city (e.g., "New York,US", "London,GB")
+
+**Optional:**
+- `LOG_LEVEL`: Set to `DEBUG` for verbose logging (default: `INFO`)
+
+### Manual Deployment
+
+Alternatively, you can manually deploy by following these steps:
+
+#### 1. Setup balena Account
 
 1. Create a free account at [balena.io](https://www.balena.io/)
 2. Install balena CLI: https://github.com/balena-io/balena-cli/blob/master/INSTALL.md
@@ -52,7 +71,7 @@ A production-ready digital clock display for Raspberry Pi Zero (1st gen) with we
    balena login
    ```
 
-### 2. Create balena Application
+#### 2. Create balena Application
 
 1. Go to [balena Dashboard](https://dashboard.balena-cloud.com/)
 2. Click "Create application"
@@ -62,7 +81,7 @@ A production-ready digital clock display for Raspberry Pi Zero (1st gen) with we
    - **Application type**: Starter
 4. Click "Create new application"
 
-### 3. Add Your Device
+##### 3. Add Your Device
 
 1. In your application dashboard, click "Add device"
 2. Select WiFi configuration (if using WiFi)
@@ -71,7 +90,7 @@ A production-ready digital clock display for Raspberry Pi Zero (1st gen) with we
 5. Insert SD card into Raspberry Pi and power it on
 6. Wait for device to appear in your balena dashboard (may take a few minutes)
 
-### 4. Configure Weather API
+#### 4. Configure Weather API
 
 1. Get a free API key from [OpenWeatherMap](https://openweathermap.org/api)
 2. In balena dashboard, go to your application
@@ -80,13 +99,13 @@ A production-ready digital clock display for Raspberry Pi Zero (1st gen) with we
    - `WEATHER_API_KEY`: Your OpenWeatherMap API key
    - `WEATHER_LOCATION`: Your city (e.g., "New York,US", "London,GB")
 
-### 5. Deploy Application
+#### 5. Deploy Application
 
 Clone and push this repository to your balena application:
 
 ```bash
 # Clone this repository
-git clone https://github.com/yourusername/rpi-digital-clock.git
+git clone https://github.com/AhsenBaig-forks/rpi-digital-clock.git
 cd rpi-digital-clock
 
 # Add balena remote (get this from your balena dashboard)
@@ -100,13 +119,13 @@ git remote add balena <YOUR_USERNAME>@git.balena-cloud.com:<YOUR_USERNAME>/<YOUR
 git push balena main
 ```
 
-### 6. Wait for Build and Deployment
+#### 6. Wait for Build and Deployment
 
 - balena will build the Docker container (takes 10-20 minutes on first build)
 - The application will automatically deploy to your Raspberry Pi
 - Check logs in balena dashboard to monitor progress
 
-### 7. Connect to TV
+#### 7. Connect to TV
 
 1. Connect Raspberry Pi to TV via HDMI
 2. Power on Raspberry Pi
