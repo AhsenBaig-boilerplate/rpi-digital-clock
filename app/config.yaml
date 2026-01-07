@@ -1,0 +1,92 @@
+# Raspberry Pi Digital Clock Configuration
+# This file contains all customizable settings for the clock display
+
+# Time Settings
+time:
+  # Use 12-hour format (true) or 24-hour format (false)
+  format_12h: true
+  
+  # Sync time with NTP server on startup
+  ntp_sync: true
+  
+  # NTP server to use for time synchronization
+  ntp_server: "pool.ntp.org"
+  
+  # Enable DS3231 RTC module support
+  # Set to true if you have a hardware RTC connected
+  # RTC provides accurate time when WiFi/network is unavailable
+  rtc_enabled: true
+
+# Display Settings
+display:
+  # Font family for clock display
+  font_family: "Helvetica"
+  
+  # Font sizes for different elements
+  time_font_size: 120
+  date_font_size: 40
+  weather_font_size: 30
+  
+  # Display color (hex format)
+  color: "#00FF00"
+  
+  # Show seconds in time display
+  show_seconds: true
+  
+  # Date format string (Python strftime format)
+  # Examples:
+  #   "%A, %B %d, %Y" -> Monday, January 06, 2026
+  #   "%m/%d/%Y" -> 01/06/2026
+  #   "%d-%m-%Y" -> 06-01-2026
+  date_format: "%A, %B %d, %Y"
+  
+  # Screen Burn-in Prevention Features
+  
+  # Enable screensaver (blanks screen after inactivity)
+  screensaver_enabled: true
+  
+  # Minutes of inactivity before screensaver activates
+  screensaver_delay_minutes: 60
+  
+  # Enable pixel shift to prevent burn-in
+  # Subtly moves display position at regular intervals
+  pixel_shift_enabled: true
+  
+  # Interval in seconds between pixel shifts
+  pixel_shift_interval_seconds: 30
+  
+  # Enable automatic dimming during night hours
+  dim_at_night: true
+  
+  # Brightness level during night hours (0.0 to 1.0)
+  night_brightness: 0.3
+  
+  # Night hours (24-hour format)
+  night_start_hour: 22
+  night_end_hour: 6
+
+# Weather Settings
+weather:
+  # Enable weather display
+  enabled: true
+  
+  # OpenWeatherMap API key (get free key at https://openweathermap.org/api)
+  # Can also be set via environment variable: WEATHER_API_KEY
+  api_key: ""
+  
+  # Location for weather (city name, or "city,country_code")
+  # Examples: "London", "New York,US", "Tokyo,JP"
+  # Can also be set via environment variable: WEATHER_LOCATION
+  location: "New York,US"
+  
+  # Units: "metric" (Celsius), "imperial" (Fahrenheit), or "kelvin"
+  units: "metric"
+  
+  # Language for weather descriptions (ISO 639-1 codes)
+  # Examples: "en", "es", "fr", "de", "ja"
+  language: "en"
+
+# Logging Settings
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "INFO"

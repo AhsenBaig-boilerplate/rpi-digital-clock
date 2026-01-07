@@ -329,6 +329,3 @@ For issues and questions:
 ---
 
 **Made with ❤️ for Raspberry Pi Zero**
-#   r p i - d i g i t a l - c l o c k 
- 
- 

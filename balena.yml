@@ -1,0 +1,21 @@
+name: rpi-digital-clock
+type: sw.application
+description: >-
+  A production-ready digital clock display for Raspberry Pi Zero with weather 
+  information and screen burn-in prevention features.
+version: 1.0.0
+assets:
+  repository:
+    type: git
+  data:
+    defaultDeviceType: raspberry-pi
+    supportedDeviceTypes:
+      - raspberry-pi
+      - raspberry-pi2
+data:
+  applicationEnvironmentVariables:
+    - LOG_LEVEL: INFO
+  defaultDeviceType: raspberry-pi
+  supportedDeviceTypes:
+    - raspberry-pi
+    - raspberry-pi2

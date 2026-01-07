@@ -1,0 +1,14 @@
+# Python Dependencies for Raspberry Pi Digital Clock
+# Compatible with Python 3.9+
+
+# HTTP requests for weather API
+requests==2.31.0
+
+# YAML configuration parsing
+PyYAML==6.0.1
+
+# Timezone handling
+pytz==2023.3
+
+# Type hints runtime support
+typing-extensions==4.8.0

@@ -1,0 +1,43 @@
+# Use balenalib base image for Raspberry Pi Zero
+FROM balenalib/raspberry-pi-debian-python:3.9-bullseye
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    DISPLAY=:0
+
+# Install system dependencies for GUI and NTP
+RUN install_packages \
+    python3-tk \
+    x11-xserver-utils \
+    xserver-xorg \
+    xinit \
+    systemd-timesyncd \
+    ntpdate \
+    fonts-liberation \
+    fonts-dejavu-core \
+    unclutter \
+    i2c-tools \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Copy application files
+COPY app/ .
+
+# Set permissions
+RUN chmod +x main.py start.sh
+
+# Enable systemd for time sync
+ENV INITSYSTEM=on
+
+# Start X server and application
+CMD ["sh", "-c", "startx -- -nocursor & sleep 5 && ./start.sh"]
