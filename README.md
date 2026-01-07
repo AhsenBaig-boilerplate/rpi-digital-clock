@@ -45,7 +45,7 @@ A production-ready digital clock display for Raspberry Pi Zero (1st gen) with we
 
 You can one-click-deploy this project to balena using the button below:
 
-[![Deploy with balena](https://www.balena.io/deploy.svg)](https://dashboard.balena-cloud.com/deploy?repoUrl=https://github.com/AhsenBaig-forks/rpi-digital-clock)
+[![Deploy with balena](https://www.balena.io/deploy.svg)](https://dashboard.balena-cloud.com/deploy?repoUrl=https://github.com/AhsenBaig-boilerplate/rpi-digital-clock)
 
 ### Environment Variables Setup
 
@@ -105,7 +105,7 @@ Clone and push this repository to your balena application:
 
 ```bash
 # Clone this repository
-git clone https://github.com/AhsenBaig-forks/rpi-digital-clock.git
+git clone https://github.com/AhsenBaig-boilerplate/rpi-digital-clock.git
 cd rpi-digital-clock
 
 # Add balena remote (get this from your balena dashboard)
