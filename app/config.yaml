@@ -85,6 +85,12 @@ display:
   # Interval in seconds between pixel shifts
   pixel_shift_interval_seconds: 30
   
+  # Disable pixel shift during specific hours (24-hour format)
+  # Useful if you want static display during peak viewing times
+  # Example: noon to 2 PM when display is most viewed
+  pixel_shift_disable_start_hour: 12
+  pixel_shift_disable_end_hour: 14
+  
   # Enable automatic dimming during night hours
   dim_at_night: true
   

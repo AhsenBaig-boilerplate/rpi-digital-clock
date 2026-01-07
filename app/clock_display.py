@@ -9,6 +9,7 @@ import sys
 import logging
 import socket
 import subprocess
+import random
 from datetime import datetime
 from pathlib import Path
 import yaml
@@ -75,6 +76,35 @@ class PygameClock:
         self.timezone_name = os.environ.get('TZ', 'UTC')
         self.last_status_check = 0
         
+        # Screensaver configuration
+        self.screensaver_enabled = display_config.get('screensaver_enabled', True)
+        self.screensaver_start = display_config.get('screensaver_start_hour', 2)
+        self.screensaver_end = display_config.get('screensaver_end_hour', 5)
+        
+        # Night dimming configuration
+        self.dim_at_night = display_config.get('dim_at_night', True)
+        self.night_brightness = display_config.get('night_brightness', 0.3)
+        self.night_start = display_config.get('night_start_hour', 22)
+        self.night_end = display_config.get('night_end_hour', 6)
+        self.current_brightness = 1.0
+        
+        # Pixel shift configuration (prevent burn-in)
+        self.pixel_shift_enabled = display_config.get('pixel_shift_enabled', True)
+        self.pixel_shift_interval = display_config.get('pixel_shift_interval_seconds', 30) * 1000  # Convert to ms
+        self.pixel_shift_disable_start = display_config.get('pixel_shift_disable_start_hour', 12)
+        self.pixel_shift_disable_end = display_config.get('pixel_shift_disable_end_hour', 14)
+        self.last_pixel_shift = 0
+        self.pixel_shift_x = 0
+        self.pixel_shift_y = 0
+        self.pixel_shift_max = 10  # Maximum pixels to shift in any direction
+        
+        if self.screensaver_enabled:
+            logging.info(f"Screensaver enabled: {self.screensaver_start:02d}:00 - {self.screensaver_end:02d}:00")
+        if self.dim_at_night:
+            logging.info(f"Night dimming enabled: {self.night_start:02d}:00 - {self.night_end:02d}:00 at {self.night_brightness*100:.0f}% brightness")
+        if self.pixel_shift_enabled:
+            logging.info(f"Pixel shift enabled: ±{self.pixel_shift_max}px every {display_config.get('pixel_shift_interval_seconds', 30)}s (disabled {self.pixel_shift_disable_start:02d}:00-{self.pixel_shift_disable_end:02d}:00)")
+        
         # Weather service
         self.weather_service = None
         if config.get('weather', {}).get('enabled', False):
@@ -91,6 +121,12 @@ class PygameClock:
         
         # Get initial NTP sync time
         self.check_last_ntp_sync()
+        
+        # Log pixel shift status
+        if self.pixel_shift_enabled:
+            logging.info(f"Pixel shift enabled: ±{self.pixel_shift_max}px every {display_config.get('pixel_shift_interval_seconds', 30)}s")
+        else:
+            logging.info("Pixel shift disabled")
         
         logging.info("Pygame clock initialized")
     
@@ -134,6 +170,40 @@ class PygameClock:
         """Format date string."""
         date_format = self.config.get('display', {}).get('date_format', "%A, %B %d, %Y")
         return now.strftime(date_format)
+    
+    def is_in_time_window(self, current_hour, start_hour, end_hour):
+        """Check if current hour is within a time window (handles midnight wraparound)."""
+        if start_hour <= end_hour:
+            # Normal case: e.g., 12:00 to 14:00
+            return start_hour <= current_hour < end_hour
+        else:
+            # Wraparound case: e.g., 22:00 to 6:00 (crosses midnight)
+            return current_hour >= start_hour or current_hour < end_hour
+    
+    def should_show_display(self):
+        """Check if display should be shown (screensaver check)."""
+        if not self.screensaver_enabled:
+            return True
+        
+        current_hour = datetime.now().hour
+        in_screensaver_window = self.is_in_time_window(current_hour, self.screensaver_start, self.screensaver_end)
+        return not in_screensaver_window
+    
+    def update_brightness(self):
+        """Update brightness based on time of day."""
+        if not self.dim_at_night:
+            self.current_brightness = 1.0
+            return
+        
+        current_hour = datetime.now().hour
+        if self.is_in_time_window(current_hour, self.night_start, self.night_end):
+            self.current_brightness = self.night_brightness
+        else:
+            self.current_brightness = 1.0
+    
+    def apply_brightness(self, color):
+        """Apply current brightness to a color tuple."""
+        return tuple(int(c * self.current_brightness) for c in color)
     
     def check_network_status(self):
         """Check network/WiFi connectivity."""
@@ -203,6 +273,32 @@ class PygameClock:
         else:
             return "Just now"
     
+    def update_pixel_shift(self):
+        """Update pixel shift offset to prevent burn-in."""
+        if not self.pixel_shift_enabled:
+            return
+        
+        # Check if we're in the disable window
+        current_hour = datetime.now().hour
+        if self.is_in_time_window(current_hour, self.pixel_shift_disable_start, self.pixel_shift_disable_end):
+            # Reset to center during disable window
+            if self.pixel_shift_x != 0 or self.pixel_shift_y != 0:
+                self.pixel_shift_x = 0
+                self.pixel_shift_y = 0
+                logging.info("Pixel shift disabled (viewing hours) - centered display")
+            return
+        
+        current_time = pygame.time.get_ticks()
+        if current_time - self.last_pixel_shift < self.pixel_shift_interval:
+            return
+        
+        # Generate new random offset within max range
+        self.pixel_shift_x = random.randint(-self.pixel_shift_max, self.pixel_shift_max)
+        self.pixel_shift_y = random.randint(-self.pixel_shift_max, self.pixel_shift_max)
+        self.last_pixel_shift = current_time
+        
+        logging.info(f"Pixel shift applied: x={self.pixel_shift_x:+d}, y={self.pixel_shift_y:+d}")
+    
     def update_status(self):
         """Update status information periodically."""
         current_time = pygame.time.get_ticks()
@@ -247,6 +343,14 @@ class PygameClock:
         # Clear screen
         self.screen.fill(self.bg_color)
         
+        # Check screensaver
+        if not self.should_show_display():
+            pygame.display.flip()
+            return
+        
+        # Update brightness
+        self.update_brightness()
+        
         # Get current time
         now = datetime.now()
         
@@ -254,13 +358,20 @@ class PygameClock:
         time_str = self.format_time(now)
         date_str = self.format_date(now)
         
-        # Render text surfaces
-        time_surface = self.time_font.render(time_str, True, self.color)
-        date_surface = self.date_font.render(date_str, True, self.color)
+        # Apply brightness to colors
+        display_color = self.apply_brightness(self.color)
+        status_color = self.apply_brightness(self.status_color)
         
-        # Calculate positions (centered)
-        time_rect = time_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 60))
-        date_rect = date_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 60))
+        # Render text surfaces with brightness applied
+        time_surface = self.time_font.render(time_str, True, display_color)
+        date_surface = self.date_font.render(date_str, True, display_color)
+        
+        # Calculate positions (centered) with pixel shift offset
+        center_x = self.screen_width // 2 + self.pixel_shift_x
+        center_y = self.screen_height // 2 + self.pixel_shift_y
+        
+        time_rect = time_surface.get_rect(center=(center_x, center_y - 60))
+        date_rect = date_surface.get_rect(center=(center_x, center_y + 60))
         
         # Blit to screen
         self.screen.blit(time_surface, time_rect)
@@ -268,18 +379,18 @@ class PygameClock:
         
         # Render weather if available
         if self.weather_text:
-            weather_surface = self.weather_font.render(self.weather_text, True, self.color)
-            weather_rect = weather_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 120))
+            weather_surface = self.weather_font.render(self.weather_text, True, display_color)
+            weather_rect = weather_surface.get_rect(center=(center_x, center_y + 120))
             self.screen.blit(weather_surface, weather_rect)
         
         # Render status bar at bottom
         if self.show_status_bar:
-            self.render_status_bar()
+            self.render_status_bar(status_color)
         
         # Update display
         pygame.display.flip()
     
-    def render_status_bar(self):
+    def render_status_bar(self, status_color):
         """Render status bar with system information."""
         # Status items with emojis
         status_items = []
@@ -305,8 +416,8 @@ class PygameClock:
         
         status_text = " | ".join(status_items)
         
-        # Render status text
-        status_surface = self.status_font.render(status_text, True, self.status_color)
+        # Render status text with brightness-adjusted color
+        status_surface = self.status_font.render(status_text, True, status_color)
         
         # Position at bottom center with some padding
         status_rect = status_surface.get_rect(
@@ -345,6 +456,9 @@ class PygameClock:
                 
                 # Update status information
                 self.update_status()
+                
+                # Update pixel shift
+                self.update_pixel_shift()
                 
                 # Render
                 self.render()
