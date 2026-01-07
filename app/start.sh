@@ -2,8 +2,6 @@
 # Startup script for Raspberry Pi Digital Clock
 # Ensures proper X server initialization and application launch
 
-set -e
-
 echo "Starting Raspberry Pi Digital Clock..."
 
 # Wait for udev to settle
@@ -15,6 +13,7 @@ export XAUTHORITY=/root/.Xauthority
 
 # Create Xauthority file if it doesn't exist
 touch /root/.Xauthority
+chmod 600 /root/.Xauthority
 
 # Remove stale X server lock files
 rm -f /tmp/.X0-lock
@@ -25,17 +24,16 @@ killall X 2>/dev/null || true
 killall Xorg 2>/dev/null || true
 sleep 2
 
-# Start X server in background with proper configuration
+# Start X server in background with simpler configuration
 echo "Starting X server..."
-startx /usr/bin/unclutter -idle 0 -root -- :0 vt1 -nocursor -s 0 -dpms 2>&1 | grep -v "hostname:" &
-
+X :0 -nolisten tcp vt1 -nocursor &
 X_PID=$!
 
 # Wait for X server to be ready with more robust checking
 echo "Waiting for X server..."
 X_READY=false
 for i in {1..30}; do
-    if xdpyinfo -display :0 >/dev/null 2>&1; then
+    if DISPLAY=:0 xdpyinfo >/dev/null 2>&1; then
         echo "X server is ready (attempt $i)"
         X_READY=true
         break
@@ -46,6 +44,10 @@ done
 
 if [ "$X_READY" = false ]; then
     echo "ERROR: X server failed to start properly"
+    echo "=== Checking X server process ==="
+    ps aux | grep -E 'X|Xorg' | grep -v grep
+    echo "=== Last 50 lines of Xorg log ==="
+    tail -n 50 /var/log/Xorg.0.log 2>/dev/null || echo "No Xorg log found"
     exit 1
 fi
 
@@ -54,10 +56,16 @@ sleep 3
 
 # Disable screen blanking and power management
 if command -v xset &> /dev/null; then
-    xset -display :0 s off 2>/dev/null || true
-    xset -display :0 -dpms 2>/dev/null || true
-    xset -display :0 s noblank 2>/dev/null || true
+    DISPLAY=:0 xset s off 2>/dev/null || true
+    DISPLAY=:0 xset -dpms 2>/dev/null || true
+    DISPLAY=:0 xset s noblank 2>/dev/null || true
     echo "Screen blanking disabled"
+fi
+
+# Start unclutter to hide cursor
+if command -v unclutter &> /dev/null; then
+    DISPLAY=:0 unclutter -idle 0 -root &
+    echo "Cursor hidden"
 fi
 
 # Start the Python application
