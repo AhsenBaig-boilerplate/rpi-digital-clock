@@ -40,18 +40,6 @@ jobs:
           balena_token: ${{ secrets.BALENA_TOKEN }}
           fleet: ${{ secrets.BALENA_FLEET }}
 
-      - name: Tag release with Git version
-        if: steps.build.outputs.release_id
-        run: |
-          # Install balena CLI if not available
-          if ! command -v balena &> /dev/null; then
-            npm install -g balena-cli
-          fi
-          
-          # Tag the release with the Git version
-          balena tag set version "${{ steps.version.outputs.version }}" \
-            --release ${{ steps.build.outputs.release_id }}
-
       - name: Log release info
         run: |
           echo "Built release ID: ${{ steps.build.outputs.release_id }}"
