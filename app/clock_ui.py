@@ -34,6 +34,8 @@ class ClockUI:
         self.night_end_hour = config.get('display', {}).get('night_end_hour', 6)
         
         # Position tracking for pixel shift
+        self.base_x_position = 0  # Base center X position
+        self.base_y_position = 0  # Base center Y position
         self.current_x_offset = 0
         self.current_y_offset = 0
         self.max_pixel_shift = 20  # Maximum pixels to shift in any direction
@@ -163,6 +165,10 @@ class ClockUI:
         
         center_x = x_margin + (safe_width // 2)
         center_y = y_margin + (safe_height // 2)
+        
+        # Store base position for pixel shift
+        self.base_x_position = center_x
+        self.base_y_position = center_y
         
         # Position container at calculated center with safe margins
         self.container.place(x=center_x, y=center_y, anchor='center')
@@ -316,16 +322,17 @@ class ClockUI:
             self.current_x_offset = random.randint(-self.max_pixel_shift, self.max_pixel_shift)
             self.current_y_offset = random.randint(-self.max_pixel_shift, self.max_pixel_shift)
             
-            # Update container position
+            # Update container position with absolute coordinates plus offset
+            new_x = self.base_x_position + self.current_x_offset
+            new_y = self.base_y_position + self.current_y_offset
+            
             self.container.place(
-                relx=0.5,
-                rely=0.5,
-                anchor='center',
-                x=self.current_x_offset,
-                y=self.current_y_offset
+                x=new_x,
+                y=new_y,
+                anchor='center'
             )
             
-            logging.debug(f"Pixel shift applied: x={self.current_x_offset}, y={self.current_y_offset}")
+            logging.debug(f"Pixel shift applied: offset=({self.current_x_offset}, {self.current_y_offset}), position=({new_x}, {new_y})")
         except Exception as e:
             logging.error(f"Error applying pixel shift: {e}", exc_info=True)
         
