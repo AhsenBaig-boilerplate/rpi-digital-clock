@@ -91,47 +91,68 @@ class ClockUI:
         
         logging.info(f"Using font sizes - Time: {time_font_size}, Date: {date_font_size}, Weather: {weather_font_size}")
         
-        # Time label - add more generous padding
+        # Create placeholder text for proper size calculation
+        from datetime import datetime
+        now = datetime.now()
+        time_format_12h = self.config.get('time', {}).get('format_12h', True)
+        show_seconds = self.config.get('display', {}).get('show_seconds', True)
+        
+        if time_format_12h:
+            if show_seconds:
+                initial_time = now.strftime("%I:%M:%S %p")
+            else:
+                initial_time = now.strftime("%I:%M %p")
+        else:
+            if show_seconds:
+                initial_time = now.strftime("%H:%M:%S")
+            else:
+                initial_time = now.strftime("%H:%M")
+        
+        date_format = self.config.get('display', {}).get('date_format', "%A, %B %d, %Y")
+        initial_date = now.strftime(date_format)
+        
+        # Time label - add more generous padding with initial text
         self.time_label = tk.Label(
             self.container,
-            text="",
+            text=initial_time,
             font=(font_family, time_font_size, 'bold'),
             fg=color,
             bg='black',
-            padx=20,
-            pady=20
+            padx=30,
+            pady=30
         )
-        self.time_label.pack(pady=(20, 10))
+        self.time_label.pack(pady=(30, 15))
         
-        # Date label
+        # Date label with initial text
         self.date_label = tk.Label(
             self.container,
-            text="",
+            text=initial_date,
             font=(font_family, date_font_size),
             fg=color,
             bg='black',
-            padx=20,
-            pady=10
+            padx=30,
+            pady=15
         )
-        self.date_label.pack(pady=(0, 10))
+        self.date_label.pack(pady=(0, 15))
         
         # Weather label (if enabled)
         if self.weather_service:
             self.weather_label = tk.Label(
                 self.container,
-                text="",
+                text="Loading weather...",
                 font=(font_family, weather_font_size),
                 fg=color,
                 bg='black',
-                padx=20,
-                pady=10
+                padx=30,
+                pady=15
             )
-            self.weather_label.pack(pady=(0, 20))
+            self.weather_label.pack(pady=(0, 30))
         
-        # Update the container to calculate its size properly
+        # Force geometry calculation with actual content
         self.container.update_idletasks()
+        self.root.update_idletasks()
         
-        # Center the container after it knows its size
+        # Center the container after it knows its size with content
         self.container.place(relx=0.5, rely=0.5, anchor='center')
         
         logging.info("UI setup completed")
