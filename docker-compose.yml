@@ -20,6 +20,25 @@ services:
       # Get your free API key at https://openweathermap.org/api
       - WEATHER_API_KEY=
       - WEATHER_LOCATION=New York,US
+      - WEATHER_UNITS=metric
+      # - WEATHER_ENABLED=true
+      
+      # Time format settings
+      # - TIME_FORMAT_12H=true
+      # - SHOW_SECONDS=true
+      # - DATE_FORMAT=%A, %B %d, %Y
+      
+      # Display customization
+      # - DISPLAY_COLOR=#00FF00
+      # - FONT_FAMILY=Helvetica
+      # - TIME_FONT_SIZE=120
+      
+      # Screen burn-in prevention
+      # - SCREENSAVER_ENABLED=true
+      # - SCREENSAVER_DELAY_MINUTES=60
+      # - PIXEL_SHIFT_ENABLED=true
+      # - DIM_AT_NIGHT=true
+      # - NIGHT_BRIGHTNESS=0.3
     
     # Labels for balena cloud
     labels:

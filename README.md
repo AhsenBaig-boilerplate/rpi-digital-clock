@@ -58,6 +58,13 @@ After deployment, configure the following environment variables in your balena d
 **Optional:**
 - `LOG_LEVEL`: Set to `DEBUG` for verbose logging (default: `INFO`)
 
+**Where to set variables:**
+- **Fleet Variables**: Dashboard → Your Application → Variables (applies to all devices)
+- **Device Variables**: Dashboard → Your Device → Variables (device-specific)
+- **Service Variables**: Dashboard → Device/Application → Variables → Service: clock
+
+💡 **Tip:** Use Device Variables if you have multiple clocks in different locations!
+
 ### Manual Deployment
 
 Alternatively, you can manually deploy by following these steps:
@@ -192,13 +199,74 @@ weather:
 
 ### Environment Variables
 
-You can override config.yaml settings using environment variables in balena dashboard:
+You can override config.yaml settings using environment variables in balena dashboard. These can be set at three levels:
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `WEATHER_API_KEY` | OpenWeatherMap API key | `abc123def456` |
-| `WEATHER_LOCATION` | City for weather | `London,GB` |
-| `LOG_LEVEL` | Logging verbosity | `INFO` or `DEBUG` |
+1. **Fleet Variables** - Apply to all devices in your fleet
+2. **Device Variables** - Apply to a specific device only
+3. **Service Variables** - Apply to the clock service specifically
+
+To set variables in balena dashboard:
+- Go to your application or device page
+- Navigate to "Variables" section
+- Add or modify the variables below
+
+**Available Variables:**
+
+#### Core Settings
+
+| Variable | Description | Example | Default |
+|----------|-------------|---------|---------|
+| `WEATHER_API_KEY` | OpenWeatherMap API key | `abc123def456` | _(required)_ |
+| `WEATHER_LOCATION` | City for weather | `London,GB` | `New York,US` |
+| `WEATHER_UNITS` | Temperature units | `metric`, `imperial`, `kelvin` | `metric` |
+| `WEATHER_ENABLED` | Enable/disable weather | `true`, `false` | `true` |
+| `LOG_LEVEL` | Logging verbosity | `DEBUG`, `INFO`, `WARNING` | `INFO` |
+
+#### Display Settings
+
+| Variable | Description | Example | Default |
+|----------|-------------|---------|---------|
+| `DISPLAY_COLOR` | Clock text color (hex) | `#00FF00`, `#FFFFFF` | `#00FF00` |
+| `FONT_FAMILY` | Font family name | `Helvetica`, `Arial` | `Helvetica` |
+| `TIME_FONT_SIZE` | Time font size (points) | `100`, `150` | `120` |
+| `TIME_FORMAT_12H` | Use 12-hour format | `true`, `false` | `true` |
+| `SHOW_SECONDS` | Show seconds in time | `true`, `false` | `true` |
+| `DATE_FORMAT` | Date format string | `%B %d, %Y` | `%A, %B %d, %Y` |
+
+#### Screen Burn-in Prevention
+
+| Variable | Description | Example | Default |
+|----------|-------------|---------|---------|
+| `SCREENSAVER_ENABLED` | Enable screensaver | `true`, `false` | `true` |
+| `SCREENSAVER_DELAY_MINUTES` | Minutes until screensaver | `30`, `120` | `60` |
+| `PIXEL_SHIFT_ENABLED` | Enable pixel shifting | `true`, `false` | `true` |
+| `DIM_AT_NIGHT` | Dim display at night | `true`, `false` | `true` |
+| `NIGHT_BRIGHTNESS` | Night brightness (0.0-1.0) | `0.5`, `0.2` | `0.3` |
+
+**Using Device Variables:**
+
+Device variables are useful when you have multiple clocks showing different locations or configurations:
+
+```
+Device 1 (Kitchen - New York):
+  WEATHER_LOCATION: "New York,US"
+  DISPLAY_COLOR: "#00FF00"
+  WEATHER_UNITS: "imperial"
+
+Device 2 (Office - London):
+  WEATHER_LOCATION: "London,GB"
+  DISPLAY_COLOR: "#00FFFF"
+  WEATHER_UNITS: "metric"
+  TIME_FORMAT_12H: "false"
+
+Device 3 (Bedroom):
+  WEATHER_LOCATION: "Tokyo,JP"
+  DIM_AT_NIGHT: "true"
+  NIGHT_BRIGHTNESS: "0.2"
+  SCREENSAVER_DELAY_MINUTES: "30"
+```
+
+See [balena documentation](https://docs.balena.io/learn/manage/variables/#device-variables) for more details on variable types and precedence.
 
 ## 🎨 Customization
 
