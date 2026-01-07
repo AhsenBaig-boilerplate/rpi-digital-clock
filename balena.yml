@@ -24,7 +24,7 @@ data:
     - TIME_FORMAT_12H: "true"
     - SHOW_SECONDS: "true"
     - DATE_FORMAT: "%A, %B %d, %Y"
-    - SCREENSAVER_ENABLED: "true"
+    - SCREENSAVER_ENABLED: "false"
     - SCREENSAVER_START_HOUR: "15"
     - SCREENSAVER_END_HOUR: "12"
     - PIXEL_SHIFT_ENABLED: "true"
