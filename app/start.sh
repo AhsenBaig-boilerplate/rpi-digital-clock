@@ -16,10 +16,14 @@ export XAUTHORITY=/root/.Xauthority
 # Create Xauthority file if it doesn't exist
 touch /root/.Xauthority
 
+# Remove stale X server lock files
+rm -f /tmp/.X0-lock
+rm -f /tmp/.X11-unix/X0
+
 # Kill any existing X server
 killall X 2>/dev/null || true
 killall Xorg 2>/dev/null || true
-sleep 1
+sleep 2
 
 # Start X server in background with proper configuration
 echo "Starting X server..."
@@ -27,21 +31,26 @@ startx /usr/bin/unclutter -idle 0 -root -- :0 vt1 -nocursor -s 0 -dpms 2>&1 | gr
 
 X_PID=$!
 
-# Wait for X server to be ready
+# Wait for X server to be ready with more robust checking
 echo "Waiting for X server..."
-for i in {1..15}; do
+X_READY=false
+for i in {1..30}; do
     if xdpyinfo -display :0 >/dev/null 2>&1; then
         echo "X server is ready (attempt $i)"
+        X_READY=true
         break
     fi
-    if [ $i -eq 15 ]; then
-        echo "Warning: X server may not be fully ready, continuing anyway..."
-    fi
+    echo "Waiting for X server... (attempt $i/30)"
     sleep 1
 done
 
-# Give X server a moment to fully initialize
-sleep 2
+if [ "$X_READY" = false ]; then
+    echo "ERROR: X server failed to start properly"
+    exit 1
+fi
+
+# Give X server extra time to fully initialize
+sleep 3
 
 # Disable screen blanking and power management
 if command -v xset &> /dev/null; then
