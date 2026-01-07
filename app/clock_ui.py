@@ -56,10 +56,21 @@ class ClockUI:
         self.root.attributes('-fullscreen', True)
         self.root.configure(background='black', cursor='none')
         
+        # Force update to get actual screen dimensions
+        self.root.update_idletasks()
+        
         # Get screen dimensions
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         logging.info(f"Screen dimensions: {screen_width}x{screen_height}")
+        
+        # Fallback to reasonable defaults if dimensions are invalid
+        if screen_width <= 1:
+            screen_width = 1920
+            logging.warning(f"Invalid screen width detected, using fallback: {screen_width}")
+        if screen_height <= 1:
+            screen_height = 1080
+            logging.warning(f"Invalid screen height detected, using fallback: {screen_height}")
         
         # Bind escape key to exit (for development/testing)
         self.root.bind('<Escape>', lambda e: self.cleanup())
@@ -68,48 +79,47 @@ class ClockUI:
         self.container = tk.Frame(self.root, bg='black')
         self.container.place(relx=0.5, rely=0.5, anchor='center')
         
-        # Time display configuration - auto-scale based on screen size
+        # Time display configuration
         time_config = self.config.get('display', {})
         font_family = time_config.get('font_family', 'Helvetica')
         
-        # Scale font sizes to screen (use smaller sizes for better fit)
-        time_font_size = min(time_config.get('time_font_size', 80), int(screen_height * 0.15))
-        date_font_size = min(time_config.get('date_font_size', 30), int(screen_height * 0.06))
-        weather_font_size = min(time_config.get('weather_font_size', 24), int(screen_height * 0.05))
+        # Use configured font sizes with reasonable minimums
+        time_font_size = max(time_config.get('time_font_size', 80), 60)
+        date_font_size = max(time_config.get('date_font_size', 30), 24)
+        weather_font_size = max(time_config.get('weather_font_size', 24), 18)
         
         color = time_config.get('color', '#00FF00')
         
-        # Time label with wraplength to prevent cutoff
+        logging.info(f"Using font sizes - Time: {time_font_size}, Date: {date_font_size}, Weather: {weather_font_size}")
+        
+        # Time label
         self.time_label = tk.Label(
             self.container,
             text="",
             font=(font_family, time_font_size, 'bold'),
             fg=color,
-            bg='black',
-            wraplength=int(screen_width * 0.9)
+            bg='black'
         )
         self.time_label.pack(pady=(0, 10))
         
-        # Date label with wraplength
+        # Date label
         self.date_label = tk.Label(
             self.container,
             text="",
             font=(font_family, date_font_size),
             fg=color,
-            bg='black',
-            wraplength=int(screen_width * 0.9)
+            bg='black'
         )
         self.date_label.pack(pady=(0, 10))
         
-        # Weather label (if enabled) with wraplength
+        # Weather label (if enabled)
         if self.weather_service:
             self.weather_label = tk.Label(
                 self.container,
                 text="",
                 font=(font_family, weather_font_size),
                 fg=color,
-                bg='black',
-                wraplength=int(screen_width * 0.9)
+                bg='black'
             )
             self.weather_label.pack(pady=(0, 10))
         
