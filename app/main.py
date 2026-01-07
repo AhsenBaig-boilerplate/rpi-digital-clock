@@ -88,9 +88,13 @@ def load_config(config_path: Path) -> dict:
             if screensaver_enabled is not None:
                 config['display']['screensaver_enabled'] = screensaver_enabled.lower() in ('true', '1', 'yes')
             
-            screensaver_delay = get_env('SCREENSAVER_DELAY_MINUTES')
-            if screensaver_delay:
-                config['display']['screensaver_delay_minutes'] = int(screensaver_delay)
+            screensaver_start = get_env('SCREENSAVER_START_HOUR')
+            if screensaver_start:
+                config['display']['screensaver_start_hour'] = int(screensaver_start)
+            
+            screensaver_end = get_env('SCREENSAVER_END_HOUR')
+            if screensaver_end:
+                config['display']['screensaver_end_hour'] = int(screensaver_end)
             
             pixel_shift_enabled = get_env('PIXEL_SHIFT_ENABLED')
             if pixel_shift_enabled is not None:

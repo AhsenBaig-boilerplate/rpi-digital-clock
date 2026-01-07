@@ -24,7 +24,8 @@ class ClockUI:
         
         # Screen burn-in prevention settings
         self.screensaver_enabled = config.get('display', {}).get('screensaver_enabled', True)
-        self.screensaver_delay = config.get('display', {}).get('screensaver_delay_minutes', 60) * 60000  # Convert to ms
+        self.screensaver_start_hour = config.get('display', {}).get('screensaver_start_hour', 15)  # 3 PM
+        self.screensaver_end_hour = config.get('display', {}).get('screensaver_end_hour', 12)  # 12 PM (noon)
         self.pixel_shift_enabled = config.get('display', {}).get('pixel_shift_enabled', True)
         self.pixel_shift_interval = config.get('display', {}).get('pixel_shift_interval_seconds', 30) * 1000  # Convert to ms
         self.dim_at_night = config.get('display', {}).get('dim_at_night', True)
@@ -39,8 +40,6 @@ class ClockUI:
         
         # Screen saver state
         self.screensaver_active = False
-        self.screensaver_timer = None
-        self.last_activity = datetime.now()
         
         # Initialize weather service if enabled
         if config.get('weather', {}).get('enabled', False):
@@ -57,54 +56,60 @@ class ClockUI:
         self.root.attributes('-fullscreen', True)
         self.root.configure(background='black', cursor='none')
         
+        # Get screen dimensions
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        logging.info(f"Screen dimensions: {screen_width}x{screen_height}")
+        
         # Bind escape key to exit (for development/testing)
         self.root.bind('<Escape>', lambda e: self.cleanup())
-        
-        # Bind any mouse/keyboard activity to reset screensaver
-        self.root.bind('<Motion>', self.reset_screensaver_timer)
-        self.root.bind('<Button>', self.reset_screensaver_timer)
-        self.root.bind('<Key>', self.reset_screensaver_timer)
         
         # Main container frame for positioning
         self.container = tk.Frame(self.root, bg='black')
         self.container.place(relx=0.5, rely=0.5, anchor='center')
         
-        # Time display configuration
+        # Time display configuration - auto-scale based on screen size
         time_config = self.config.get('display', {})
         font_family = time_config.get('font_family', 'Helvetica')
-        time_font_size = time_config.get('time_font_size', 120)
-        date_font_size = time_config.get('date_font_size', 40)
-        weather_font_size = time_config.get('weather_font_size', 30)
+        
+        # Scale font sizes to screen (use smaller sizes for better fit)
+        time_font_size = min(time_config.get('time_font_size', 80), int(screen_height * 0.15))
+        date_font_size = min(time_config.get('date_font_size', 30), int(screen_height * 0.06))
+        weather_font_size = min(time_config.get('weather_font_size', 24), int(screen_height * 0.05))
+        
         color = time_config.get('color', '#00FF00')
         
-        # Time label
+        # Time label with wraplength to prevent cutoff
         self.time_label = tk.Label(
             self.container,
             text="",
             font=(font_family, time_font_size, 'bold'),
             fg=color,
-            bg='black'
+            bg='black',
+            wraplength=int(screen_width * 0.9)
         )
-        self.time_label.pack(pady=(0, 20))
+        self.time_label.pack(pady=(0, 10))
         
-        # Date label
+        # Date label with wraplength
         self.date_label = tk.Label(
             self.container,
             text="",
             font=(font_family, date_font_size),
             fg=color,
-            bg='black'
+            bg='black',
+            wraplength=int(screen_width * 0.9)
         )
-        self.date_label.pack(pady=(0, 20))
+        self.date_label.pack(pady=(0, 10))
         
-        # Weather label (if enabled)
+        # Weather label (if enabled) with wraplength
         if self.weather_service:
             self.weather_label = tk.Label(
                 self.container,
                 text="",
                 font=(font_family, weather_font_size),
                 fg=color,
-                bg='black'
+                bg='black',
+                wraplength=int(screen_width * 0.9)
             )
             self.weather_label.pack(pady=(0, 10))
         
@@ -117,6 +122,9 @@ class ClockUI:
         
         try:
             now = datetime.now()
+            
+            # Check if screensaver should be active based on time schedule
+            self.check_screensaver_schedule(now)
             
             # Format time based on configuration
             time_format_12h = self.config.get('time', {}).get('format_12h', True)
@@ -220,6 +228,27 @@ class ClockUI:
         # Convert back to hex
         return f"#{r:02x}{g:02x}{b:02x}"
     
+    def check_screensaver_schedule(self, current_time: datetime):
+        """Check if screensaver should be active based on time schedule."""
+        if not self.screensaver_enabled:
+            return
+        
+        current_hour = current_time.hour
+        
+        # Check if we're in screensaver hours
+        should_be_active = False
+        if self.screensaver_start_hour > self.screensaver_end_hour:
+            # Screensaver period crosses midnight (e.g., 15:00 to 12:00)
+            should_be_active = current_hour >= self.screensaver_start_hour or current_hour < self.screensaver_end_hour
+        else:
+            # Screensaver period within same day
+            should_be_active = self.screensaver_start_hour <= current_hour < self.screensaver_end_hour
+        
+        if should_be_active and not self.screensaver_active:
+            self.activate_screensaver()
+        elif not should_be_active and self.screensaver_active:
+            self.deactivate_screensaver()
+    
     def apply_pixel_shift(self):
         """Apply subtle pixel shifting to prevent burn-in."""
         if not self.pixel_shift_enabled or self.screensaver_active:
@@ -251,9 +280,6 @@ class ClockUI:
     
     def activate_screensaver(self):
         """Activate screensaver by blanking the screen."""
-        if not self.screensaver_enabled:
-            return
-        
         self.screensaver_active = True
         self.time_label.config(text="")
         self.date_label.config(text="")
@@ -268,22 +294,6 @@ class ClockUI:
             self.screensaver_active = False
             logging.info("Screensaver deactivated - display restored")
     
-    def reset_screensaver_timer(self, event=None):
-        """Reset the screensaver countdown timer."""
-        if not self.screensaver_enabled:
-            return
-        
-        # Deactivate screensaver if active
-        self.deactivate_screensaver()
-        
-        # Cancel existing timer
-        if self.screensaver_timer:
-            self.root.after_cancel(self.screensaver_timer)
-        
-        # Start new timer
-        self.screensaver_timer = self.root.after(self.screensaver_delay, self.activate_screensaver)
-        logging.debug("Screensaver timer reset")
-    
     def run(self):
         """Start the clock UI main loop."""
         self.setup_ui()
@@ -296,10 +306,6 @@ class ClockUI:
         # Start pixel shift
         if self.pixel_shift_enabled:
             self.root.after(self.pixel_shift_interval, self.apply_pixel_shift)
-        
-        # Start screensaver timer
-        if self.screensaver_enabled:
-            self.reset_screensaver_timer()
         
         logging.info("Clock UI running - entering main loop")
         
@@ -314,12 +320,6 @@ class ClockUI:
     def cleanup(self):
         """Clean up resources and close the UI."""
         logging.info("Cleaning up UI resources")
-        
-        if self.screensaver_timer:
-            try:
-                self.root.after_cancel(self.screensaver_timer)
-            except:
-                pass
         
         if self.root:
             try:
