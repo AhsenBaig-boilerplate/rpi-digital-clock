@@ -75,16 +75,9 @@ class ClockUI:
         # Bind escape key to exit (for development/testing)
         self.root.bind('<Escape>', lambda e: self.cleanup())
         
-        # Create outer frame with safe zone margins to prevent TV overscan cropping
-        # Most TVs have overscan that cuts off ~5% of edges
-        safe_margin = 60  # pixels from each edge
-        outer_frame = tk.Frame(self.root, bg='black')
-        outer_frame.place(x=safe_margin, y=safe_margin, 
-                         width=screen_width - (safe_margin * 2),
-                         height=screen_height - (safe_margin * 2))
-        
-        # Main container frame for positioning (inside the safe zone)
-        self.container = tk.Frame(outer_frame, bg='black')
+        # Main container frame for positioning
+        # Use pack with expand to auto-center and add safe margins for TV overscan
+        self.container = tk.Frame(self.root, bg='black')
         
         # Time display configuration
         time_config = self.config.get('display', {})
@@ -119,17 +112,17 @@ class ClockUI:
         date_format = self.config.get('display', {}).get('date_format', "%A, %B %d, %Y")
         initial_date = now.strftime(date_format)
         
-        # Time label - add more generous padding with initial text
+        # Time label - generous padding to prevent cropping
         self.time_label = tk.Label(
             self.container,
             text=initial_time,
             font=(font_family, time_font_size, 'bold'),
             fg=color,
             bg='black',
-            padx=30,
-            pady=30
+            padx=40,
+            pady=40
         )
-        self.time_label.pack(pady=(30, 15))
+        self.time_label.pack(pady=(40, 20))
         
         # Date label with initial text
         self.date_label = tk.Label(
@@ -138,10 +131,10 @@ class ClockUI:
             font=(font_family, date_font_size),
             fg=color,
             bg='black',
-            padx=30,
-            pady=15
+            padx=40,
+            pady=20
         )
-        self.date_label.pack(pady=(0, 15))
+        self.date_label.pack(pady=(0, 20))
         
         # Weather label (if enabled)
         if self.weather_service:
@@ -151,18 +144,30 @@ class ClockUI:
                 font=(font_family, weather_font_size),
                 fg=color,
                 bg='black',
-                padx=30,
-                pady=15
+                padx=40,
+                pady=20
             )
-            self.weather_label.pack(pady=(0, 30))
+            self.weather_label.pack(pady=(0, 40))
         
-        # Force geometry calculation with actual content
+        # Force geometry update to calculate size with content
         self.container.update_idletasks()
-        self.root.update_idletasks()
         
-        # Center the container after it knows its size with content
-        self.container.place(relx=0.5, rely=0.5, anchor='center')
+        # Calculate safe zone offset (5% margin for TV overscan)
+        safe_zone_percent = 0.05
+        x_margin = int(screen_width * safe_zone_percent)
+        y_margin = int(screen_height * safe_zone_percent)
         
+        # Calculate center position within safe zone
+        safe_width = screen_width - (2 * x_margin)
+        safe_height = screen_height - (2 * y_margin)
+        
+        center_x = x_margin + (safe_width // 2)
+        center_y = y_margin + (safe_height // 2)
+        
+        # Position container at calculated center with safe margins
+        self.container.place(x=center_x, y=center_y, anchor='center')
+        
+        logging.info(f"Display positioned at center ({center_x}, {center_y}) with {x_margin}px margins")
         logging.info("UI setup completed")
     
     def update_time(self):
