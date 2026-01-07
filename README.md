@@ -49,21 +49,57 @@ You can one-click-deploy this project to balena using the button below:
 
 ### Environment Variables Setup
 
-After deployment, configure the following environment variables in your balena dashboard:
+After deployment, you **must** configure variables in your balena dashboard. The application supports both direct variable names and `BALENA_` prefixed versions.
 
-**Required:**
-- `WEATHER_API_KEY`: Your OpenWeatherMap API key (get one free at [OpenWeatherMap](https://openweathermap.org/api))
-- `WEATHER_LOCATION`: Your city (e.g., "New York,US", "London,GB")
+#### How to Add Variables in balena Dashboard:
 
-**Optional:**
-- `LOG_LEVEL`: Set to `DEBUG` for verbose logging (default: `INFO`)
+1. **Fleet-wide Variables** (applies to all devices):
+   - Navigate to: Dashboard → Your Fleet → Variables tab
+   - Click "Add variable"
+   - Select "All services" or "clock" service
+   - Enter variable name and value
+   - Click "Add"
+
+2. **Device-specific Variables** (for individual devices):
+   - Navigate to: Dashboard → Your Device → Device Variables tab
+   - Click "Add variable"
+   - Enter variable name and value
+   - Click "Add"
+
+#### Required Variables:
+
+| Variable Name | Example Value | Description |
+|--------------|---------------|-------------|
+| `WEATHER_API_KEY` | `your_api_key_here` | OpenWeatherMap API key ([Get free key](https://openweathermap.org/api)) |
+| `WEATHER_LOCATION` | `New York,US` | City name and country code |
+
+#### Optional Configuration Variables:
+
+| Variable Name | Default | Description |
+|--------------|---------|-------------|
+| `WEATHER_UNITS` | `metric` | Temperature units (`metric` or `imperial`) |
+| `WEATHER_ENABLED` | `true` | Enable/disable weather display |
+| `LOG_LEVEL` | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `DISPLAY_COLOR` | `#00FF00` | Clock color in hex format |
+| `FONT_FAMILY` | `Helvetica` | Font family name |
+| `TIME_FONT_SIZE` | `120` | Time display font size |
+| `TIME_FORMAT_12H` | `true` | Use 12-hour format (true/false) |
+| `SHOW_SECONDS` | `true` | Show seconds in display |
+| `DATE_FORMAT` | `%A, %B %d, %Y` | Python strftime format |
+| `SCREENSAVER_ENABLED` | `true` | Enable screensaver |
+| `SCREENSAVER_DELAY_MINUTES` | `60` | Minutes before screensaver activates |
+| `PIXEL_SHIFT_ENABLED` | `true` | Enable pixel shifting |
+| `DIM_AT_NIGHT` | `true` | Dim display at night |
+| `NIGHT_BRIGHTNESS` | `0.3` | Night brightness (0.0-1.0) |
+
+💡 **Multi-Device Setup:** Use Fleet Variables for common settings (like API key) and Device Variables for location-specific settings (like `WEATHER_LOCATION`).
+
+💡 **Variable Prefix:** You can use either `WEATHER_API_KEY` or `BALENA_WEATHER_API_KEY` - both work!
 
 **Where to set variables:**
 - **Fleet Variables**: Dashboard → Your Application → Variables (applies to all devices)
 - **Device Variables**: Dashboard → Your Device → Variables (device-specific)
-- **Service Variables**: Dashboard → Device/Application → Variables → Service: clock
-
-💡 **Tip:** Use Device Variables if you have multiple clocks in different locations!
+- **Service Variables**: Select "clock" service when adding variable
 
 ### Manual Deployment
 

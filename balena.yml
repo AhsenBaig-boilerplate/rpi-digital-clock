@@ -11,57 +11,20 @@ data:
   supportedDeviceTypes:
     - raspberry-pi
     - raspberry-pi2
-  applicationConfigVariables:
-    # Core Settings
-    - name: BALENA_WEATHER_API_KEY
-      value: ""
-      description: "OpenWeatherMap API key for weather data"
-    - name: BALENA_WEATHER_LOCATION
-      value: "New York,US"
-      description: "Weather location (City,Country code)"
-    - name: BALENA_WEATHER_UNITS
-      value: "metric"
-      description: "Temperature units (metric/imperial)"
-    - name: BALENA_WEATHER_ENABLED
-      value: "true"
-      description: "Enable/disable weather display"
-    - name: BALENA_LOG_LEVEL
-      value: "INFO"
-      description: "Logging level (DEBUG/INFO/WARNING/ERROR)"
-    
-    # Display Settings
-    - name: BALENA_DISPLAY_COLOR
-      value: "#00FF00"
-      description: "Clock display color (hex format)"
-    - name: BALENA_FONT_FAMILY
-      value: "Helvetica"
-      description: "Font family for clock display"
-    - name: BALENA_TIME_FONT_SIZE
-      value: "120"
-      description: "Font size for time display"
-    - name: BALENA_TIME_FORMAT_12H
-      value: "true"
-      description: "Use 12-hour format (true/false)"
-    - name: BALENA_SHOW_SECONDS
-      value: "true"
-      description: "Show seconds in time display"
-    - name: BALENA_DATE_FORMAT
-      value: "%A, %B %d, %Y"
-      description: "Date format string"
-    
-    # Screen Burn-in Prevention
-    - name: BALENA_SCREENSAVER_ENABLED
-      value: "true"
-      description: "Enable screensaver"
-    - name: BALENA_SCREENSAVER_DELAY_MINUTES
-      value: "60"
-      description: "Minutes before screensaver activates"
-    - name: BALENA_PIXEL_SHIFT_ENABLED
-      value: "true"
-      description: "Enable pixel shifting to prevent burn-in"
-    - name: BALENA_DIM_AT_NIGHT
-      value: "true"
-      description: "Dim display at night"
-    - name: BALENA_NIGHT_BRIGHTNESS
-      value: "0.3"
-      description: "Brightness level at night (0.0-1.0)"
+  applicationEnvironmentVariables:
+    - WEATHER_API_KEY: ""
+    - WEATHER_LOCATION: "New York,US"
+    - WEATHER_UNITS: "metric"
+    - WEATHER_ENABLED: "true"
+    - LOG_LEVEL: "INFO"
+    - DISPLAY_COLOR: "#00FF00"
+    - FONT_FAMILY: "Helvetica"
+    - TIME_FONT_SIZE: "120"
+    - TIME_FORMAT_12H: "true"
+    - SHOW_SECONDS: "true"
+    - DATE_FORMAT: "%A, %B %d, %Y"
+    - SCREENSAVER_ENABLED: "true"
+    - SCREENSAVER_DELAY_MINUTES: "60"
+    - PIXEL_SHIFT_ENABLED: "true"
+    - DIM_AT_NIGHT: "true"
+    - NIGHT_BRIGHTNESS: "0.3"
