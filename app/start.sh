@@ -108,55 +108,8 @@ if command -v unclutter &> /dev/null; then
     echo "Cursor hidden"
 fi
 
-# Start web server in background
-echo "Starting web server..."
+# Launch pygame clock application
+echo "Launching clock application..."
 cd /app
-python3 web_server.py &
-WEB_SERVER_PID=$!
-sleep 2
+exec python3 clock_display.py
 
-# Build clock URL with parameters from config
-CLOCK_URL="http://localhost:8000/clock.html"
-
-# Add URL parameters for customization
-PARAMS=""
-if [ -n "$DISPLAY_COLOR" ]; then
-    PARAMS="${PARAMS}&color=${DISPLAY_COLOR}"
-fi
-if [ -n "$TIME_FORMAT_12H" ]; then
-    PARAMS="${PARAMS}&format12h=${TIME_FORMAT_12H}"
-fi
-if [ -n "$SHOW_SECONDS" ]; then
-    PARAMS="${PARAMS}&showSeconds=${SHOW_SECONDS}"
-fi
-
-# Remove leading & if params exist
-if [ -n "$PARAMS" ]; then
-    CLOCK_URL="${CLOCK_URL}?${PARAMS:1}"
-fi
-
-echo "Launching clock in Chromium..."
-echo "URL: $CLOCK_URL"
-
-# Launch Chromium in kiosk mode (fullscreen, no UI)
-DISPLAY=:0 chromium-browser \
-    --kiosk \
-    --noerrdialogs \
-    --disable-infobars \
-    --no-first-run \
-    --ozone-platform=wayland \
-    --enable-features=OverlayScrollbar \
-    --disable-pinch \
-    --overscroll-history-navigation=0 \
-    --disable-features=TranslateUI \
-    --disk-cache-dir=/dev/null \
-    --password-store=basic \
-    "$CLOCK_URL" &
-
-CHROMIUM_PID=$!
-
-echo "Clock application started (PID: $CHROMIUM_PID)"
-echo "Web server running (PID: $WEB_SERVER_PID)"
-
-# Wait for Chromium process
-wait $CHROMIUM_PID
