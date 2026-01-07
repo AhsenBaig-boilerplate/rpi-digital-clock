@@ -12,7 +12,7 @@ import signal
 import yaml
 from pathlib import Path
 from clock_ui import ClockUI
-from utils import setup_logging, sync_time_ntp, validate_config, check_internet_connection
+from utils import setup_logging, sync_time_ntp, validate_config, check_internet_connection, get_timezone_info
 from rtc import RTCManager
 
 # Configuration file path
@@ -164,6 +164,15 @@ def main():
         subprocess.run(['ln', '-sf', f'/usr/share/zoneinfo/{timezone}', '/etc/localtime'], check=True)
         subprocess.run(['sh', '-c', f'echo "{timezone}" > /etc/timezone'], check=True)
         logging.info(f"System timezone set to: {timezone}")
+        
+        # Log DST information
+        tz_info = get_timezone_info()
+        if tz_info['is_dst']:
+            logging.info(f"Daylight Saving Time is active ({tz_info['timezone_name']}, UTC{tz_info['utc_offset']:+.1f})")
+        else:
+            logging.info(f"Standard time is active ({tz_info['timezone_name']}, UTC{tz_info['utc_offset']:+.1f})")
+            if tz_info.get('dst_name'):
+                logging.info(f"DST will be automatically observed when applicable (switches to {tz_info['dst_name']})")
     except Exception as e:
         logging.warning(f"Could not set system timezone: {e}")
     

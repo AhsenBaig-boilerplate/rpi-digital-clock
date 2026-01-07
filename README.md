@@ -68,10 +68,11 @@ After deployment, you **must** configure variables in your balena dashboard. The
 
 #### Required Variables:
 
-| Variable Name | Example Value | Description |
-|--------------|---------------|-------------|
+| Variable Name | Default | Description |
+|--------------|---------|-------------|
 | `WEATHER_API_KEY` | `your_api_key_here` | OpenWeatherMap API key ([Get free key](https://openweathermap.org/api)) |
 | `WEATHER_LOCATION` | `New York,US` | City name and country code |
+| `TIMEZONE` | `America/New_York` | System timezone - **DST automatically handled!** ([List of timezones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
 
 #### Optional Configuration Variables:
 
@@ -183,11 +184,14 @@ Edit `app/config.yaml` to customize the clock:
 
 ```yaml
 time:
-  format_12h: true              # true for 12-hour, false for 24-hour
-  ntp_sync: true                # Sync time with NTP on startup
-  ntp_server: "pool.ntp.org"    # NTP server to use
-  rtc_enabled: true             # Enable DS3231 RTC module support
+  format_12h: true                  # true for 12-hour, false for 24-hour
+  timezone: "America/New_York"      # Timezone (DST automatically handled!)
+  ntp_sync: true                    # Sync time with NTP on startup
+  ntp_server: "pool.ntp.org"        # NTP server to use
+  rtc_enabled: true                 # Enable DS3231 RTC module support
 ```
+
+**Timezone & Daylight Saving Time**: When you set a timezone like `America/New_York` or `Europe/London`, the system **automatically handles DST transitions**! No additional configuration needed. The clock will automatically "spring forward" and "fall back" according to your timezone's DST rules.
 
 **RTC Module Setup**: If you have a DS3231 RTC module, see [RTC_SETUP.md](RTC_SETUP.md) for detailed hardware installation and configuration instructions.
 
@@ -329,6 +333,44 @@ Common `date_format` patterns:
 - `"%a, %b %d"` → Mon, Jan 06
 
 See [Python strftime reference](https://strftime.org/) for more options.
+
+### Timezone & Daylight Saving Time
+
+**How DST Works:**
+
+The clock automatically handles Daylight Saving Time when you set a standard timezone name. No additional configuration needed!
+
+**Examples of timezones with DST:**
+- `America/New_York` - Switches between EST and EDT
+- `America/Chicago` - Switches between CST and CDT
+- `America/Los_Angeles` - Switches between PST and PDT
+- `Europe/London` - Switches between GMT and BST
+- `Europe/Paris` - Switches between CET and CEST
+
+**Examples of timezones WITHOUT DST:**
+- `America/Phoenix` - Always MST (Arizona doesn't observe DST)
+- `America/Honolulu` - Always HST (Hawaii doesn't observe DST)
+- `Asia/Tokyo` - Always JST (Japan doesn't observe DST)
+- `Asia/Shanghai` - Always CST (China doesn't observe DST)
+
+**Checking DST Status:**
+
+When the clock starts, it will log whether DST is currently active:
+```
+System timezone set to: America/New_York
+Daylight Saving Time is active (EDT, UTC-4.0)
+```
+
+or during standard time:
+```
+System timezone set to: America/New_York
+Standard time is active (EST, UTC-5.0)
+DST will be automatically observed when applicable (switches to EDT)
+```
+
+**Finding Your Timezone:**
+
+Visit [Wikipedia's List of TZ Database Time Zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) to find your exact timezone name.
 
 ## 🔧 Troubleshooting
 

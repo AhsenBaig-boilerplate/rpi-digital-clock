@@ -5,6 +5,7 @@ Utility Functions - Logging, NTP sync, config validation, and helper functions.
 import logging
 import subprocess
 import sys
+import time
 from typing import Dict
 from pathlib import Path
 
@@ -249,3 +250,36 @@ def check_internet_connection(host: str = "8.8.8.8", timeout: int = 3) -> bool:
     except Exception as e:
         logging.debug(f"Internet check failed: {e}")
         return False
+
+
+def get_timezone_info() -> Dict[str, any]:
+    """
+    Get current timezone information including DST status.
+    
+    Returns:
+        Dictionary with timezone info including DST status
+    """
+    try:
+        # Check if DST is currently in effect
+        is_dst = time.localtime().tm_isdst > 0
+        
+        # Get timezone name and offset
+        tz_name = time.tzname[1 if is_dst else 0]
+        
+        # Get UTC offset in hours
+        utc_offset = -time.timezone / 3600 if not is_dst else -time.altzone / 3600
+        
+        return {
+            'timezone_name': tz_name,
+            'is_dst': is_dst,
+            'utc_offset': utc_offset,
+            'dst_name': time.tzname[1] if len(time.tzname) > 1 else None,
+            'standard_name': time.tzname[0]
+        }
+    except Exception as e:
+        logging.error(f"Error getting timezone info: {e}")
+        return {
+            'timezone_name': 'Unknown',
+            'is_dst': False,
+            'utc_offset': 0
+        }

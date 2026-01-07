@@ -9,6 +9,17 @@ time:
   # Timezone setting (e.g., "America/New_York", "Europe/London", "Asia/Tokyo")
   # See https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
   # Can also be set via environment variable: TIMEZONE
+  # 
+  # Daylight Saving Time (DST) Support:
+  # DST is automatically handled by the system when using standard timezone names.
+  # The system will automatically switch between standard and daylight time based
+  # on the timezone's rules. No additional configuration needed!
+  # 
+  # Examples:
+  #   - America/New_York: EST/EDT (automatically switches)
+  #   - Europe/London: GMT/BST (automatically switches)
+  #   - America/Phoenix: MST (no DST, always standard time)
+  #   - America/Chicago: CST/CDT (automatically switches)
   timezone: "America/New_York"
   
   # Sync time with NTP server on startup
