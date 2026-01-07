@@ -15,10 +15,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetch all history including tags
+          fetch-tags: true  # Explicitly fetch all tags
 
       - name: Get version from Git
         id: version
         run: |
+          # List all tags for debugging
+          echo "Available tags:"
+          git tag -l
+          
           # Try to get the current tag
           VERSION=$(git describe --tags --exact-match 2>/dev/null || echo "")
           
