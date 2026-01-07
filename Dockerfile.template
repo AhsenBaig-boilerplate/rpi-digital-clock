@@ -13,6 +13,8 @@ RUN install_packages \
     x11-xserver-utils \
     xserver-xorg-video-fbdev \
     xserver-xorg-input-evdev \
+    dbus \
+    dbus-x11 \
     systemd-timesyncd \
     ntpdate \
     fonts-liberation \

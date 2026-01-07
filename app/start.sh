@@ -24,20 +24,37 @@ killall X 2>/dev/null || true
 killall Xorg 2>/dev/null || true
 sleep 2
 
+# Start dbus for X server (needed for some X features)
+echo "Starting D-Bus..."
+mkdir -p /run/dbus
+rm -f /run/dbus/pid
+dbus-daemon --system --fork 2>/dev/null || echo "D-Bus already running or not available"
+
 # Start X server in background with simpler configuration
 echo "Starting X server..."
 X :0 -nolisten tcp vt1 -nocursor &
 X_PID=$!
 
-# Wait for X server to be ready with more robust checking
+# Wait for X server to be ready - check for X socket instead of using xdpyinfo
 echo "Waiting for X server..."
 X_READY=false
 for i in {1..30}; do
-    if DISPLAY=:0 xdpyinfo >/dev/null 2>&1; then
-        echo "X server is ready (attempt $i)"
-        X_READY=true
+    # Check if X server socket exists and process is running
+    if [ -S /tmp/.X11-unix/X0 ] && kill -0 $X_PID 2>/dev/null; then
+        # Try a simple X connection test
+        if DISPLAY=:0 xset q >/dev/null 2>&1 || DISPLAY=:0 xdpyinfo >/dev/null 2>&1; then
+            echo "X server is ready (attempt $i)"
+            X_READY=true
+            break
+        fi
+    fi
+    
+    # Check if X process died
+    if ! kill -0 $X_PID 2>/dev/null; then
+        echo "ERROR: X server process died!"
         break
     fi
+    
     echo "Waiting for X server... (attempt $i/30)"
     sleep 1
 done
