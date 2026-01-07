@@ -27,16 +27,21 @@ services:
       io.balena.features.kernel-modules: '1'
       io.balena.features.firmware: '1'
       io.balena.features.balena-api: '1'
+      io.balena.features.supervisor-api: '1'
     
     # Volume mounts
     volumes:
       # Persist configuration changes
       - 'clock-config:/app/config'
+      # X11 socket
+      - '/tmp/.X11-unix:/tmp/.X11-unix'
     
     # Device access for display and RTC
     devices:
       - "/dev/tty0:/dev/tty0"
+      - "/dev/tty1:/dev/tty1"
       - "/dev/fb0:/dev/fb0"
+      - "/dev/vchiq:/dev/vchiq"
       - "/dev/i2c-1:/dev/i2c-1"  # I2C for DS3231 RTC module
       - "/dev/rtc0:/dev/rtc0"     # RTC device
 
