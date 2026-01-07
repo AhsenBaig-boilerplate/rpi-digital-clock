@@ -7,6 +7,8 @@ import pygame
 import os
 import sys
 import logging
+import socket
+import subprocess
 from datetime import datetime
 from pathlib import Path
 import yaml
@@ -50,9 +52,9 @@ class PygameClock:
         self.bg_color = (0, 0, 0)  # Black background
         
         # Font sizes
-        self.time_font_size = display_config.get('time_font_size', 120)
-        self.date_font_size = display_config.get('date_font_size', 40)
-        self.weather_font_size = display_config.get('weather_font_size', 30)
+        self.time_font_size = display_config.get('time_font_size', 180)  # Increased from 120
+        self.date_font_size = display_config.get('date_font_size', 60)   # Increased from 40
+        self.weather_font_size = display_config.get('weather_font_size', 40)  # Increased from 30
         
         # Time format
         time_config = config.get('time', {})
@@ -61,6 +63,17 @@ class PygameClock:
         
         # Initialize fonts
         self.init_fonts()
+        
+        # Status bar configuration
+        self.status_font_size = 22  # Slightly larger for better visibility
+        self.show_status_bar = True
+        self.status_color = tuple(int(c * 0.6) for c in self.color)  # Dimmer version of main color
+        
+        # Network and sync tracking
+        self.last_ntp_sync = None
+        self.network_status = "Unknown"
+        self.timezone_name = os.environ.get('TZ', 'UTC')
+        self.last_status_check = 0
         
         # Weather service
         self.weather_service = None
@@ -76,6 +89,9 @@ class PygameClock:
         self.last_weather_update = 0
         self.weather_text = ""
         
+        # Get initial NTP sync time
+        self.check_last_ntp_sync()
+        
         logging.info("Pygame clock initialized")
     
     def init_fonts(self):
@@ -86,12 +102,14 @@ class PygameClock:
             self.time_font = pygame.font.SysFont(font_name, self.time_font_size, bold=True)
             self.date_font = pygame.font.SysFont(font_name, self.date_font_size)
             self.weather_font = pygame.font.SysFont(font_name, self.weather_font_size)
+            self.status_font = pygame.font.SysFont(font_name, self.status_font_size)
             logging.info(f"Using system font: {font_name}")
         except:
             # Fallback to default font
             self.time_font = pygame.font.Font(None, self.time_font_size)
             self.date_font = pygame.font.Font(None, self.date_font_size)
             self.weather_font = pygame.font.Font(None, self.weather_font_size)
+            self.status_font = pygame.font.Font(None, self.status_font_size)
             logging.warning("Using default pygame font")
     
     def hex_to_rgb(self, hex_color):
@@ -111,6 +129,90 @@ class PygameClock:
                 return now.strftime("%H:%M:%S")
             else:
                 return now.strftime("%H:%M")
+    
+    def format_date(self, now):
+        """Format date string."""
+        date_format = self.config.get('display', {}).get('date_format', "%A, %B %d, %Y")
+        return now.strftime(date_format)
+    
+    def check_network_status(self):
+        """Check network/WiFi connectivity."""
+        try:
+            # Try to connect to Google DNS
+            socket.create_connection(("8.8.8.8", 53), timeout=3)
+            
+            # Try to get WiFi signal strength (works on Pi with wireless)
+            try:
+                result = subprocess.run(
+                    ['iwconfig'], 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=2
+                )
+                if 'Link Quality' in result.stdout:
+                    # Extract signal quality
+                    for line in result.stdout.split('\n'):
+                        if 'Link Quality' in line:
+                            quality = line.split('Link Quality=')[1].split()[0]
+                            self.network_status = f"WiFi {quality}"
+                            return
+                # WiFi interface found but no quality info
+                self.network_status = "WiFi Connected"
+            except:
+                # Not WiFi, but has network
+                self.network_status = "Ethernet Connected"
+        except:
+            self.network_status = "No Network"
+    
+    def check_last_ntp_sync(self):
+        """Check last NTP synchronization time."""
+        try:
+            # Try timedatectl first (systemd)
+            result = subprocess.run(
+                ['timedatectl', 'show', '--property=NTPSynchronized', '--value'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if result.returncode == 0 and result.stdout.strip() == 'yes':
+                self.last_ntp_sync = datetime.now()
+                return
+        except:
+            pass
+        
+        # Fallback: check if ntpdate was used (from logs or assume recent sync)
+        if not self.last_ntp_sync:
+            # Assume synced at startup
+            self.last_ntp_sync = datetime.now()
+    
+    def get_time_since_sync(self):
+        """Get human-readable time since last NTP sync."""
+        if not self.last_ntp_sync:
+            return "Never"
+        
+        delta = datetime.now() - self.last_ntp_sync
+        
+        if delta.days > 0:
+            return f"{delta.days}d ago"
+        elif delta.seconds > 3600:
+            hours = delta.seconds // 3600
+            return f"{hours}h ago"
+        elif delta.seconds > 60:
+            minutes = delta.seconds // 60
+            return f"{minutes}m ago"
+        else:
+            return "Just now"
+    
+    def update_status(self):
+        """Update status information periodically."""
+        current_time = pygame.time.get_ticks()
+        
+        # Update every 30 seconds
+        if current_time - self.last_status_check < 30000:
+            return
+        
+        self.check_network_status()
+        self.last_status_check = current_time
     
     def format_date(self, now):
         """Format date string."""
@@ -170,8 +272,49 @@ class PygameClock:
             weather_rect = weather_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 120))
             self.screen.blit(weather_surface, weather_rect)
         
+        # Render status bar at bottom
+        if self.show_status_bar:
+            self.render_status_bar()
+        
         # Update display
         pygame.display.flip()
+    
+    def render_status_bar(self):
+        """Render status bar with system information."""
+        # Status items with emojis
+        status_items = []
+        
+        # Network status with emoji
+        if self.network_status:
+            if "WiFi" in self.network_status:
+                icon = "📶"
+            elif "Ethernet" in self.network_status:
+                icon = "🌐"
+            else:
+                icon = "❌"
+            status_items.append(f"{icon} {self.network_status}")
+        else:
+            status_items.append("❌ No Network")
+        
+        # Timezone with emoji
+        if self.timezone_name:
+            status_items.append(f"🌍 {self.timezone_name}")
+        
+        # Last sync with emoji
+        status_items.append(f"🔄 {self.get_time_since_sync()}")
+        
+        status_text = " | ".join(status_items)
+        
+        # Render status text
+        status_surface = self.status_font.render(status_text, True, self.status_color)
+        
+        # Position at bottom center with some padding
+        status_rect = status_surface.get_rect(
+            center=(self.screen_width // 2, self.screen_height - 20)
+        )
+        
+        # Draw status bar
+        self.screen.blit(status_surface, status_rect)
     
     def handle_events(self):
         """Handle pygame events."""
@@ -186,8 +329,9 @@ class PygameClock:
         """Main loop."""
         logging.info("Starting clock display loop")
         
-        # Initial weather update
+        # Initial updates
         self.update_weather()
+        self.check_network_status()
         
         frame_count = 0
         
@@ -198,6 +342,9 @@ class PygameClock:
                 
                 # Update weather periodically
                 self.update_weather()
+                
+                # Update status information
+                self.update_status()
                 
                 # Render
                 self.render()
