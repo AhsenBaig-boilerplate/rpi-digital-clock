@@ -34,8 +34,6 @@ class ClockUI:
         self.night_end_hour = config.get('display', {}).get('night_end_hour', 6)
         
         # Position tracking for pixel shift
-        self.base_x_position = 0  # Base center X position
-        self.base_y_position = 0  # Base center Y position
         self.current_x_offset = 0
         self.current_y_offset = 0
         self.max_pixel_shift = 20  # Maximum pixels to shift in any direction
@@ -77,9 +75,13 @@ class ClockUI:
         # Bind escape key to exit (for development/testing)
         self.root.bind('<Escape>', lambda e: self.cleanup())
         
-        # Main container frame for positioning
-        # Use pack with expand to auto-center and add safe margins for TV overscan
+        # Main container frame - use pack for simple, reliable centering
         self.container = tk.Frame(self.root, bg='black')
+        self.container.pack(expand=True, fill='both')
+        
+        # Inner frame to hold content with padding for safe zones
+        inner_frame = tk.Frame(self.container, bg='black')
+        inner_frame.place(relx=0.5, rely=0.5, anchor='center')
         
         # Time display configuration
         time_config = self.config.get('display', {})
@@ -116,24 +118,24 @@ class ClockUI:
         
         # Time label - generous padding to prevent cropping
         self.time_label = tk.Label(
-            self.container,
+            inner_frame,
             text=initial_time,
             font=(font_family, time_font_size, 'bold'),
             fg=color,
             bg='black',
-            padx=40,
-            pady=40
+            padx=50,
+            pady=50
         )
-        self.time_label.pack(pady=(40, 20))
+        self.time_label.pack(pady=(50, 20))
         
         # Date label with initial text
         self.date_label = tk.Label(
-            self.container,
+            inner_frame,
             text=initial_date,
             font=(font_family, date_font_size),
             fg=color,
             bg='black',
-            padx=40,
+            padx=50,
             pady=20
         )
         self.date_label.pack(pady=(0, 20))
@@ -141,44 +143,20 @@ class ClockUI:
         # Weather label (if enabled)
         if self.weather_service:
             self.weather_label = tk.Label(
-                self.container,
+                inner_frame,
                 text="Loading weather...",
                 font=(font_family, weather_font_size),
                 fg=color,
                 bg='black',
-                padx=40,
+                padx=50,
                 pady=20
             )
-            self.weather_label.pack(pady=(0, 40))
+            self.weather_label.pack(pady=(0, 50))
         
-        # Force geometry update to calculate size with content
-        self.container.update_idletasks()
+        # Store reference to inner frame for pixel shift
+        self.inner_frame = inner_frame
         
-        # Calculate safe zone offset (5% margin for TV overscan)
-        safe_zone_percent = 0.05
-        x_margin = int(screen_width * safe_zone_percent)
-        y_margin = int(screen_height * safe_zone_percent)
-        
-        # Calculate center position within safe zone
-        safe_width = screen_width - (2 * x_margin)
-        safe_height = screen_height - (2 * y_margin)
-        
-        center_x = x_margin + (safe_width // 2)
-        center_y = y_margin + (safe_height // 2)
-        
-        # Store base position for pixel shift
-        self.base_x_position = center_x
-        self.base_y_position = center_y
-        
-        # Position container at calculated center with safe margins
-        self.container.place(x=center_x, y=center_y, anchor='center')
-        
-        # Force another geometry update after positioning
-        self.root.update()
-        
-        logging.info(f"Display positioned at center ({center_x}, {center_y}) with {x_margin}px margins")
-        logging.info(f"Container actual position: x={self.container.winfo_x()}, y={self.container.winfo_y()}")
-        logging.info(f"Container size: {self.container.winfo_width()}x{self.container.winfo_height()}")
+        logging.info(f"Display setup complete - color: {color}, initial time: {initial_time}")
         logging.info("UI setup completed")
     
     def update_time(self):
@@ -328,17 +306,14 @@ class ClockUI:
             self.current_x_offset = random.randint(-self.max_pixel_shift, self.max_pixel_shift)
             self.current_y_offset = random.randint(-self.max_pixel_shift, self.max_pixel_shift)
             
-            # Update container position with absolute coordinates plus offset
-            new_x = self.base_x_position + self.current_x_offset
-            new_y = self.base_y_position + self.current_y_offset
+            # Apply shift by updating the inner frame position relative to center
+            # Calculate new relative position (0.5 = center, offset by small amount)
+            rel_x = 0.5 + (self.current_x_offset / self.root.winfo_width())
+            rel_y = 0.5 + (self.current_y_offset / self.root.winfo_height())
             
-            self.container.place(
-                x=new_x,
-                y=new_y,
-                anchor='center'
-            )
+            self.inner_frame.place(relx=rel_x, rely=rel_y, anchor='center')
             
-            logging.debug(f"Pixel shift applied: offset=({self.current_x_offset}, {self.current_y_offset}), position=({new_x}, {new_y})")
+            logging.debug(f"Pixel shift applied: offset=({self.current_x_offset}, {self.current_y_offset})")
         except Exception as e:
             logging.error(f"Error applying pixel shift: {e}", exc_info=True)
         
