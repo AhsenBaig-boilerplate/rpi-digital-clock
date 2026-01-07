@@ -173,7 +173,12 @@ class ClockUI:
         # Position container at calculated center with safe margins
         self.container.place(x=center_x, y=center_y, anchor='center')
         
+        # Force another geometry update after positioning
+        self.root.update()
+        
         logging.info(f"Display positioned at center ({center_x}, {center_y}) with {x_margin}px margins")
+        logging.info(f"Container actual position: x={self.container.winfo_x()}, y={self.container.winfo_y()}")
+        logging.info(f"Container size: {self.container.winfo_width()}x{self.container.winfo_height()}")
         logging.info("UI setup completed")
     
     def update_time(self):
@@ -187,23 +192,24 @@ class ClockUI:
             # Check if screensaver should be active based on time schedule
             self.check_screensaver_schedule(now)
             
-            # Format time based on configuration
-            time_format_12h = self.config.get('time', {}).get('format_12h', True)
-            show_seconds = self.config.get('display', {}).get('show_seconds', True)
-            
-            if time_format_12h:
-                if show_seconds:
-                    time_str = now.strftime("%I:%M:%S %p")
-                else:
-                    time_str = now.strftime("%I:%M %p")
-            else:
-                if show_seconds:
-                    time_str = now.strftime("%H:%M:%S")
-                else:
-                    time_str = now.strftime("%H:%M")
-            
-            # Update time label
+            # Only update display if screensaver is NOT active
             if not self.screensaver_active:
+                # Format time based on configuration
+                time_format_12h = self.config.get('time', {}).get('format_12h', True)
+                show_seconds = self.config.get('display', {}).get('show_seconds', True)
+                
+                if time_format_12h:
+                    if show_seconds:
+                        time_str = now.strftime("%I:%M:%S %p")
+                    else:
+                        time_str = now.strftime("%I:%M %p")
+                else:
+                    if show_seconds:
+                        time_str = now.strftime("%H:%M:%S")
+                    else:
+                        time_str = now.strftime("%H:%M")
+                
+                # Update time label
                 self.time_label.config(text=time_str)
                 
                 # Update date
