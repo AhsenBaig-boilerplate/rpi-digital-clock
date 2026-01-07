@@ -5,7 +5,7 @@ FROM balenalib/raspberry-pi-debian-python:3.9-bullseye
 ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies for GUI and NTP
+# Install system dependencies for GUI, browser, and NTP
 RUN install_packages \
     python3-tk \
     xserver-xorg \
@@ -13,6 +13,7 @@ RUN install_packages \
     x11-xserver-utils \
     xserver-xorg-video-fbdev \
     xserver-xorg-input-evdev \
+    chromium-browser \
     dbus \
     dbus-x11 \
     systemd-timesyncd \
