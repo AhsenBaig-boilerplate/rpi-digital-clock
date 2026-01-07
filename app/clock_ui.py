@@ -77,7 +77,6 @@ class ClockUI:
         
         # Main container frame for positioning
         self.container = tk.Frame(self.root, bg='black')
-        self.container.place(relx=0.5, rely=0.5, anchor='center')
         
         # Time display configuration
         time_config = self.config.get('display', {})
@@ -92,15 +91,17 @@ class ClockUI:
         
         logging.info(f"Using font sizes - Time: {time_font_size}, Date: {date_font_size}, Weather: {weather_font_size}")
         
-        # Time label
+        # Time label - add more generous padding
         self.time_label = tk.Label(
             self.container,
             text="",
             font=(font_family, time_font_size, 'bold'),
             fg=color,
-            bg='black'
+            bg='black',
+            padx=20,
+            pady=20
         )
-        self.time_label.pack(pady=(0, 10))
+        self.time_label.pack(pady=(20, 10))
         
         # Date label
         self.date_label = tk.Label(
@@ -108,7 +109,9 @@ class ClockUI:
             text="",
             font=(font_family, date_font_size),
             fg=color,
-            bg='black'
+            bg='black',
+            padx=20,
+            pady=10
         )
         self.date_label.pack(pady=(0, 10))
         
@@ -119,9 +122,17 @@ class ClockUI:
                 text="",
                 font=(font_family, weather_font_size),
                 fg=color,
-                bg='black'
+                bg='black',
+                padx=20,
+                pady=10
             )
-            self.weather_label.pack(pady=(0, 10))
+            self.weather_label.pack(pady=(0, 20))
+        
+        # Update the container to calculate its size properly
+        self.container.update_idletasks()
+        
+        # Center the container after it knows its size
+        self.container.place(relx=0.5, rely=0.5, anchor='center')
         
         logging.info("UI setup completed")
     
