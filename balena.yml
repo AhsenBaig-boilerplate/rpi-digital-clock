@@ -3,7 +3,6 @@ type: sw.application
 description: >-
   A production-ready digital clock display for Raspberry Pi Zero with weather 
   information and screen burn-in prevention features.
-version: <version>
 assets:
   repository:
     type: git
