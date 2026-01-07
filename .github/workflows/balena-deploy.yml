@@ -48,8 +48,8 @@ jobs:
           # Login to balena
           balena login --token ${{ secrets.BALENA_TOKEN }}
           
-          # Deploy using balena push with git (preserves tags)
-          balena push ${{ secrets.BALENA_FLEET }} --gitignore
+          # Deploy using balena push (automatically uses git and preserves tags)
+          balena push ${{ secrets.BALENA_FLEET }}
 
       - name: Log release info
         run: |
