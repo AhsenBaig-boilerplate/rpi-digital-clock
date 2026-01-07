@@ -3,19 +3,34 @@ type: sw.application
 description: >-
   A production-ready digital clock display for Raspberry Pi Zero with weather 
   information and screen burn-in prevention features.
-version: 1.0.0
+version: 1.1.0
 assets:
   repository:
     type: git
-  data:
-    defaultDeviceType: raspberry-pi
-    supportedDeviceTypes:
-      - raspberry-pi
-      - raspberry-pi2
 data:
-  applicationEnvironmentVariables:
-    - LOG_LEVEL: INFO
   defaultDeviceType: raspberry-pi
   supportedDeviceTypes:
     - raspberry-pi
     - raspberry-pi2
+  applicationConfigVariables:
+    # Core Settings
+    - BALENA_WEATHER_API_KEY: ""
+    - BALENA_WEATHER_LOCATION: "New York,US"
+    - BALENA_WEATHER_UNITS: "metric"
+    - BALENA_WEATHER_ENABLED: "true"
+    - BALENA_LOG_LEVEL: "INFO"
+    
+    # Display Settings
+    - BALENA_DISPLAY_COLOR: "#00FF00"
+    - BALENA_FONT_FAMILY: "Helvetica"
+    - BALENA_TIME_FONT_SIZE: "120"
+    - BALENA_TIME_FORMAT_12H: "true"
+    - BALENA_SHOW_SECONDS: "true"
+    - BALENA_DATE_FORMAT: "%A, %B %d, %Y"
+    
+    # Screen Burn-in Prevention
+    - BALENA_SCREENSAVER_ENABLED: "true"
+    - BALENA_SCREENSAVER_DELAY_MINUTES: "60"
+    - BALENA_PIXEL_SHIFT_ENABLED: "true"
+    - BALENA_DIM_AT_NIGHT: "true"
+    - BALENA_NIGHT_BRIGHTNESS: "0.3"

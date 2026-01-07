@@ -28,75 +28,79 @@ def load_config(config_path: Path) -> dict:
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
         
+        # Helper function to get env var with optional BALENA_ prefix
+        def get_env(name: str) -> str:
+            return os.environ.get(f'BALENA_{name}') or os.environ.get(name)
+        
         # Override with environment variables if present
         
         # Weather settings
         if 'weather' in config:
-            weather_api_key = os.environ.get('WEATHER_API_KEY')
+            weather_api_key = get_env('WEATHER_API_KEY')
             if weather_api_key:
                 config['weather']['api_key'] = weather_api_key
                 logging.info("Using WEATHER_API_KEY from environment variable")
             
-            weather_location = os.environ.get('WEATHER_LOCATION')
+            weather_location = get_env('WEATHER_LOCATION')
             if weather_location:
                 config['weather']['location'] = weather_location
                 logging.info(f"Using WEATHER_LOCATION from environment: {weather_location}")
             
-            weather_units = os.environ.get('WEATHER_UNITS')
+            weather_units = get_env('WEATHER_UNITS')
             if weather_units:
                 config['weather']['units'] = weather_units
                 logging.info(f"Using WEATHER_UNITS from environment: {weather_units}")
             
-            weather_enabled = os.environ.get('WEATHER_ENABLED')
+            weather_enabled = get_env('WEATHER_ENABLED')
             if weather_enabled is not None:
                 config['weather']['enabled'] = weather_enabled.lower() in ('true', '1', 'yes')
         
         # Display settings
         if 'display' in config:
-            display_color = os.environ.get('DISPLAY_COLOR')
+            display_color = get_env('DISPLAY_COLOR')
             if display_color:
                 config['display']['color'] = display_color
                 logging.info(f"Using DISPLAY_COLOR from environment: {display_color}")
             
-            time_format = os.environ.get('TIME_FORMAT_12H')
+            time_format = get_env('TIME_FORMAT_12H')
             if time_format is not None:
                 config['time']['format_12h'] = time_format.lower() in ('true', '1', 'yes')
             
-            show_seconds = os.environ.get('SHOW_SECONDS')
+            show_seconds = get_env('SHOW_SECONDS')
             if show_seconds is not None:
                 config['display']['show_seconds'] = show_seconds.lower() in ('true', '1', 'yes')
             
-            date_format = os.environ.get('DATE_FORMAT')
+            date_format = get_env('DATE_FORMAT')
             if date_format:
                 config['display']['date_format'] = date_format
             
-            font_family = os.environ.get('FONT_FAMILY')
+            font_family = get_env('FONT_FAMILY')
             if font_family:
                 config['display']['font_family'] = font_family
             
-            time_font_size = os.environ.get('TIME_FONT_SIZE')
+            time_font_size = get_env('TIME_FONT_SIZE')
             if time_font_size:
                 config['display']['time_font_size'] = int(time_font_size)
         
         # Burn-in prevention settings
         if 'display' in config:
-            screensaver_enabled = os.environ.get('SCREENSAVER_ENABLED')
+            screensaver_enabled = get_env('SCREENSAVER_ENABLED')
             if screensaver_enabled is not None:
                 config['display']['screensaver_enabled'] = screensaver_enabled.lower() in ('true', '1', 'yes')
             
-            screensaver_delay = os.environ.get('SCREENSAVER_DELAY_MINUTES')
+            screensaver_delay = get_env('SCREENSAVER_DELAY_MINUTES')
             if screensaver_delay:
                 config['display']['screensaver_delay_minutes'] = int(screensaver_delay)
             
-            pixel_shift_enabled = os.environ.get('PIXEL_SHIFT_ENABLED')
+            pixel_shift_enabled = get_env('PIXEL_SHIFT_ENABLED')
             if pixel_shift_enabled is not None:
                 config['display']['pixel_shift_enabled'] = pixel_shift_enabled.lower() in ('true', '1', 'yes')
             
-            dim_at_night = os.environ.get('DIM_AT_NIGHT')
+            dim_at_night = get_env('DIM_AT_NIGHT')
             if dim_at_night is not None:
                 config['display']['dim_at_night'] = dim_at_night.lower() in ('true', '1', 'yes')
             
-            night_brightness = os.environ.get('NIGHT_BRIGHTNESS')
+            night_brightness = get_env('NIGHT_BRIGHTNESS')
             if night_brightness:
                 config['display']['night_brightness'] = float(night_brightness)
         
