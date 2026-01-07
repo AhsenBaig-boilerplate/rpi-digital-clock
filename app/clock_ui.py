@@ -75,8 +75,16 @@ class ClockUI:
         # Bind escape key to exit (for development/testing)
         self.root.bind('<Escape>', lambda e: self.cleanup())
         
-        # Main container frame for positioning
-        self.container = tk.Frame(self.root, bg='black')
+        # Create outer frame with safe zone margins to prevent TV overscan cropping
+        # Most TVs have overscan that cuts off ~5% of edges
+        safe_margin = 60  # pixels from each edge
+        outer_frame = tk.Frame(self.root, bg='black')
+        outer_frame.place(x=safe_margin, y=safe_margin, 
+                         width=screen_width - (safe_margin * 2),
+                         height=screen_height - (safe_margin * 2))
+        
+        # Main container frame for positioning (inside the safe zone)
+        self.container = tk.Frame(outer_frame, bg='black')
         
         # Time display configuration
         time_config = self.config.get('display', {})
