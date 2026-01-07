@@ -38,25 +38,15 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Deploying version: ${VERSION}"
 
-      - name: Update balena.yml with version
-        run: |
-          sed -i "s/<version>/${{ steps.version.outputs.version }}/g" balena.yml
-          echo "Updated balena.yml with version: ${{ steps.version.outputs.version }}"
-          cat balena.yml
-
-      - name: Install balena CLI
-        run: |
-          npm install -g balena-cli
-
-      - name: Deploy to balena with CLI
+      - name: Deploy to balena
+        uses: balena-io/deploy-to-balena-action@master
         id: build
-        run: |
-          # Login to balena
-          balena login --token ${{ secrets.BALENA_TOKEN }}
-          
-          # Deploy using balena push (automatically uses git and preserves tags)
-          balena push ${{ secrets.BALENA_FLEET }}
+        with:
+          balena_token: ${{ secrets.BALENA_TOKEN }}
+          fleet: ${{ secrets.BALENA_FLEET }}
 
       - name: Log release info
         run: |
+          echo "Built release ID: ${{ steps.build.outputs.release_id }}"
+          echo "Release version: ${{ steps.build.outputs.version }}"
           echo "Git version: ${{ steps.version.outputs.version }}"
