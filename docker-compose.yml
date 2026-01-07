@@ -33,8 +33,6 @@ services:
     volumes:
       # Persist configuration changes
       - 'clock-config:/app/config'
-      # X11 socket
-      - '/tmp/.X11-unix:/tmp/.X11-unix'
     
     # Device access for display and RTC
     devices:
