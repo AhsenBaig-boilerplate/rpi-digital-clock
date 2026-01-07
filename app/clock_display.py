@@ -407,32 +407,38 @@ class PygameClock:
     
     def render_status_bar(self, status_color):
         """Render status bar with system information."""
-        # Status items with emojis
+        # Status items with symbols (pygame 1.9.6 compatible - no emoji support)
         status_items = []
         
-        # Network status with emoji
+        # Network status with symbol
         if self.network_status:
             if "WiFi" in self.network_status:
-                icon = "📶"
+                icon = "WiFi:"
             elif "Ethernet" in self.network_status:
-                icon = "🌐"
+                icon = "Net:"
             else:
-                icon = "❌"
+                icon = "X"
             status_items.append(f"{icon} {self.network_status}")
         else:
-            status_items.append("❌ No Network")
+            status_items.append("X No Network")
         
-        # Timezone with emoji
+        # Timezone with symbol
         if self.timezone_name:
-            status_items.append(f"🌍 {self.timezone_name}")
+            status_items.append(f"TZ: {self.timezone_name}")
         
-        # Last sync with emoji
-        status_items.append(f"🔄 {self.get_time_since_sync()}")
+        # Last sync with symbol
+        status_items.append(f"Sync: {self.get_time_since_sync()}")
         
         status_text = " | ".join(status_items)
         
         # Render status text with brightness-adjusted color
-        status_surface = self.status_font.render(status_text, True, status_color)
+        try:
+            status_surface = self.status_font.render(status_text, True, status_color)
+        except UnicodeError as e:
+            # Fallback to ASCII-only if Unicode fails
+            logging.warning(f"Unicode error in status bar, using ASCII fallback: {e}")
+            status_text = status_text.encode('ascii', 'replace').decode('ascii')
+            status_surface = self.status_font.render(status_text, True, status_color)
         
         # Position at bottom center with some padding
         status_rect = status_surface.get_rect(
