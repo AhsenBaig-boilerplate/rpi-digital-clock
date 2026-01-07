@@ -43,16 +43,18 @@ display:
   # Screen Burn-in Prevention Features
   
   # Enable time-based screensaver (blanks screen during scheduled hours)
+  # Set to false to always show the clock
   screensaver_enabled: true
   
   # Screensaver start time (24-hour format, 0-23)
-  # Example: 15 = 3:00 PM
-  screensaver_start_hour: 15
+  # Screen will be blank from 2 AM to 5 AM (3 hours)
+  # Clock visible for 21 hours per day
+  screensaver_start_hour: 2
   
   # Screensaver end time (24-hour format, 0-23)
-  # Example: 12 = 12:00 PM (noon)
+  # Example: 5 = 5:00 AM
   # Note: If end hour < start hour, screensaver spans midnight
-  screensaver_end_hour: 12
+  screensaver_end_hour: 5
   
   # Enable pixel shift to prevent burn-in
   # Subtly moves display position at regular intervals
