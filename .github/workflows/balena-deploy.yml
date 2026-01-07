@@ -38,6 +38,12 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Deploying version: ${VERSION}"
 
+      - name: Update balena.yml with version
+        run: |
+          sed -i "s/<version>/${{ steps.version.outputs.version }}/g" balena.yml
+          echo "Updated balena.yml with version: ${{ steps.version.outputs.version }}"
+          cat balena.yml
+
       - name: Install balena CLI
         run: |
           npm install -g balena-cli
