@@ -7,8 +7,8 @@ requests==2.31.0
 # YAML configuration parsing
 PyYAML==6.0.1
 
-# Pygame for graphics rendering
-pygame==2.1.0
+# Note: pygame installed via system package (python3-pygame) in Dockerfile
+# to avoid compilation issues on ARMv6
 
 # Timezone handling
 pytz==2023.3
