@@ -23,19 +23,25 @@ jobs:
           VERSION=$(git describe --tags --exact-match 2>/dev/null || echo "")
           
           if [ -z "$VERSION" ]; then
-            # Not on a tag, get the latest tag and add commit info
+            # Not on a tag, get the latest tag for base version
             LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
             COMMIT_COUNT=$(git rev-list --count ${LATEST_TAG}..HEAD 2>/dev/null || echo "1")
             SHORT_SHA=$(git rev-parse --short HEAD)
             VERSION="${LATEST_TAG}+rev${COMMIT_COUNT}"
+            BASE_VERSION="${LATEST_TAG}"
+          else
+            BASE_VERSION="${VERSION}"
           fi
           
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "base_version=${BASE_VERSION}" >> $GITHUB_OUTPUT
           echo "Deploying version: ${VERSION}"
+          echo "Base version for balena.yml: ${BASE_VERSION}"
 
       - name: Update balena.yml with version
         run: |
-          sed -i "s/<version>/${{ steps.version.outputs.version }}/g" balena.yml
+          # Use base version without +rev suffix (balena adds that automatically)
+          sed -i "s/<version>/${{ steps.version.outputs.base_version }}/g" balena.yml
           cat balena.yml
 
       - name: Deploy to balena
