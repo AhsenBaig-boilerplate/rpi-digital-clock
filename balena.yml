@@ -13,23 +13,55 @@ data:
     - raspberry-pi2
   applicationConfigVariables:
     # Core Settings
-    - BALENA_WEATHER_API_KEY: ""
-    - BALENA_WEATHER_LOCATION: "New York,US"
-    - BALENA_WEATHER_UNITS: "metric"
-    - BALENA_WEATHER_ENABLED: "true"
-    - BALENA_LOG_LEVEL: "INFO"
+    - name: BALENA_WEATHER_API_KEY
+      value: ""
+      description: "OpenWeatherMap API key for weather data"
+    - name: BALENA_WEATHER_LOCATION
+      value: "New York,US"
+      description: "Weather location (City,Country code)"
+    - name: BALENA_WEATHER_UNITS
+      value: "metric"
+      description: "Temperature units (metric/imperial)"
+    - name: BALENA_WEATHER_ENABLED
+      value: "true"
+      description: "Enable/disable weather display"
+    - name: BALENA_LOG_LEVEL
+      value: "INFO"
+      description: "Logging level (DEBUG/INFO/WARNING/ERROR)"
     
     # Display Settings
-    - BALENA_DISPLAY_COLOR: "#00FF00"
-    - BALENA_FONT_FAMILY: "Helvetica"
-    - BALENA_TIME_FONT_SIZE: "120"
-    - BALENA_TIME_FORMAT_12H: "true"
-    - BALENA_SHOW_SECONDS: "true"
-    - BALENA_DATE_FORMAT: "%A, %B %d, %Y"
+    - name: BALENA_DISPLAY_COLOR
+      value: "#00FF00"
+      description: "Clock display color (hex format)"
+    - name: BALENA_FONT_FAMILY
+      value: "Helvetica"
+      description: "Font family for clock display"
+    - name: BALENA_TIME_FONT_SIZE
+      value: "120"
+      description: "Font size for time display"
+    - name: BALENA_TIME_FORMAT_12H
+      value: "true"
+      description: "Use 12-hour format (true/false)"
+    - name: BALENA_SHOW_SECONDS
+      value: "true"
+      description: "Show seconds in time display"
+    - name: BALENA_DATE_FORMAT
+      value: "%A, %B %d, %Y"
+      description: "Date format string"
     
     # Screen Burn-in Prevention
-    - BALENA_SCREENSAVER_ENABLED: "true"
-    - BALENA_SCREENSAVER_DELAY_MINUTES: "60"
-    - BALENA_PIXEL_SHIFT_ENABLED: "true"
-    - BALENA_DIM_AT_NIGHT: "true"
-    - BALENA_NIGHT_BRIGHTNESS: "0.3"
+    - name: BALENA_SCREENSAVER_ENABLED
+      value: "true"
+      description: "Enable screensaver"
+    - name: BALENA_SCREENSAVER_DELAY_MINUTES
+      value: "60"
+      description: "Minutes before screensaver activates"
+    - name: BALENA_PIXEL_SHIFT_ENABLED
+      value: "true"
+      description: "Enable pixel shifting to prevent burn-in"
+    - name: BALENA_DIM_AT_NIGHT
+      value: "true"
+      description: "Dim display at night"
+    - name: BALENA_NIGHT_BRIGHTNESS
+      value: "0.3"
+      description: "Brightness level at night (0.0-1.0)"
