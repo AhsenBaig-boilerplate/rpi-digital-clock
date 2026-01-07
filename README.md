@@ -82,6 +82,7 @@ After deployment, you **must** configure variables in your balena dashboard. The
 | `WEATHER_ENABLED` | `true` | Enable/disable weather display |
 | `TIMEZONE` | `America/New_York` | Timezone ([List of timezones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
 | `LOG_LEVEL` | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `DISPLAY_ORIENTATION` | `landscape` | Display orientation (`landscape` or `portrait`) |
 | `DISPLAY_COLOR` | `#00FF00` | Clock color in hex format |
 | `FONT_FAMILY` | `Helvetica` | Font family name |
 | `TIME_FONT_SIZE` | `120` | Time display font size |
@@ -268,6 +269,7 @@ To set variables in balena dashboard:
 
 | Variable | Description | Example | Default |
 |----------|-------------|---------|---------|
+| `DISPLAY_ORIENTATION` | Display orientation | `landscape`, `portrait` | `landscape` |
 | `DISPLAY_COLOR` | Clock text color (hex) | `#00FF00`, `#FFFFFF` | `#00FF00` |
 | `FONT_FAMILY` | Font family name | `Helvetica`, `Arial` | `Helvetica` |
 | `TIME_FONT_SIZE` | Time font size (points) | `100`, `150` | `120` |
@@ -371,6 +373,37 @@ DST will be automatically observed when applicable (switches to EDT)
 **Finding Your Timezone:**
 
 Visit [Wikipedia's List of TZ Database Time Zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) to find your exact timezone name.
+
+### Display Orientation
+
+**Landscape vs Portrait Mode:**
+
+The clock supports both landscape (horizontal) and portrait (vertical) display orientations.
+
+**Landscape Mode (Default):**
+- Standard horizontal TV/monitor orientation
+- Display is in normal horizontal position
+- Set: `DISPLAY_ORIENTATION=landscape`
+
+**Portrait Mode:**
+- Vertical display orientation (90° clockwise rotation)
+- Useful for portrait-mounted displays or tablets
+- Set: `DISPLAY_ORIENTATION=portrait`
+
+**How to Configure:**
+
+1. **Via balena Dashboard** (recommended):
+   - Go to Device Variables
+   - Add variable: `DISPLAY_ORIENTATION`
+   - Set value to: `landscape` or `portrait`
+
+2. **Via config.yaml**:
+   ```yaml
+   display:
+     orientation: "portrait"  # or "landscape"
+   ```
+
+**Note:** The display rotation is applied using xrandr at startup. If the rotation doesn't work, your display/driver may not support hardware rotation.
 
 ## 🔧 Troubleshooting
 

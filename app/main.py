@@ -64,6 +64,11 @@ def load_config(config_path: Path) -> dict:
         
         # Display settings
         if 'display' in config:
+            display_orientation = get_env('DISPLAY_ORIENTATION')
+            if display_orientation:
+                config['display']['orientation'] = display_orientation.lower()
+                logging.info(f"Using DISPLAY_ORIENTATION from environment: {display_orientation}")
+            
             display_color = get_env('DISPLAY_COLOR')
             if display_color:
                 config['display']['color'] = display_color

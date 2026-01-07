@@ -35,6 +35,12 @@ time:
 
 # Display Settings
 display:
+  # Display orientation: "landscape" or "portrait"
+  # Can also be set via environment variable: DISPLAY_ORIENTATION
+  # landscape: Standard horizontal TV orientation (default)
+  # portrait: Vertical orientation (rotates display 90 degrees clockwise)
+  orientation: "landscape"
+  
   # Font family for clock display
   font_family: "Helvetica"
   

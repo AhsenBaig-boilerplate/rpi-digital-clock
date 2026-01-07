@@ -86,6 +86,22 @@ if command -v xset &> /dev/null; then
     echo "Screen blanking disabled"
 fi
 
+# Set display orientation if specified
+if [ -n "$DISPLAY_ORIENTATION" ]; then
+    echo "Setting display orientation to: $DISPLAY_ORIENTATION"
+    if [ "$DISPLAY_ORIENTATION" = "portrait" ]; then
+        # Rotate display 90 degrees clockwise for portrait mode
+        DISPLAY=:0 xrandr --output HDMI-1 --rotate right 2>/dev/null || \
+        DISPLAY=:0 xrandr --output HDMI-0 --rotate right 2>/dev/null || \
+        echo "Warning: Could not rotate display (xrandr might not support this output)"
+    elif [ "$DISPLAY_ORIENTATION" = "landscape" ]; then
+        # Normal landscape orientation
+        DISPLAY=:0 xrandr --output HDMI-1 --rotate normal 2>/dev/null || \
+        DISPLAY=:0 xrandr --output HDMI-0 --rotate normal 2>/dev/null || \
+        echo "Display set to normal orientation"
+    fi
+fi
+
 # Start unclutter to hide cursor
 if command -v unclutter &> /dev/null; then
     DISPLAY=:0 unclutter -idle 0 -root &

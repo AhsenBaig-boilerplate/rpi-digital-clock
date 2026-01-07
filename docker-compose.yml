@@ -33,6 +33,7 @@ services:
       # - DATE_FORMAT=%A, %B %d, %Y
       
       # Display customization
+      # - DISPLAY_ORIENTATION=landscape  # landscape or portrait
       # - DISPLAY_COLOR=#00FF00
       # - FONT_FAMILY=Helvetica
       # - TIME_FONT_SIZE=120
