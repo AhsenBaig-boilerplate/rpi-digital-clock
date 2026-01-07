@@ -13,6 +13,30 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history including tags
+
+      - name: Get version from Git
+        id: version
+        run: |
+          # Try to get the current tag
+          VERSION=$(git describe --tags --exact-match 2>/dev/null || echo "")
+          
+          if [ -z "$VERSION" ]; then
+            # Not on a tag, get the latest tag and add commit info
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+            COMMIT_COUNT=$(git rev-list --count ${LATEST_TAG}..HEAD 2>/dev/null || echo "1")
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            VERSION="${LATEST_TAG}+rev${COMMIT_COUNT}"
+          fi
+          
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Deploying version: ${VERSION}"
+
+      - name: Update balena.yml with version
+        run: |
+          sed -i "s/<version>/${{ steps.version.outputs.version }}/g" balena.yml
+          cat balena.yml
 
       - name: Deploy to balena
         uses: balena-io/deploy-to-balena-action@master
@@ -25,3 +49,4 @@ jobs:
         run: |
           echo "Built release ID: ${{ steps.build.outputs.release_id }}"
           echo "Release version: ${{ steps.build.outputs.version }}"
+          echo "Git version: ${{ steps.version.outputs.version }}"
