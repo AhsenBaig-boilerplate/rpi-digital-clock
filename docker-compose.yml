@@ -16,6 +16,10 @@ services:
       # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
       - LOG_LEVEL=INFO
       
+      # Timezone setting (e.g., America/New_York, Europe/London, Asia/Tokyo)
+      # See https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+      - TIMEZONE=America/New_York
+      
       # Weather API settings (override config.yaml)
       # Get your free API key at https://openweathermap.org/api
       - WEATHER_API_KEY=

@@ -34,6 +34,13 @@ def load_config(config_path: Path) -> dict:
         
         # Override with environment variables if present
         
+        # Timezone setting
+        if 'time' in config:
+            timezone = get_env('TIMEZONE')
+            if timezone:
+                config['time']['timezone'] = timezone
+                logging.info(f"Using TIMEZONE from environment: {timezone}")
+        
         # Weather settings
         if 'weather' in config:
             weather_api_key = get_env('WEATHER_API_KEY')
@@ -149,6 +156,16 @@ def main():
     
     # Load configuration
     config = load_config(CONFIG_PATH)
+    
+    # Set timezone from config
+    timezone = config.get('time', {}).get('timezone', 'America/New_York')
+    try:
+        import subprocess
+        subprocess.run(['ln', '-sf', f'/usr/share/zoneinfo/{timezone}', '/etc/localtime'], check=True)
+        subprocess.run(['sh', '-c', f'echo "{timezone}" > /etc/timezone'], check=True)
+        logging.info(f"System timezone set to: {timezone}")
+    except Exception as e:
+        logging.warning(f"Could not set system timezone: {e}")
     
     # Initialize RTC manager
     rtc_enabled = config.get('time', {}).get('rtc_enabled', True)

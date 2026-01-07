@@ -6,6 +6,11 @@ time:
   # Use 12-hour format (true) or 24-hour format (false)
   format_12h: true
   
+  # Timezone setting (e.g., "America/New_York", "Europe/London", "Asia/Tokyo")
+  # See https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  # Can also be set via environment variable: TIMEZONE
+  timezone: "America/New_York"
+  
   # Sync time with NTP server on startup
   ntp_sync: true
   

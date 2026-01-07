@@ -4,6 +4,13 @@
 
 echo "Starting Raspberry Pi Digital Clock..."
 
+# Set timezone if provided via environment variable
+if [ -n "$TIMEZONE" ]; then
+    echo "Setting timezone to: $TIMEZONE"
+    ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime || echo "Warning: Could not set timezone"
+    echo "$TIMEZONE" > /etc/timezone 2>/dev/null || true
+fi
+
 # Wait for udev to settle
 sleep 2
 

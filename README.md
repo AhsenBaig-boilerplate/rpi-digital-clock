@@ -79,6 +79,7 @@ After deployment, you **must** configure variables in your balena dashboard. The
 |--------------|---------|-------------|
 | `WEATHER_UNITS` | `metric` | Temperature units (`metric` or `imperial`) |
 | `WEATHER_ENABLED` | `true` | Enable/disable weather display |
+| `TIMEZONE` | `America/New_York` | Timezone ([List of timezones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
 | `LOG_LEVEL` | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `DISPLAY_COLOR` | `#00FF00` | Clock color in hex format |
 | `FONT_FAMILY` | `Helvetica` | Font family name |
@@ -256,6 +257,7 @@ To set variables in balena dashboard:
 | `WEATHER_LOCATION` | City for weather | `London,GB` | `New York,US` |
 | `WEATHER_UNITS` | Temperature units | `metric`, `imperial`, `kelvin` | `metric` |
 | `WEATHER_ENABLED` | Enable/disable weather | `true`, `false` | `true` |
+| `TIMEZONE` | System timezone | `America/New_York`, `Europe/London`, `Asia/Tokyo` | `America/New_York` |
 | `LOG_LEVEL` | Logging verbosity | `DEBUG`, `INFO`, `WARNING` | `INFO` |
 
 #### Display Settings
