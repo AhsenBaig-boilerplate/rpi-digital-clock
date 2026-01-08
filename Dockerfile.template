@@ -1,5 +1,6 @@
 # Use balenalib base image for Raspberry Pi Zero
-FROM balenalib/raspberry-pi-debian-python:3.9-bullseye
+# Bookworm provides Python 3.11 (needed for pygame-emojis)
+FROM balenalib/raspberry-pi-debian-python:3.11-bookworm
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \

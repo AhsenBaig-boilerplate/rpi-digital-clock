@@ -16,5 +16,5 @@ pytz==2023.3
 # Type hints runtime support
 typing-extensions==4.8.0
 
-# Emoji rendering support for pygame (optional, used if available)
+# Emoji rendering support for pygame (requires Python 3.10+)
 pygame-emojis>=0.2.0
