@@ -628,6 +628,7 @@ class PygameClock:
         self.check_network_status()
         
         frame_count = 0
+        in_screensaver = False
         
         try:
             while self.running:
@@ -642,12 +643,25 @@ class PygameClock:
                 
                 # Update pixel shift
                 self.update_pixel_shift()
+
+                # Check if we're entering/exiting screensaver mode
+                should_show = self.should_show_display()
+                if not should_show and not in_screensaver:
+                    # Entering screensaver mode
+                    in_screensaver = True
+                    logging.info("Entering screensaver mode")
+                elif should_show and in_screensaver:
+                    # Exiting screensaver mode - reset pygame clock to prevent drift
+                    in_screensaver = False
+                    self.clock = pygame.time.Clock()
+                    logging.info("Exiting screensaver mode - clock reset")
+
                 
                 # Render
                 self.render()
                 
-                # Limit to 1 FPS (update once per second)
-                self.clock.tick(1)
+                # Limit to 2 FPS for responsive updates (updates every 0.5 seconds)
+                self.clock.tick(2)
                 
                 frame_count += 1
                 if frame_count % 60 == 0:  # Log every minute
