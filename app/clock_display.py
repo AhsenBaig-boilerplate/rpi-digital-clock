@@ -48,11 +48,19 @@ class PygameClock:
         
         logging.info(f"Screen resolution: {self.screen_width}x{self.screen_height}")
         
-        # Create fullscreen display
-        self.screen = pygame.display.set_mode(
-            (self.screen_width, self.screen_height),
-            pygame.FULLSCREEN
-        )
+        # Create fullscreen display (try to disable vsync to avoid blocking)
+        try:
+            self.screen = pygame.display.set_mode(
+                (self.screen_width, self.screen_height),
+                pygame.FULLSCREEN,
+                vsync=0
+            )
+        except TypeError:
+            # Older pygame/SDL may not support vsync kwarg; fallback
+            self.screen = pygame.display.set_mode(
+                (self.screen_width, self.screen_height),
+                pygame.FULLSCREEN
+            )
         pygame.display.set_caption("Digital Clock")
         
         # Load configuration
@@ -89,6 +97,11 @@ class PygameClock:
         
         # Initialize fonts (must be after font size definitions)
         self.init_fonts()
+        
+        # Cached surfaces to avoid re-render overhead each frame
+        self.time_surface = None
+        self.date_surface = None
+        self._last_second_drawn = None
         
         # Status bar configuration
         self.show_status_bar = True
@@ -574,12 +587,27 @@ class PygameClock:
         # Get current time
         now = datetime.now()
         
-        # Format strings
-        time_str = self.format_time(now)
-        date_str = self.format_date(now)
+        # Format strings - only recompute surfaces when the second changes
+        current_second = now.second
+        if self._last_second_drawn != current_second:
+            time_str = self.format_time(now)
+            date_str = self.format_date(now)
+            
+            # Apply brightness to colors
+            display_color = self.apply_brightness(self.color)
+            
+            # Re-render text surfaces
+            self.time_surface = self.time_font.render(time_str, True, display_color)
+            self.date_surface = self.date_font.render(date_str, True, display_color)
+            
+            # Update marker
+            self._last_second_drawn = current_second
         
-        # Apply brightness to colors
-        display_color = self.apply_brightness(self.color)
+        # Use cached surfaces
+        time_surface = self.time_surface
+        date_surface = self.date_surface
+        
+        # Apply brightness to status color (time/date already applied when rendered)
         status_color = self.apply_brightness(self.status_color)
         
         # Render text surfaces with brightness applied
