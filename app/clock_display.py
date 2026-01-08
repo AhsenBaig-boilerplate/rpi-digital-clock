@@ -48,19 +48,28 @@ class PygameClock:
         
         logging.info(f"Screen resolution: {self.screen_width}x{self.screen_height}")
         
-        # Create fullscreen display (try to disable vsync to avoid blocking)
+        # Create fullscreen display with hardware acceleration and double buffering
         try:
             self.screen = pygame.display.set_mode(
                 (self.screen_width, self.screen_height),
-                pygame.FULLSCREEN,
-                vsync=0
+                pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF
             )
-        except TypeError:
-            # Older pygame/SDL may not support vsync kwarg; fallback
-            self.screen = pygame.display.set_mode(
-                (self.screen_width, self.screen_height),
-                pygame.FULLSCREEN
-            )
+            logging.info("Display mode: FULLSCREEN | HWSURFACE | DOUBLEBUF")
+        except Exception as e:
+            # Fallback without hardware surface
+            logging.warning(f"Hardware surface not available: {e}")
+            try:
+                self.screen = pygame.display.set_mode(
+                    (self.screen_width, self.screen_height),
+                    pygame.FULLSCREEN | pygame.DOUBLEBUF
+                )
+                logging.info("Display mode: FULLSCREEN | DOUBLEBUF")
+            except Exception:
+                self.screen = pygame.display.set_mode(
+                    (self.screen_width, self.screen_height),
+                    pygame.FULLSCREEN
+                )
+                logging.info("Display mode: FULLSCREEN (fallback)")
         pygame.display.set_caption("Digital Clock")
         
         # Load configuration
@@ -151,6 +160,12 @@ class PygameClock:
         self.pixel_shift_x = 0
         self.pixel_shift_y = 0
         self.pixel_shift_max = 10  # Maximum pixels to shift in any direction
+        
+        # Track previous positions for clearing artifacts when pixel shift moves content
+        self.prev_time_rect = None
+        self.prev_date_rect = None
+        self.prev_weather_rect = None
+        self.prev_status_rect = None
         
         if self.screensaver_enabled:
             logging.info(f"Screensaver enabled: {self.screensaver_start:02d}:00 - {self.screensaver_end:02d}:00")
@@ -652,11 +667,27 @@ class PygameClock:
         time_rect = time_surface.get_rect(center=(center_x, center_y - 60))
         date_rect = date_surface.get_rect(center=(center_x, center_y + 60))
         
-        # Clear and blit time/date areas only
+        # Clear and blit time/date areas
+        # Clear old positions if pixel shift moved content
+        if self.prev_time_rect:
+            self.screen.fill(self.bg_color, self.prev_time_rect)
+        if self.prev_date_rect:
+            self.screen.fill(self.bg_color, self.prev_date_rect)
+        if self.prev_weather_rect:
+            self.screen.fill(self.bg_color, self.prev_weather_rect)
+        if self.prev_status_rect:
+            self.screen.fill(self.bg_color, self.prev_status_rect)
+        
+        # Clear new positions
         self.screen.fill(self.bg_color, time_rect)
         self.screen.blit(time_surface, time_rect)
         self.screen.fill(self.bg_color, date_rect)
         self.screen.blit(date_surface, date_rect)
+        
+        # Store current rects as previous for next frame
+        self.prev_time_rect = time_rect.copy()
+        self.prev_date_rect = date_rect.copy()
+        
         t4 = time.time()
         
         # Render weather if available (thread-safe read) with cached surface
@@ -672,6 +703,7 @@ class PygameClock:
                 weather_rect = self.weather_surface.get_rect(center=(center_x, center_y + 120))
                 self.screen.fill(self.bg_color, weather_rect)
                 self.screen.blit(self.weather_surface, weather_rect)
+                self.prev_weather_rect = weather_rect.copy()
         t5 = time.time()
         
         # Render status bar at bottom (cached surface)
@@ -684,6 +716,7 @@ class PygameClock:
                 status_rect.topleft = (10, self.screen_height - 30)
                 self.screen.fill(self.bg_color, status_rect)
                 self.screen.blit(status_surface, status_rect)
+                self.prev_status_rect = status_rect.copy()
         t6 = time.time()
         
         # Optional debug overlay (top-left corner) showing FPS and frame time
@@ -702,29 +735,14 @@ class PygameClock:
         
         t7 = time.time()
         
-        # Collect dirty rectangles for changed areas only
-        dirty_rects = [time_rect, date_rect]
-        
-        # Add weather area if present
-        if weather_rect:
-            dirty_rects.append(weather_rect)
-        
-        # Add status bar area if shown
-        if status_rect:
-            dirty_rects.append(status_rect)
-        
-        # Add debug overlay area if shown
-        if debug_rect:
-            dirty_rects.append(debug_rect)
-        
-        # Update only changed regions
-        pygame.display.update(dirty_rects)
+        # Flip buffers (with DOUBLEBUF this is efficient)
+        pygame.display.flip()
         t8 = time.time()
         
         # Log timing breakdown if slow
         total_ms = (t8 - t0) * 1000
         if total_ms > 50:
-            logging.warning(f"Render breakdown: clear={((t1-t0)*1000):.1f}ms, prep={((t2-t1)*1000):.1f}ms, cache={((t3-t2)*1000):.1f}ms, blit={((t4-t3)*1000):.1f}ms, weather={((t5-t4)*1000):.1f}ms, status={((t6-t5)*1000):.1f}ms, overlay={((t7-t6)*1000):.1f}ms, update={((t8-t7)*1000):.1f}ms")
+            logging.warning(f"Render breakdown: clear={((t1-t0)*1000):.1f}ms, prep={((t2-t1)*1000):.1f}ms, cache={((t3-t2)*1000):.1f}ms, blit={((t4-t3)*1000):.1f}ms, weather={((t5-t4)*1000):.1f}ms, status={((t6-t5)*1000):.1f}ms, overlay={((t7-t6)*1000):.1f}ms, flip={((t8-t7)*1000):.1f}ms")
     
     def get_status_surface(self, status_color):
         """Build or return cached status bar surface."""
