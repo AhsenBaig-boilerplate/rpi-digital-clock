@@ -86,6 +86,14 @@ if command -v xset &> /dev/null; then
     echo "Screen blanking disabled"
 fi
 
+# Set display resolution if specified (for performance)
+if [ -n "$DISPLAY_RESOLUTION" ]; then
+    echo "Setting display resolution to: $DISPLAY_RESOLUTION"
+    DISPLAY=:0 xrandr --output HDMI-1 --mode "$DISPLAY_RESOLUTION" 2>/dev/null || \
+    DISPLAY=:0 xrandr --output HDMI-0 --mode "$DISPLAY_RESOLUTION" 2>/dev/null || \
+    echo "Warning: Could not set resolution"
+fi
+
 # Set display orientation if specified
 if [ -n "$DISPLAY_ORIENTATION" ]; then
     echo "Setting display orientation to: $DISPLAY_ORIENTATION"
