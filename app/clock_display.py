@@ -300,12 +300,12 @@ class PygameClock:
         return tuple(int(c * self.current_brightness) for c in color)
     
     def check_network_status(self):
-        """Check network/WiFi connectivity."""
+        """Check network/WiFi connectivity with detailed status."""
         try:
-            # Try to connect to Google DNS
+            # Try to connect to Google DNS to verify internet connectivity
             socket.create_connection(("8.8.8.8", 53), timeout=3)
             
-            # Try to get WiFi signal strength (works on Pi with wireless)
+            # Check WiFi status and signal strength
             try:
                 result = subprocess.run(
                     ['iwconfig'], 
@@ -313,20 +313,76 @@ class PygameClock:
                     text=True, 
                     timeout=2
                 )
-                if 'Link Quality' in result.stdout:
-                    # Extract signal quality
+                
+                # Look for active WiFi interface
+                if 'ESSID:' in result.stdout and 'off/any' not in result.stdout.lower():
+                    # Extract signal quality and level
                     for line in result.stdout.split('\n'):
                         if 'Link Quality' in line:
-                            quality = line.split('Link Quality=')[1].split()[0]
-                            self.network_status = f"WiFi {quality}"
-                            return
-                # WiFi interface found but no quality info
-                self.network_status = "WiFi Connected"
+                            # Parse: Link Quality=65/70  Signal level=-45 dBm
+                            try:
+                                quality_part = line.split('Link Quality=')[1].split()[0]
+                                current, maximum = quality_part.split('/')
+                                percentage = int((int(current) / int(maximum)) * 100)
+                                
+                                # Get signal level if available
+                                if 'Signal level=' in line:
+                                    signal = line.split('Signal level=')[1].split()[0]
+                                    self.network_status = f"WiFi {percentage}% ({signal}dBm)"
+                                else:
+                                    self.network_status = f"WiFi {percentage}%"
+                                return
+                            except:
+                                # Fallback if parsing fails
+                                self.network_status = f"WiFi Connected"
+                                return
+                    
+                    # WiFi interface active but couldn't parse quality
+                    self.network_status = "WiFi Active"
+                    return
             except:
-                # Not WiFi, but has network
-                self.network_status = "Ethernet Connected"
+                pass
+            
+            # Check if we have Ethernet connection
+            try:
+                result = subprocess.run(
+                    ['ip', 'link', 'show'],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                
+                # Look for eth0 or similar Ethernet interfaces that are UP
+                for line in result.stdout.split('\n'):
+                    if ('eth' in line.lower() or 'enp' in line.lower()) and 'state UP' in line:
+                        # Try to get link speed
+                        try:
+                            iface = line.split(':')[1].strip().split('@')[0]
+                            speed_result = subprocess.run(
+                                ['ethtool', iface],
+                                capture_output=True,
+                                text=True,
+                                timeout=2
+                            )
+                            if 'Speed:' in speed_result.stdout:
+                                speed = speed_result.stdout.split('Speed:')[1].split('\n')[0].strip()
+                                self.network_status = f"Ethernet {speed}"
+                                return
+                        except:
+                            pass
+                        
+                        self.network_status = "Ethernet"
+                        return
+            except:
+                pass
+            
+            # Has internet but couldn't identify interface type
+            self.network_status = "Connected"
+            
+        except socket.timeout:
+            self.network_status = "No Internet"
         except:
-            self.network_status = "No Network"
+            self.network_status = "Offline"
     
     def check_last_ntp_sync(self):
         """Check last NTP synchronization time."""
