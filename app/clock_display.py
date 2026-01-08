@@ -589,15 +589,18 @@ class PygameClock:
         """Render the clock display."""
         t0 = time.time()
         
-        # Clear screen
-        self.screen.fill(self.bg_color)
-        t1 = time.time()
-        
-        # Check screensaver
+        # Check screensaver first
         if not self.should_show_display():
-            # Update full screen when blanked
-            pygame.display.update([pygame.Rect(0, 0, self.screen_width, self.screen_height)])
+            # Only clear and update if transitioning to screensaver
+            if not hasattr(self, '_screensaver_active') or not self._screensaver_active:
+                self.screen.fill(self.bg_color)
+                pygame.display.flip()  # One-time full update for screensaver
+                self._screensaver_active = True
             return
+        
+        # Mark screensaver as inactive
+        self._screensaver_active = False
+        t1 = time.time()
         
         # Update brightness
         self.update_brightness()
@@ -649,8 +652,10 @@ class PygameClock:
         time_rect = time_surface.get_rect(center=(center_x, center_y - 60))
         date_rect = date_surface.get_rect(center=(center_x, center_y + 60))
         
-        # Blit to screen
+        # Clear and blit time/date areas only
+        self.screen.fill(self.bg_color, time_rect)
         self.screen.blit(time_surface, time_rect)
+        self.screen.fill(self.bg_color, date_rect)
         self.screen.blit(date_surface, date_rect)
         t4 = time.time()
         
@@ -665,6 +670,7 @@ class PygameClock:
                 self._last_weather_text = weather_text_copy
             if self.weather_surface:
                 weather_rect = self.weather_surface.get_rect(center=(center_x, center_y + 120))
+                self.screen.fill(self.bg_color, weather_rect)
                 self.screen.blit(self.weather_surface, weather_rect)
         t5 = time.time()
         
@@ -676,16 +682,20 @@ class PygameClock:
             if status_surface:
                 status_rect = status_surface.get_rect()
                 status_rect.topleft = (10, self.screen_height - 30)
+                self.screen.fill(self.bg_color, status_rect)
                 self.screen.blit(status_surface, status_rect)
         t6 = time.time()
         
         # Optional debug overlay (top-left corner) showing FPS and frame time
+        debug_rect = None
         if self.show_debug_overlay:
             try:
                 fps = self.last_fps if self.last_fps else 0.0
                 frame_ms = (1000.0 / fps) if fps > 0.0 else 0.0
                 debug_text = f"FPS: {fps:.1f} | {frame_ms:.1f} ms"
                 debug_surface = self.status_font.render(debug_text, True, status_color)
+                debug_rect = pygame.Rect(10, 10, 300, 40)
+                self.screen.fill(self.bg_color, debug_rect)
                 self.screen.blit(debug_surface, (10, 10))
             except Exception:
                 pass
@@ -693,25 +703,21 @@ class PygameClock:
         t7 = time.time()
         
         # Collect dirty rectangles for changed areas only
-        dirty_rects = []
-        
-        # Always update time/date areas (they change every second)
-        dirty_rects.append(time_rect)
-        dirty_rects.append(date_rect)
+        dirty_rects = [time_rect, date_rect]
         
         # Add weather area if present
-        if self.weather_surface:
+        if weather_rect:
             dirty_rects.append(weather_rect)
         
         # Add status bar area if shown
-        if self.show_status_bar and status_surface:
+        if status_rect:
             dirty_rects.append(status_rect)
         
         # Add debug overlay area if shown
-        if self.show_debug_overlay:
-            dirty_rects.append(pygame.Rect(10, 10, 300, 40))
+        if debug_rect:
+            dirty_rects.append(debug_rect)
         
-        # Update only changed regions (MUCH faster than full flip)
+        # Update only changed regions
         pygame.display.update(dirty_rects)
         t8 = time.time()
         
