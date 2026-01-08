@@ -10,6 +10,11 @@ import logging
 import socket
 import subprocess
 import random
+try:
+    import pygame_emojis  # Enables emoji rendering support if available
+    EMOJI_SUPPORTED = True
+except Exception:
+    EMOJI_SUPPORTED = False
 import time
 from datetime import datetime
 from pathlib import Path
@@ -410,20 +415,22 @@ class PygameClock:
     
     def render_status_bar(self, status_color):
         """Render status bar with system information."""
-        # Status items with symbols (pygame 1.9.6 compatible - no emoji support)
+        # Choose emoji or ASCII symbols based on support
+        use_emojis = EMOJI_SUPPORTED and (os.environ.get('USE_EMOJI', 'true').lower() == 'true')
+        # Status items
         status_items = []
         
         # Network status with symbol
         if self.network_status:
             if "WiFi" in self.network_status:
-                icon = "WiFi:"
+                icon = "📶" if use_emojis else "WiFi:"
             elif "Ethernet" in self.network_status:
-                icon = "Net:"
+                icon = "🌐" if use_emojis else "Net:"
             else:
-                icon = "X"
+                icon = "❌" if use_emojis else "X"
             status_items.append(f"{icon} {self.network_status}")
         else:
-            status_items.append("X No Network")
+            status_items.append("❌ No Network" if use_emojis else "X No Network")
         
         # Timezone with abbreviation and full name
         try:
@@ -431,12 +438,15 @@ class PygameClock:
         except Exception:
             tz_abbr = "TZ"
         if self.timezone_name:
-            status_items.append(f"TZ: {tz_abbr} ({self.timezone_name})")
+            tz_label = "🌍" if use_emojis else "TZ:"
+            status_items.append(f"{tz_label} {tz_abbr} ({self.timezone_name})")
         else:
-            status_items.append(f"TZ: {tz_abbr}")
+            tz_label = "🌍" if use_emojis else "TZ:"
+            status_items.append(f"{tz_label} {tz_abbr}")
         
         # Last sync with symbol
-        status_items.append(f"Sync: {self.get_time_since_sync()}")
+        sync_label = "🔄" if use_emojis else "Sync:"
+        status_items.append(f"{sync_label} {self.get_time_since_sync()}")
         
         status_text = " | ".join(status_items)
         
@@ -446,8 +456,8 @@ class PygameClock:
         except UnicodeError as e:
             # Fallback to ASCII-only if Unicode fails
             logging.warning(f"Unicode error in status bar, using ASCII fallback: {e}")
-            status_text = status_text.encode('ascii', 'replace').decode('ascii')
-            status_surface = self.status_font.render(status_text, True, status_color)
+            fallback = status_text.encode('ascii', 'replace').decode('ascii')
+            status_surface = self.status_font.render(fallback, True, status_color)
         
         # Position at bottom center with some padding
         status_rect = status_surface.get_rect(
