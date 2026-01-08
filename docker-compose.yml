@@ -13,6 +13,10 @@ services:
       - DISPLAY=:0
       - XAUTHORITY=/root/.Xauthority
       
+      # Force SDL to use framebuffer driver for better performance on Pi Zero W
+      - SDL_VIDEODRIVER=fbcon
+      - SDL_FBDEV=/dev/fb0
+      
       # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
       - LOG_LEVEL=INFO
       

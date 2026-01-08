@@ -48,28 +48,21 @@ class PygameClock:
         
         logging.info(f"Screen resolution: {self.screen_width}x{self.screen_height}")
         
-        # Create fullscreen display with hardware acceleration and double buffering
+        # Create fullscreen display with double buffering
+        # Use simple flags for better compatibility with SDL fbcon driver
         try:
             self.screen = pygame.display.set_mode(
                 (self.screen_width, self.screen_height),
-                pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF
+                pygame.FULLSCREEN | pygame.DOUBLEBUF
             )
-            logging.info("Display mode: FULLSCREEN | HWSURFACE | DOUBLEBUF")
+            logging.info("Display mode: FULLSCREEN | DOUBLEBUF")
         except Exception as e:
-            # Fallback without hardware surface
-            logging.warning(f"Hardware surface not available: {e}")
-            try:
-                self.screen = pygame.display.set_mode(
-                    (self.screen_width, self.screen_height),
-                    pygame.FULLSCREEN | pygame.DOUBLEBUF
-                )
-                logging.info("Display mode: FULLSCREEN | DOUBLEBUF")
-            except Exception:
-                self.screen = pygame.display.set_mode(
-                    (self.screen_width, self.screen_height),
-                    pygame.FULLSCREEN
-                )
-                logging.info("Display mode: FULLSCREEN (fallback)")
+            logging.warning(f"Double buffer not available: {e}")
+            self.screen = pygame.display.set_mode(
+                (self.screen_width, self.screen_height),
+                pygame.FULLSCREEN
+            )
+            logging.info("Display mode: FULLSCREEN (fallback)")
         pygame.display.set_caption("Digital Clock")
         
         # Load configuration
