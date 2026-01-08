@@ -16,6 +16,6 @@ pytz==2023.3
 # Type hints runtime support
 typing-extensions==4.8.0
 
-# Note: pygame-emojis is optional and not included by default due to build issues on ARMv6
-# The application gracefully falls back to ASCII icons if pygame-emojis is unavailable
-# To enable emoji support, manually install: pip3 install pygame-emojis>=0.2.0
+# Note: Emoji icons use PNG sprites (app/assets/emojis/) instead of fonts
+# for optimal performance on Raspberry Pi Zero W (ARMv6)
+# See app/assets/emojis/README.md for icon setup instructions

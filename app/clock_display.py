@@ -10,11 +10,6 @@ import logging
 import socket
 import subprocess
 import random
-try:
-    import pygame_emojis  # Enables emoji rendering support if available
-    EMOJI_SUPPORTED = True
-except Exception:
-    EMOJI_SUPPORTED = False
 import time
 from datetime import datetime
 from pathlib import Path
@@ -165,6 +160,9 @@ class PygameClock:
         # Get initial NTP sync time
         self.check_last_ntp_sync()
         
+        # Load emoji PNG icons (lightweight alternative to emoji fonts)
+        self.emoji_icons = self.load_emoji_icons()
+        
         # Log pixel shift status
         if self.pixel_shift_enabled:
             logging.info(f"Pixel shift enabled: ±{self.pixel_shift_max}px every {display_config.get('pixel_shift_interval_seconds', 30)}s")
@@ -190,6 +188,49 @@ class PygameClock:
             self.weather_font = pygame.font.Font(None, self.weather_font_size)
             self.status_font = pygame.font.Font(None, self.status_font_size)
             logging.warning("Using default pygame font")
+    
+    def load_emoji_icons(self) -> dict:
+        """
+        Load emoji PNG icons from assets/emojis/ directory.
+        Returns dict mapping icon names to pygame surfaces.
+        Falls back gracefully if icons not found.
+        """
+        icons = {}
+        emoji_dir = Path(__file__).parent / "assets" / "emojis"
+        
+        # Icon files to load (16x16 or 24x24 PNGs work well)
+        icon_files = {
+            'wifi': 'wifi.png',
+            'ethernet': 'ethernet.png',
+            'network_error': 'network_error.png',
+            'globe': 'globe.png',
+            'sync': 'sync.png',
+            'clock': 'clock.png',
+        }
+        
+        if not emoji_dir.exists():
+            logging.info("Emoji icons directory not found, using ASCII fallback")
+            return icons
+        
+        # Load each icon
+        for name, filename in icon_files.items():
+            icon_path = emoji_dir / filename
+            if icon_path.exists():
+                try:
+                    # Load and scale icon to appropriate size (24x24 for status bar)
+                    icon = pygame.image.load(str(icon_path))
+                    icon = pygame.transform.smoothscale(icon, (24, 24))
+                    icons[name] = icon
+                    logging.debug(f"Loaded emoji icon: {name}")
+                except Exception as e:
+                    logging.debug(f"Failed to load emoji icon {name}: {e}")
+        
+        if icons:
+            logging.info(f"Loaded {len(icons)} emoji PNG icons")
+        else:
+            logging.info("No emoji icons loaded, using ASCII fallback")
+        
+        return icons
     
     def hex_to_rgb(self, hex_color):
         """Convert hex color to RGB tuple."""
@@ -462,63 +503,102 @@ class PygameClock:
         pygame.display.flip()
     
     def render_status_bar(self, status_color):
-        """Render status bar with system information."""
-        # Choose emoji or ASCII symbols based on support
-        use_emojis = EMOJI_SUPPORTED and (os.environ.get('USE_EMOJI', 'true').lower() == 'true')
-        # Status items
-        status_items = []
+        """Render status bar with system information using PNG icons or ASCII fallback."""
+        # Check if we have PNG emoji icons loaded
+        use_png_icons = bool(self.emoji_icons) and (os.environ.get('USE_EMOJI', 'true').lower() == 'true')
         
-        # Network status with symbol
+        # Starting X position for left-aligned status items
+        x_pos = 10
+        y_pos = self.screen_height - 30
+        spacing = 5  # Space between icon and text
+        item_gap = 20  # Gap between status items
+        
+        # Network status
         if self.network_status:
             if "WiFi" in self.network_status:
-                icon = "📶" if use_emojis else "WiFi:"
+                icon_key = 'wifi'
+                text = self.network_status
             elif "Ethernet" in self.network_status:
-                icon = "🌐" if use_emojis else "Net:"
+                icon_key = 'ethernet'
+                text = self.network_status
             else:
-                icon = "❌" if use_emojis else "X"
-            status_items.append(f"{icon} {self.network_status}")
+                icon_key = 'network_error'
+                text = self.network_status
         else:
-            status_items.append("❌ No Network" if use_emojis else "X No Network")
+            icon_key = 'network_error'
+            text = "No Network"
         
-        # Timezone with abbreviation and full name
+        # Render network status
+        if use_png_icons and icon_key in self.emoji_icons:
+            self.screen.blit(self.emoji_icons[icon_key], (x_pos, y_pos))
+            x_pos += 24 + spacing
+        else:
+            # ASCII fallback
+            prefix = "WiFi:" if "WiFi" in text else ("Net:" if "Ethernet" in text else "X")
+            text_surface = self.status_font.render(f"{prefix} {text}", True, status_color)
+            self.screen.blit(text_surface, (x_pos, y_pos))
+            x_pos += text_surface.get_width() + item_gap
+            text = ""  # Already included in prefix
+        
+        if text:
+            text_surface = self.status_font.render(text, True, status_color)
+            self.screen.blit(text_surface, (x_pos, y_pos))
+            x_pos += text_surface.get_width() + item_gap
+        
+        # Separator
+        sep_surface = self.status_font.render("|", True, status_color)
+        self.screen.blit(sep_surface, (x_pos, y_pos))
+        x_pos += sep_surface.get_width() + item_gap
+        
+        # Timezone with abbreviation
         try:
             tz_abbr = time.strftime('%Z')
         except Exception:
             tz_abbr = "TZ"
-        if self.timezone_name:
-            tz_label = "🌍" if use_emojis else "TZ:"
-            status_items.append(f"{tz_label} {tz_abbr} ({self.timezone_name})")
-        else:
-            tz_label = "🌍" if use_emojis else "TZ:"
-            status_items.append(f"{tz_label} {tz_abbr}")
         
-        # Last sync with symbol
-        sync_label = "🔄" if use_emojis else "Sync:"
-        status_items.append(f"{sync_label} {self.get_time_since_sync()}")
+        if use_png_icons and 'globe' in self.emoji_icons:
+            self.screen.blit(self.emoji_icons['globe'], (x_pos, y_pos))
+            x_pos += 24 + spacing
+            tz_text = f"{tz_abbr} ({self.timezone_name})" if self.timezone_name else tz_abbr
+        else:
+            tz_text = f"TZ: {tz_abbr} ({self.timezone_name})" if self.timezone_name else f"TZ: {tz_abbr}"
+        
+        tz_surface = self.status_font.render(tz_text, True, status_color)
+        self.screen.blit(tz_surface, (x_pos, y_pos))
+        x_pos += tz_surface.get_width() + item_gap
+        
+        # Separator
+        self.screen.blit(sep_surface, (x_pos, y_pos))
+        x_pos += sep_surface.get_width() + item_gap
+        
+        # Last sync
+        sync_time = self.get_time_since_sync()
+        if use_png_icons and 'sync' in self.emoji_icons:
+            self.screen.blit(self.emoji_icons['sync'], (x_pos, y_pos))
+            x_pos += 24 + spacing
+            sync_text = sync_time
+        else:
+            sync_text = f"Sync: {sync_time}"
+        
+        sync_surface = self.status_font.render(sync_text, True, status_color)
+        self.screen.blit(sync_surface, (x_pos, y_pos))
+        x_pos += sync_surface.get_width() + item_gap
         
         # RTC status if available
         if self.rtc and self.rtc.available:
-            rtc_label = "🕰️" if use_emojis else "RTC:"
-            status_items.append(f"{rtc_label} Active")
-        
-        status_text = " | ".join(status_items)
-        
-        # Render status text with brightness-adjusted color
-        try:
-            status_surface = self.status_font.render(status_text, True, status_color)
-        except UnicodeError as e:
-            # Fallback to ASCII-only if Unicode fails
-            logging.warning(f"Unicode error in status bar, using ASCII fallback: {e}")
-            fallback = status_text.encode('ascii', 'replace').decode('ascii')
-            status_surface = self.status_font.render(fallback, True, status_color)
-        
-        # Position at bottom center with some padding
-        status_rect = status_surface.get_rect(
-            center=(self.screen_width // 2, self.screen_height - 20)
-        )
-        
-        # Draw status bar
-        self.screen.blit(status_surface, status_rect)
+            # Separator
+            self.screen.blit(sep_surface, (x_pos, y_pos))
+            x_pos += sep_surface.get_width() + item_gap
+            
+            if use_png_icons and 'clock' in self.emoji_icons:
+                self.screen.blit(self.emoji_icons['clock'], (x_pos, y_pos))
+                x_pos += 24 + spacing
+                rtc_text = "Active"
+            else:
+                rtc_text = "RTC: Active"
+            
+            rtc_surface = self.status_font.render(rtc_text, True, status_color)
+            self.screen.blit(rtc_surface, (x_pos, y_pos))
     
     def handle_events(self):
         """Handle pygame events."""

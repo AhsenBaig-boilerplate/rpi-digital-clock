@@ -99,7 +99,7 @@ After deployment, you **must** configure variables in your balena dashboard. The
 | `NIGHT_BRIGHTNESS` | `0.3` | Night brightness (0.0–1.0) |
 | `NIGHT_START_HOUR` | `22` | Night start hour |
 | `NIGHT_END_HOUR` | `6` | Night end hour |
-| `USE_EMOJI` | `true` | Use emoji icons in status bar (requires pygame-emojis) |
+| `USE_EMOJI` | `true` | Use PNG emoji icons in status bar (place icons in app/assets/emojis/) |
 
 💡 **Multi-Device Setup:** Use Fleet Variables for common settings (like API key) and Device Variables for location-specific settings (like `WEATHER_LOCATION`).
 
