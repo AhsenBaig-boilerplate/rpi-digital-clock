@@ -61,10 +61,11 @@ class PygameClock:
         logging.info(f"Font scale factor: {scale_factor:.2f} (based on {self.screen_width}x{self.screen_height})")
         
         # Font sizes - scale based on resolution for optimal space usage
-        base_time_size = display_config.get('time_font_size', 180)
-        base_date_size = display_config.get('date_font_size', 60)
-        base_weather_size = display_config.get('weather_font_size', 40)
-        base_status_size = 22
+        # Large defaults for distance visibility (use 70-80% of screen height for time)
+        base_time_size = display_config.get('time_font_size', 280)
+        base_date_size = display_config.get('date_font_size', 90)
+        base_weather_size = display_config.get('weather_font_size', 60)
+        base_status_size = 28
         
         self.time_font_size = int(base_time_size * scale_factor)
         self.date_font_size = int(base_date_size * scale_factor)

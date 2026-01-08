@@ -45,9 +45,10 @@ display:
   font_family: "Helvetica"
   
   # Font sizes for different elements
-  time_font_size: 120
-  date_font_size: 40
-  weather_font_size: 30
+  # Large sizes optimized for visibility from distance
+  time_font_size: 280
+  date_font_size: 90
+  weather_font_size: 60
   
   # Display color (hex format)
   color: "#00FF00"
