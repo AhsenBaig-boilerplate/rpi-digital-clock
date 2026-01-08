@@ -93,7 +93,7 @@ class WeatherService:
             response = requests.get(
                 self.base_url,
                 params=params,
-                timeout=10
+                timeout=2  # 2 second timeout to avoid blocking the display
             )
             
             # Check response status
