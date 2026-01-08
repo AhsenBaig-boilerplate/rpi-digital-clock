@@ -36,8 +36,9 @@ class PygameClock:
         self.config = config
         self.running = True
         
-        # Initialize pygame
+        # Initialize pygame (disable audio mixer to prevent ALSA errors)
         pygame.init()
+        pygame.mixer.quit()  # We don't need audio for a clock display
         pygame.mouse.set_visible(False)
         
         # Get display info and set fullscreen
