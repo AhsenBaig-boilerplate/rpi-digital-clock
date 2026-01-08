@@ -2,6 +2,10 @@
 
 This guide covers setup and integration of the DS3231 Real-Time Clock module for maintaining accurate time when WiFi/network is unavailable.
 
+**Note:** RTC support is optional and disabled by default. Set `RTC_ENABLED=true` to activate.
+
+---
+
 ## 📦 Hardware Requirements
 
 ### DS3231 RTC Module

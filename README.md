@@ -14,7 +14,7 @@ A production-ready digital clock display for Raspberry Pi Zero (1st gen) with we
 - **Live Weather Integration** - Real-time weather data from OpenWeatherMap API
 - **Date Display** - Customizable date format
 - **NTP Time Sync** - Automatic time synchronization on startup
-- **Hardware RTC Support** - DS3231 RTC module for accurate time when offline
+- **Hardware RTC Support** - DS3231 RTC module for accurate time when offline (optional)
 
 ### Screen Burn-in Prevention 🛡️
 - **Scheduled Screensaver** - Blanks screen during configured hours (e.g., 2:00–5:00)

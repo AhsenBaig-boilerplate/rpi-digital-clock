@@ -16,8 +16,8 @@ rpi-digital-clock/
 │   ├── clock_display.py     # Pygame clock renderer (main entry point)
 │   ├── start.sh             # X server + app startup script
 │   ├── weather.py           # Weather API integration
-│   ├── rtc.py               # DS3231 RTC module support
-│   ├── utils.py             # Utility functions (NTP, logging, validation)
+│   ├── rtc.py               # DS3231 RTC module support (optional hardware)
+│   ├── utils.py             # Logging configuration utility
 │   └── config.yaml          # Configuration file with all settings
 ├── Dockerfile.template      # balena.io Dockerfile
 ├── docker-compose.yml       # Docker Compose service definition
@@ -46,7 +46,7 @@ rpi-digital-clock/
 - ✅ Configurable date formats
 - ✅ Real-time weather display
 - ✅ Fullscreen optimized for TV displays
-- ✅ Hardware RTC support (DS3231) for offline timekeeping
+- ✅ Hardware RTC support (DS3231) for offline timekeeping (optional)
 
 ### Screen Burn-in Prevention
 - ✅ **Scheduled Screensaver** - Blanks screen during configured hours (e.g., 2:00-5:00)

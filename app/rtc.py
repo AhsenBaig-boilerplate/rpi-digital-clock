@@ -1,6 +1,6 @@
 """
-RTC (Real-Time Clock) Module - DS3231 Hardware Clock Support
-Provides accurate timekeeping when network/NTP is unavailable.
+DS3231 RTC Module - Optional hardware clock support for offline timekeeping.
+Gracefully handles missing hardware and only activates when explicitly enabled.
 """
 
 import logging
@@ -10,60 +10,70 @@ from typing import Optional
 
 
 class RTCManager:
-    """Manager for DS3231 Hardware Real-Time Clock module."""
+    """Minimal DS3231 Real-Time Clock manager for optional hardware support."""
     
-    def __init__(self):
-        """Initialize RTC manager."""
-        self.rtc_device = '/dev/rtc0'
-        self.i2c_address = '0x68'  # DS3231 default I2C address
-        self.rtc_available = False
-        self.last_sync_time = None
+    def __init__(self, enabled: bool = False):
+        """
+        Initialize RTC manager.
         
-        # Check if RTC is available
-        self._detect_rtc()
+        Args:
+            enabled: Whether to attempt RTC initialization (default: False)
+        """
+        self.enabled = enabled
+        self.available = False
+        self.i2c_address = '0x68'  # DS3231 default I2C address
+        
+        if self.enabled:
+            self._detect_rtc()
+        else:
+            logging.info("RTC support disabled (optional hardware)")
     
     def _detect_rtc(self) -> bool:
         """
-        Detect if DS3231 RTC module is available.
+        Detect if DS3231 RTC module is available on I2C bus.
         
         Returns:
             True if RTC detected, False otherwise
         """
         try:
-            # Check if RTC device exists
+            # Check if I2C device exists at DS3231 address
             result = subprocess.run(
-                ['ls', self.rtc_device],
+                ['i2cdetect', '-y', '1'],
                 capture_output=True,
+                text=True,
                 timeout=5
             )
             
-            if result.returncode == 0:
-                logging.info(f"RTC device found: {self.rtc_device}")
-                self.rtc_available = True
+            if result.returncode == 0 and self.i2c_address in result.stdout:
+                logging.info(f"DS3231 RTC detected at I2C address {self.i2c_address}")
+                self.available = True
                 return True
             else:
-                logging.warning("RTC device not found - using system clock only")
-                self.rtc_available = False
+                logging.warning("DS3231 RTC not detected on I2C bus")
+                self.available = False
                 return False
                 
+        except FileNotFoundError:
+            logging.warning("i2cdetect not available - RTC detection skipped")
+            self.available = False
+            return False
         except Exception as e:
             logging.debug(f"Error detecting RTC: {e}")
-            self.rtc_available = False
+            self.available = False
             return False
     
-    def read_rtc_time(self) -> Optional[datetime]:
+    def read_time(self) -> Optional[datetime]:
         """
-        Read current time from DS3231 RTC module.
+        Read current time from DS3231 RTC.
         
         Returns:
             datetime object with RTC time, or None if read fails
         """
-        if not self.rtc_available:
-            logging.debug("RTC not available for reading")
+        if not self.available:
             return None
         
         try:
-            # Read time using hwclock
+            # Read RTC time using hwclock
             result = subprocess.run(
                 ['hwclock', '-r'],
                 capture_output=True,
@@ -72,173 +82,91 @@ class RTCManager:
             )
             
             if result.returncode == 0:
-                # Parse hwclock output
+                # Parse hwclock output (format varies by locale)
                 time_str = result.stdout.strip()
-                logging.debug(f"RTC time: {time_str}")
-                return datetime.now()  # System will be synced with RTC
+                try:
+                    # Try common formats
+                    for fmt in ['%Y-%m-%d %H:%M:%S', '%a %d %b %Y %H:%M:%S']:
+                        try:
+                            rtc_time = datetime.strptime(time_str.split('.')[0], fmt)
+                            logging.info(f"Read time from RTC: {rtc_time}")
+                            return rtc_time
+                        except ValueError:
+                            continue
+                    
+                    logging.warning(f"Could not parse RTC time format: {time_str}")
+                    return None
+                    
+                except Exception as e:
+                    logging.error(f"Error parsing RTC time: {e}")
+                    return None
             else:
                 logging.warning(f"Failed to read RTC: {result.stderr}")
                 return None
                 
-        except subprocess.TimeoutExpired:
-            logging.error("RTC read timed out")
-            return None
         except Exception as e:
-            logging.error(f"Error reading RTC: {e}", exc_info=True)
+            logging.error(f"Error reading RTC: {e}")
             return None
     
-    def sync_system_from_rtc(self) -> bool:
+    def write_time(self, dt: Optional[datetime] = None) -> bool:
         """
-        Synchronize system clock from DS3231 RTC module.
-        Use this when network is unavailable but RTC has accurate time.
+        Write current system time (or provided datetime) to DS3231 RTC.
+        
+        Args:
+            dt: datetime to write, or None to use current system time
         
         Returns:
-            True if sync successful, False otherwise
+            True if write successful, False otherwise
         """
-        if not self.rtc_available:
-            logging.warning("RTC not available for sync")
+        if not self.available:
             return False
         
         try:
-            logging.info("Syncing system clock from RTC...")
-            
-            # Sync system clock from hardware clock
+            # Write system time to RTC using hwclock
             result = subprocess.run(
-                ['hwclock', '--hctosys'],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
-            if result.returncode == 0:
-                self.last_sync_time = datetime.now()
-                logging.info("System clock successfully synced from RTC")
-                return True
-            else:
-                logging.error(f"Failed to sync from RTC: {result.stderr}")
-                return False
-                
-        except subprocess.TimeoutExpired:
-            logging.error("RTC sync timed out")
-            return False
-        except PermissionError:
-            logging.error("Permission denied - need root access to sync system clock")
-            return False
-        except Exception as e:
-            logging.error(f"Error syncing from RTC: {e}", exc_info=True)
-            return False
-    
-    def sync_rtc_from_system(self) -> bool:
-        """
-        Synchronize DS3231 RTC module from system clock.
-        Use this after successful NTP sync to update RTC.
-        
-        Returns:
-            True if sync successful, False otherwise
-        """
-        if not self.rtc_available:
-            logging.warning("RTC not available for sync")
-            return False
-        
-        try:
-            logging.info("Syncing RTC from system clock...")
-            
-            # Sync hardware clock from system clock
-            result = subprocess.run(
-                ['hwclock', '--systohc'],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
-            if result.returncode == 0:
-                logging.info("RTC successfully synced from system clock")
-                return True
-            else:
-                logging.error(f"Failed to sync RTC: {result.stderr}")
-                return False
-                
-        except subprocess.TimeoutExpired:
-            logging.error("RTC sync timed out")
-            return False
-        except PermissionError:
-            logging.error("Permission denied - need root access to sync RTC")
-            return False
-        except Exception as e:
-            logging.error(f"Error syncing RTC: {e}", exc_info=True)
-            return False
-    
-    def get_rtc_temperature(self) -> Optional[float]:
-        """
-        Read temperature from DS3231 (has built-in temperature sensor).
-        
-        Returns:
-            Temperature in Celsius, or None if read fails
-        """
-        if not self.rtc_available:
-            return None
-        
-        try:
-            # Read temperature using i2cget
-            # DS3231 stores temp in registers 0x11 (MSB) and 0x12 (LSB)
-            result = subprocess.run(
-                ['i2cget', '-y', '1', self.i2c_address, '0x11'],
+                ['hwclock', '-w'],
                 capture_output=True,
                 text=True,
                 timeout=5
             )
             
             if result.returncode == 0:
-                temp_msb = int(result.stdout.strip(), 16)
+                logging.info("Synced system time to RTC")
+                return True
+            else:
+                logging.warning(f"Failed to write RTC: {result.stderr}")
+                return False
                 
-                # Read LSB for fractional part
-                result = subprocess.run(
-                    ['i2cget', '-y', '1', self.i2c_address, '0x12'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                
-                if result.returncode == 0:
-                    temp_lsb = int(result.stdout.strip(), 16)
-                    
-                    # Calculate temperature
-                    # MSB is integer part, LSB top 2 bits are fractional (0.25°C per bit)
-                    temperature = temp_msb + ((temp_lsb >> 6) * 0.25)
-                    
-                    logging.debug(f"RTC temperature: {temperature}°C")
-                    return temperature
-            
-            return None
-            
         except Exception as e:
-            logging.debug(f"Error reading RTC temperature: {e}")
-            return None
+            logging.error(f"Error writing RTC: {e}")
+            return False
     
-    def is_available(self) -> bool:
+    def sync_system_from_rtc(self) -> bool:
         """
-        Check if RTC module is available.
+        Set system time from RTC (useful when network unavailable).
         
         Returns:
-            True if RTC available, False otherwise
+            True if sync successful, False otherwise
         """
-        return self.rtc_available
-    
-    def get_status(self) -> dict:
-        """
-        Get RTC module status information.
+        if not self.available:
+            return False
         
-        Returns:
-            Dictionary with RTC status
-        """
-        status = {
-            'available': self.rtc_available,
-            'device': self.rtc_device,
-            'i2c_address': self.i2c_address,
-            'last_sync': self.last_sync_time.isoformat() if self.last_sync_time else None
-        }
-        
-        if self.rtc_available:
-            status['temperature'] = self.get_rtc_temperature()
-        
-        return status
+        try:
+            # Set system time from RTC using hwclock
+            result = subprocess.run(
+                ['hwclock', '-s'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0:
+                logging.info("Synced system time from RTC")
+                return True
+            else:
+                logging.warning(f"Failed to sync from RTC: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"Error syncing from RTC: {e}")
+            return False

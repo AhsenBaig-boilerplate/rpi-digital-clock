@@ -26,6 +26,12 @@ try:
 except ImportError:
     WeatherService = None
 
+# Import RTC module (optional hardware)
+try:
+    from rtc import RTCManager
+except ImportError:
+    RTCManager = None
+
 
 class PygameClock:
     """Pygame-based digital clock display."""
@@ -134,6 +140,20 @@ class PygameClock:
             api_key = os.environ.get('WEATHER_API_KEY') or config.get('weather', {}).get('api_key', '')
             if api_key and WeatherService:
                 self.weather_service = WeatherService(config.get('weather', {}))
+        
+        # RTC module (optional hardware support)
+        self.rtc = None
+        rtc_enabled = os.environ.get('RTC_ENABLED', '').lower() == 'true' or config.get('time', {}).get('rtc_enabled', False)
+        if rtc_enabled and RTCManager:
+            self.rtc = RTCManager(enabled=True)
+            if self.rtc.available:
+                logging.info("DS3231 RTC available - will sync system time from RTC if network unavailable")
+                # Try to sync from RTC on startup if network is down
+                if self.network_status in ["No Network", "Unknown"]:
+                    self.rtc.sync_system_from_rtc()
+            else:
+                logging.warning("RTC enabled but hardware not detected")
+                self.rtc = None
         
         # Clock for FPS
         self.clock = pygame.time.Clock()
@@ -354,7 +374,12 @@ class PygameClock:
             return
         
         self.check_network_status()
+        self.check_last_ntp_sync()
         self.last_status_check = current_time
+        
+        # Periodic RTC sync: save system time to RTC every 30s if network available
+        if self.rtc and self.rtc.available and self.network_status in ["WiFi", "Ethernet"]:
+            self.rtc.write_time()
     
     def format_date(self, now):
         """Format date string."""
@@ -471,6 +496,11 @@ class PygameClock:
         sync_label = "🔄" if use_emojis else "Sync:"
         status_items.append(f"{sync_label} {self.get_time_since_sync()}")
         
+        # RTC status if available
+        if self.rtc and self.rtc.available:
+            rtc_label = "🕰️" if use_emojis else "RTC:"
+            status_items.append(f"{rtc_label} Active")
+        
         status_text = " | ".join(status_items)
         
         # Render status text with brightness-adjusted color
@@ -586,6 +616,7 @@ def main():
         "WEATHER_ENABLED", "BALENA_WEATHER_ENABLED",
         # Time / logging / display
         "TIMEZONE", "BALENA_TIMEZONE", "TZ",
+        "RTC_ENABLED", "BALENA_RTC_ENABLED",
         "LOG_LEVEL", "BALENA_LOG_LEVEL",
         "DISPLAY_ORIENTATION", "BALENA_DISPLAY_ORIENTATION",
         "DISPLAY_COLOR", "BALENA_DISPLAY_COLOR",

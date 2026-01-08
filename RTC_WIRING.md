@@ -1,5 +1,9 @@
 # DS3231 RTC Wiring Diagram
 
+**Note:** RTC support is optional and disabled by default. Set `RTC_ENABLED=true` to activate.
+
+---
+
 ## Visual Connection Guide
 
 ### Pin Layout
