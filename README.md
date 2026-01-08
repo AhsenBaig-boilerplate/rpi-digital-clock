@@ -32,6 +32,14 @@ Note: The container base uses Debian Bookworm with Python 3.11, optimized for Ra
 - **Environment Variables** - Override config with environment variables
 - **Graceful Shutdown** - Proper cleanup on exit
 
+## 🛠️ Runtime & Emoji Icons
+
+- **Python Runtime**: Container uses Debian Bookworm with Python 3.11, optimized for Raspberry Pi Zero W (ARMv6)
+- **Pygame**: System `python3-pygame` (fast on Pi Zero W)
+- **Emoji Icons**: PNG sprites loaded from `app/assets/emojis/` for status bar (no font rendering overhead)
+  - Provide PNGs (24x24 recommended) named: `wifi.png`, `ethernet.png`, `network_error.png`, `globe.png`, `sync.png`, `clock.png`
+  - Set `USE_EMOJI=true` to enable icons; falls back to ASCII if files missing
+
 ## 📋 Prerequisites
 
 - Raspberry Pi Zero (1st generation)

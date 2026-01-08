@@ -232,6 +232,11 @@ class PygameClock:
         
         if icons:
             logging.info(f"Loaded {len(icons)} emoji PNG icons")
+            try:
+                names = ", ".join(sorted(icons.keys()))
+                logging.info(f"Emoji icons available: {names}")
+            except Exception:
+                pass
         else:
             logging.info("No emoji icons loaded, using ASCII fallback")
         
