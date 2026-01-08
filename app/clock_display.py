@@ -509,8 +509,8 @@ class PygameClock:
                 # Render
                 self.render()
                 
-                # Limit to 1 FPS (update once per second)
-                self.clock.tick(1)
+                # Limit to 10 FPS to catch second boundaries reliably
+                self.clock.tick(10)
                 
                 frame_count += 1
                 if frame_count % 60 == 0:  # Log every minute
