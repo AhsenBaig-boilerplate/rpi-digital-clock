@@ -103,6 +103,10 @@ class PygameClock:
         self.date_surface = None
         self._last_second_drawn = None
         
+        # Cache weather surface to avoid re-render each frame
+        self.weather_surface = None
+        self._last_weather_text = None
+        
         # Debug overlay to verify smoothness (FPS/frame time)
         self.show_debug_overlay = (
             os.environ.get('SHOW_DEBUG_OVERLAY', 'false').lower() == 'true' or
@@ -594,14 +598,14 @@ class PygameClock:
         # Get current time
         now = datetime.now()
         
+        # Compute display color each frame (cheap) for consistent rendering
+        display_color = self.apply_brightness(self.color)
+        
         # Format strings - only recompute surfaces when the second changes
         current_second = now.second
         if self._last_second_drawn != current_second:
             time_str = self.format_time(now)
             date_str = self.format_date(now)
-            
-            # Apply brightness to colors
-            display_color = self.apply_brightness(self.color)
             
             # Re-render text surfaces
             self.time_surface = self.time_font.render(time_str, True, display_color)
@@ -630,13 +634,17 @@ class PygameClock:
         self.screen.blit(time_surface, time_rect)
         self.screen.blit(date_surface, date_rect)
         
-        # Render weather if available (thread-safe read)
+        # Render weather if available (thread-safe read) with cached surface
         with self.update_lock:
             weather_text_copy = self.weather_text
         if weather_text_copy:
-            weather_surface = self.weather_font.render(weather_text_copy, True, display_color)
-            weather_rect = weather_surface.get_rect(center=(center_x, center_y + 120))
-            self.screen.blit(weather_surface, weather_rect)
+            if weather_text_copy != self._last_weather_text:
+                # Re-render weather surface only when text changes
+                self.weather_surface = self.weather_font.render(weather_text_copy, True, display_color)
+                self._last_weather_text = weather_text_copy
+            if self.weather_surface:
+                weather_rect = self.weather_surface.get_rect(center=(center_x, center_y + 120))
+                self.screen.blit(self.weather_surface, weather_rect)
         
         # Render status bar at bottom
         if self.show_status_bar:
@@ -799,9 +807,8 @@ class PygameClock:
                 
                 # Render (reads cached values from background threads)
                 self.render()
-                
-                # Limit to 10 FPS for smooth second updates (updates every 0.1 seconds)
-                self.clock.tick(10)
+                # Limit to 6 FPS to reduce CPU while keeping seconds responsive
+                self.clock.tick(6)
                 self.last_fps = self.clock.get_fps()
                 
                 frame_count += 1
