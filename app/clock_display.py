@@ -747,8 +747,8 @@ class PygameClock:
                 # Render
                 self.render()
                 
-                # Limit to 2 FPS for responsive updates (updates every 0.5 seconds)
-                self.clock.tick(2)
+                # Limit to 10 FPS for smooth second updates (updates every 0.1 seconds)
+                self.clock.tick(10)
                 
                 frame_count += 1
                 if frame_count % 60 == 0:  # Log every minute
