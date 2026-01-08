@@ -574,10 +574,19 @@ def main():
         "NIGHT_START_HOUR", "BALENA_NIGHT_START_HOUR",
         "NIGHT_END_HOUR", "BALENA_NIGHT_END_HOUR",
     ]
+    service_name = os.environ.get("BALENA_SERVICE_NAME", "unknown")
+    logging.info(f"Service context: {service_name}")
     logging.info("Environment variables (masked where sensitive):")
+    
+    def scope_label(var_name: str) -> str:
+        # Treat BALENA_ prefixed as Global; others as Service-scoped to current service
+        return "Global" if var_name.startswith("BALENA_") else f"Service({service_name})"
+    
     for name in env_names:
         if name in os.environ:
-            logging.info(f"  {name}={mask(name, os.environ.get(name))}")
+            value = mask(name, os.environ.get(name))
+            scope = scope_label(name)
+            logging.info(f"  [{scope}] {name}={value}")
     
     # Create and run clock
     clock = PygameClock(config)
