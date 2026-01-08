@@ -102,6 +102,7 @@ class PygameClock:
         self.time_surface = None
         self.date_surface = None
         self._last_second_drawn = None
+        self._last_second_epoch = None
         
         # Cache weather surface to avoid re-render each frame
         self.weather_surface = None
@@ -601,9 +602,9 @@ class PygameClock:
         # Compute display color each frame (cheap) for consistent rendering
         display_color = self.apply_brightness(self.color)
         
-        # Format strings - only recompute surfaces when the second changes
-        current_second = now.second
-        if self._last_second_drawn != current_second:
+        # Format strings - recompute when epoch second changes (robust to timing)
+        current_second_epoch = int(time.time())
+        if self._last_second_epoch != current_second_epoch:
             time_str = self.format_time(now)
             date_str = self.format_date(now)
             
@@ -611,8 +612,9 @@ class PygameClock:
             self.time_surface = self.time_font.render(time_str, True, display_color)
             self.date_surface = self.date_font.render(date_str, True, display_color)
             
-            # Update marker
-            self._last_second_drawn = current_second
+            # Update markers
+            self._last_second_drawn = now.second
+            self._last_second_epoch = current_second_epoch
         
         # Use cached surfaces
         time_surface = self.time_surface
