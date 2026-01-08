@@ -19,18 +19,37 @@ jobs:
       - name: Get version from Git
         id: version
         run: |
-          # Try to get the current tag
-          VERSION=$(git describe --tags --exact-match 2>/dev/null || echo "")
+          # Check if we're on a tag already
+          CURRENT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "")
           
-          if [ -z "$VERSION" ]; then
-            # Not on a tag, get the latest tag for base version
-            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
-            COMMIT_COUNT=$(git rev-list --count ${LATEST_TAG}..HEAD 2>/dev/null || echo "1")
-            SHORT_SHA=$(git rev-parse --short HEAD)
-            VERSION="${LATEST_TAG}+rev${COMMIT_COUNT}"
-            BASE_VERSION="${LATEST_TAG}"
+          if [ -n "$CURRENT_TAG" ]; then
+            # Already on a tag, use it
+            VERSION="$CURRENT_TAG"
+            BASE_VERSION="$CURRENT_TAG"
+            echo "Using existing tag: $VERSION"
           else
-            BASE_VERSION="${VERSION}"
+            # Not on a tag - auto-increment patch version for main branch pushes
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.4.0")
+            echo "Latest tag: $LATEST_TAG"
+            
+            # Strip 'v' prefix and parse MAJOR.MINOR.PATCH
+            VERSION_NUMBER="${LATEST_TAG#v}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NUMBER"
+            
+            # Increment patch version
+            NEW_PATCH=$((PATCH + 1))
+            NEW_VERSION="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+            
+            echo "Auto-incrementing: $LATEST_TAG -> $NEW_VERSION"
+            
+            VERSION="$NEW_VERSION"
+            BASE_VERSION="$NEW_VERSION"
+            
+            # Create and push the new tag
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$NEW_VERSION" -m "Auto-release $NEW_VERSION from commit ${{ github.sha }}"
+            git push origin "$NEW_VERSION" || echo "Tag push failed (may already exist)"
           fi
           
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
