@@ -93,10 +93,10 @@ jobs:
           RELEASE_ID: ${{ steps.build.outputs.release_id }}
         run: |
           echo "Tagging release $RELEASE_ID with GitHub metadata"
-          balena tag set release "$RELEASE_ID" git.sha "${{ github.sha }}"
-          balena tag set release "$RELEASE_ID" git.ref "${{ github.ref_name }}"
-          balena tag set release "$RELEASE_ID" github.run_id "${{ github.run_id }}"
-          balena tag set release "$RELEASE_ID" github.run_url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          balena tag set --release "$RELEASE_ID" git.sha "${{ github.sha }}"
+          balena tag set --release "$RELEASE_ID" git.ref "${{ github.ref_name }}"
+          balena tag set --release "$RELEASE_ID" github.run_id "${{ github.run_id }}"
+          balena tag set --release "$RELEASE_ID" github.run_url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - name: Write build-metadata.json (artifact)
         run: |
