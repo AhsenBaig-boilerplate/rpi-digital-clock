@@ -627,10 +627,11 @@ class PygameClock:
             date_str = self.format_date(now)
             
             t_render_start = time.time()
-            # Re-render text surfaces with optimized format for blitting
-            self.time_surface = self.time_font.render(time_str, True, display_color).convert()
+            # Re-render text surfaces (antialias=True creates surfaces with transparency)
+            # Don't use .convert() as it creates opaque blocks - leave as-is for proper alpha
+            self.time_surface = self.time_font.render(time_str, True, display_color)
             t_time_render = time.time()
-            self.date_surface = self.date_font.render(date_str, True, display_color).convert()
+            self.date_surface = self.date_font.render(date_str, True, display_color)
             t_date_render = time.time()
             
             # Update markers
@@ -690,7 +691,7 @@ class PygameClock:
         if weather_text_copy:
             if weather_text_copy != self._last_weather_text:
                 # Re-render weather surface only when text changes
-                self.weather_surface = self.weather_font.render(weather_text_copy, True, display_color).convert()
+                self.weather_surface = self.weather_font.render(weather_text_copy, True, display_color)
                 self._last_weather_text = weather_text_copy
             if self.weather_surface:
                 weather_rect = self.weather_surface.get_rect(center=(center_x, center_y + 120))
