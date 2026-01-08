@@ -595,7 +595,8 @@ class PygameClock:
         
         # Check screensaver
         if not self.should_show_display():
-            pygame.display.flip()
+            # Update full screen when blanked
+            pygame.display.update([pygame.Rect(0, 0, self.screen_width, self.screen_height)])
             return
         
         # Update brightness
@@ -654,6 +655,7 @@ class PygameClock:
         t4 = time.time()
         
         # Render weather if available (thread-safe read) with cached surface
+        weather_rect = None
         with self.update_lock:
             weather_text_copy = self.weather_text
         if weather_text_copy:
@@ -667,6 +669,8 @@ class PygameClock:
         t5 = time.time()
         
         # Render status bar at bottom (cached surface)
+        status_surface = None
+        status_rect = None
         if self.show_status_bar:
             status_surface = self.get_status_surface(status_color)
             if status_surface:
@@ -687,14 +691,34 @@ class PygameClock:
                 pass
         
         t7 = time.time()
-        # Update entire display (flip for reliability)
-        pygame.display.flip()
+        
+        # Collect dirty rectangles for changed areas only
+        dirty_rects = []
+        
+        # Always update time/date areas (they change every second)
+        dirty_rects.append(time_rect)
+        dirty_rects.append(date_rect)
+        
+        # Add weather area if present
+        if self.weather_surface:
+            dirty_rects.append(weather_rect)
+        
+        # Add status bar area if shown
+        if self.show_status_bar and status_surface:
+            dirty_rects.append(status_rect)
+        
+        # Add debug overlay area if shown
+        if self.show_debug_overlay:
+            dirty_rects.append(pygame.Rect(10, 10, 300, 40))
+        
+        # Update only changed regions (MUCH faster than full flip)
+        pygame.display.update(dirty_rects)
         t8 = time.time()
         
         # Log timing breakdown if slow
         total_ms = (t8 - t0) * 1000
         if total_ms > 50:
-            logging.warning(f"Render breakdown: clear={((t1-t0)*1000):.1f}ms, prep={((t2-t1)*1000):.1f}ms, cache={((t3-t2)*1000):.1f}ms, blit={((t4-t3)*1000):.1f}ms, weather={((t5-t4)*1000):.1f}ms, status={((t6-t5)*1000):.1f}ms, overlay={((t7-t6)*1000):.1f}ms, flip={((t8-t7)*1000):.1f}ms")
+            logging.warning(f"Render breakdown: clear={((t1-t0)*1000):.1f}ms, prep={((t2-t1)*1000):.1f}ms, cache={((t3-t2)*1000):.1f}ms, blit={((t4-t3)*1000):.1f}ms, weather={((t5-t4)*1000):.1f}ms, status={((t6-t5)*1000):.1f}ms, overlay={((t7-t6)*1000):.1f}ms, update={((t8-t7)*1000):.1f}ms")
     
     def get_status_surface(self, status_color):
         """Build or return cached status bar surface."""
