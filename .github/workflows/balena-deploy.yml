@@ -78,7 +78,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
-          npm install -g balena-cli@19.0.12 --production
+          npm install -g balena-cli --production --unsafe-perm
           balena version
 
       - name: Login to balena (CLI)
