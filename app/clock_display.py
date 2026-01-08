@@ -642,7 +642,6 @@ class PygameClock:
         # Render weather if available (thread-safe read) with cached surface
         with self.update_lock:
             weather_text_copy = self.weather_text
-        weather_rect = None
         if weather_text_copy:
             if weather_text_copy != self._last_weather_text:
                 # Re-render weather surface only when text changes
@@ -653,7 +652,6 @@ class PygameClock:
                 self.screen.blit(self.weather_surface, weather_rect)
         
         # Render status bar at bottom (cached surface)
-        status_rect = None
         if self.show_status_bar:
             status_surface = self.get_status_surface(status_color)
             if status_surface:
@@ -672,13 +670,8 @@ class PygameClock:
             except Exception:
                 pass
         
-        # Update display using dirty rectangles (partial update)
-        dirty_rects = [time_rect, date_rect]
-        if weather_rect:
-            dirty_rects.append(weather_rect)
-        if status_rect:
-            dirty_rects.append(status_rect)
-        pygame.display.update(dirty_rects)
+        # Update entire display (flip for reliability)
+        pygame.display.flip()
     
     def get_status_surface(self, status_color):
         """Build or return cached status bar surface."""
