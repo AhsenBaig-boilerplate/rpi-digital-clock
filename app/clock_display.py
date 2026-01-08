@@ -69,8 +69,8 @@ class PygameClock:
         
         # Font sizes - scale based on resolution for optimal space usage
         # Large defaults for distance visibility (use 70-80% of screen height for time)
-        base_time_size = display_config.get('time_font_size', 280)
-        base_date_size = display_config.get('date_font_size', 90)
+        base_time_size = display_config.get('time_font_size', 380)
+        base_date_size = display_config.get('date_font_size', 110)
         base_weather_size = display_config.get('weather_font_size', 60)
         base_status_size = 28
         
