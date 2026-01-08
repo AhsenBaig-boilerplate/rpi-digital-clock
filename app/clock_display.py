@@ -118,6 +118,8 @@ class PygameClock:
         # Status bar configuration
         self.show_status_bar = True
         self.status_color = tuple(int(c * 0.6) for c in self.color)  # Dimmer version of main color
+        self.status_surface = None
+        self._last_status_payload = None
         
         # Network and sync tracking
         self.last_ntp_sync = None
@@ -538,7 +540,7 @@ class PygameClock:
         self.pixel_shift_y = random.randint(-self.pixel_shift_max, self.pixel_shift_max)
         self.last_pixel_shift = current_time
         
-        logging.info(f"Pixel shift applied: x={self.pixel_shift_x:+d}, y={self.pixel_shift_y:+d}")
+        logging.debug(f"Pixel shift applied: x={self.pixel_shift_x:+d}, y={self.pixel_shift_y:+d}")
     
     def format_date(self, now):
         """Format date string."""
@@ -639,6 +641,7 @@ class PygameClock:
         # Render weather if available (thread-safe read) with cached surface
         with self.update_lock:
             weather_text_copy = self.weather_text
+        weather_rect = None
         if weather_text_copy:
             if weather_text_copy != self._last_weather_text:
                 # Re-render weather surface only when text changes
@@ -648,9 +651,14 @@ class PygameClock:
                 weather_rect = self.weather_surface.get_rect(center=(center_x, center_y + 120))
                 self.screen.blit(self.weather_surface, weather_rect)
         
-        # Render status bar at bottom
+        # Render status bar at bottom (cached surface)
+        status_rect = None
         if self.show_status_bar:
-            self.render_status_bar(status_color)
+            status_surface = self.get_status_surface(status_color)
+            if status_surface:
+                status_rect = status_surface.get_rect()
+                status_rect.topleft = (10, self.screen_height - 30)
+                self.screen.blit(status_surface, status_rect)
         
         # Optional debug overlay (top-left corner) showing FPS and frame time
         if self.show_debug_overlay:
@@ -663,21 +671,38 @@ class PygameClock:
             except Exception:
                 pass
         
-        # Update display
-        pygame.display.flip()
+        # Update display using dirty rectangles (partial update)
+        dirty_rects = [time_rect, date_rect]
+        if weather_rect:
+            dirty_rects.append(weather_rect)
+        if status_rect:
+            dirty_rects.append(status_rect)
+        pygame.display.update(dirty_rects)
     
-    def render_status_bar(self, status_color):
-        """Render status bar with system information using PNG icons or ASCII fallback."""
-        # Check if we have PNG emoji icons loaded
+    def get_status_surface(self, status_color):
+        """Build or return cached status bar surface."""
         use_png_icons = bool(self.emoji_icons) and (os.environ.get('USE_EMOJI', 'true').lower() == 'true')
+        try:
+            tz_abbr = time.strftime('%Z')
+        except Exception:
+            tz_abbr = "TZ"
+        sync_time = self.get_time_since_sync()
+        rtc_active = bool(self.rtc and self.rtc.available)
+        payload = (self.network_status, tz_abbr, self.timezone_name, sync_time, rtc_active, use_png_icons, status_color)
         
-        # Starting X position for left-aligned status items
-        x_pos = 10
-        y_pos = self.screen_height - 30
-        spacing = 5  # Space between icon and text
-        item_gap = 20  # Gap between status items
+        if self._last_status_payload == payload and self.status_surface is not None:
+            return self.status_surface
+        
+        # Build surfaces
+        spacing = 5
+        item_gap = 20
+        parts = []  # list of (surface, kind)
+        width = 0
+        height = max(24, self.status_font.get_height())
         
         # Network status
+        text = "No Network"
+        icon_key = 'network_error'
         if self.network_status:
             if "WiFi" in self.network_status:
                 icon_key = 'wifi'
@@ -686,88 +711,84 @@ class PygameClock:
                 icon_key = 'ethernet'
                 text = self.network_status
             elif "Connected" in self.network_status:
-                # Generic connection (couldn't determine type)
-                icon_key = 'ethernet'  # Use ethernet icon as fallback for connected state
+                icon_key = 'ethernet'
                 text = self.network_status
             else:
-                # Offline, No Internet, or error states
                 icon_key = 'network_error'
                 text = self.network_status
-        else:
-            icon_key = 'network_error'
-            text = "No Network"
         
-        # Render network status
         if use_png_icons and icon_key in self.emoji_icons:
-            self.screen.blit(self.emoji_icons[icon_key], (x_pos, y_pos))
-            x_pos += 24 + spacing
+            parts.append((self.emoji_icons[icon_key], 'icon'))
+            width += 24 + spacing
         else:
-            # ASCII fallback
             prefix = "WiFi:" if "WiFi" in text else ("Net:" if "Ethernet" in text else "X")
-            text_surface = self.status_font.render(f"{prefix} {text}", True, status_color)
-            self.screen.blit(text_surface, (x_pos, y_pos))
-            x_pos += text_surface.get_width() + item_gap
-            text = ""  # Already included in prefix
+            net_text_surface = self.status_font.render(f"{prefix} {text}", True, status_color)
+            parts.append((net_text_surface, 'text'))
+            width += net_text_surface.get_width() + item_gap
+            text = ""
         
         if text:
-            text_surface = self.status_font.render(text, True, status_color)
-            self.screen.blit(text_surface, (x_pos, y_pos))
-            x_pos += text_surface.get_width() + item_gap
+            net_detail_surface = self.status_font.render(text, True, status_color)
+            parts.append((net_detail_surface, 'text'))
+            width += net_detail_surface.get_width() + item_gap
         
-        # Separator
         sep_surface = self.status_font.render("|", True, status_color)
-        self.screen.blit(sep_surface, (x_pos, y_pos))
-        x_pos += sep_surface.get_width() + item_gap
+        parts.append((sep_surface, 'text'))
+        width += sep_surface.get_width() + item_gap
         
-        # Timezone with abbreviation
-        try:
-            tz_abbr = time.strftime('%Z')
-        except Exception:
-            tz_abbr = "TZ"
-        
+        # Timezone
         if use_png_icons and 'globe' in self.emoji_icons:
-            self.screen.blit(self.emoji_icons['globe'], (x_pos, y_pos))
-            x_pos += 24 + spacing
+            parts.append((self.emoji_icons['globe'], 'icon'))
+            width += 24 + spacing
             tz_text = f"{tz_abbr} ({self.timezone_name})" if self.timezone_name else tz_abbr
         else:
             tz_text = f"TZ: {tz_abbr} ({self.timezone_name})" if self.timezone_name else f"TZ: {tz_abbr}"
-        
         tz_surface = self.status_font.render(tz_text, True, status_color)
-        self.screen.blit(tz_surface, (x_pos, y_pos))
-        x_pos += tz_surface.get_width() + item_gap
+        parts.append((tz_surface, 'text'))
+        width += tz_surface.get_width() + item_gap
         
-        # Separator
-        self.screen.blit(sep_surface, (x_pos, y_pos))
-        x_pos += sep_surface.get_width() + item_gap
+        parts.append((sep_surface, 'text'))
+        width += sep_surface.get_width() + item_gap
         
-        # Last sync
-        sync_time = self.get_time_since_sync()
+        # Sync
         if use_png_icons and 'sync' in self.emoji_icons:
-            self.screen.blit(self.emoji_icons['sync'], (x_pos, y_pos))
-            x_pos += 24 + spacing
+            parts.append((self.emoji_icons['sync'], 'icon'))
+            width += 24 + spacing
             sync_text = sync_time
         else:
             sync_text = f"Sync: {sync_time}"
-        
         sync_surface = self.status_font.render(sync_text, True, status_color)
-        self.screen.blit(sync_surface, (x_pos, y_pos))
-        x_pos += sync_surface.get_width() + item_gap
+        parts.append((sync_surface, 'text'))
+        width += sync_surface.get_width() + item_gap
         
-        # RTC status if available
-        if self.rtc and self.rtc.available:
-            # Separator
-            self.screen.blit(sep_surface, (x_pos, y_pos))
-            x_pos += sep_surface.get_width() + item_gap
-            
+        # RTC
+        if rtc_active:
+            parts.append((sep_surface, 'text'))
+            width += sep_surface.get_width() + item_gap
             if use_png_icons and 'clock' in self.emoji_icons:
-                self.screen.blit(self.emoji_icons['clock'], (x_pos, y_pos))
-                x_pos += 24 + spacing
+                parts.append((self.emoji_icons['clock'], 'icon'))
+                width += 24 + spacing
                 rtc_text = "Active"
             else:
                 rtc_text = "RTC: Active"
-            
             rtc_surface = self.status_font.render(rtc_text, True, status_color)
-            self.screen.blit(rtc_surface, (x_pos, y_pos))
+            parts.append((rtc_surface, 'text'))
+            width += rtc_surface.get_width()
+        
+        # Create surface and blit parts
+        status_surface = pygame.Surface((max(1, width), height), pygame.SRCALPHA)
+        x = 0
+        for surf, kind in parts:
+            status_surface.blit(surf, (x, 0))
+            if kind == 'icon':
+                x += 24 + spacing
+            else:
+                x += surf.get_width() + item_gap
+        
+        # Cache and return
+        self.status_surface = status_surface
+        self._last_status_payload = payload
+        return self.status_surface
     
     def handle_events(self):
         """Handle pygame events."""
