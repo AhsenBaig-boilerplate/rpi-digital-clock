@@ -88,10 +88,19 @@ fi
 
 # Set display resolution if specified (for performance)
 if [ -n "$DISPLAY_RESOLUTION" ]; then
-    echo "Setting display resolution to: $DISPLAY_RESOLUTION"
-    DISPLAY=:0 xrandr --output HDMI-1 --mode "$DISPLAY_RESOLUTION" 2>/dev/null || \
-    DISPLAY=:0 xrandr --output HDMI-0 --mode "$DISPLAY_RESOLUTION" 2>/dev/null || \
-    echo "Warning: Could not set resolution"
+    echo "=== Attempting to set display resolution to: $DISPLAY_RESOLUTION ==="
+    echo "Current xrandr output:"
+    DISPLAY=:0 xrandr 2>&1 || echo "xrandr failed"
+    echo "Trying to set resolution..."
+    if DISPLAY=:0 xrandr --output HDMI-1 --mode "$DISPLAY_RESOLUTION" 2>&1; then
+        echo "✓ Resolution set via HDMI-1"
+    elif DISPLAY=:0 xrandr --output HDMI-0 --mode "$DISPLAY_RESOLUTION" 2>&1; then
+        echo "✓ Resolution set via HDMI-0"
+    else
+        echo "✗ Warning: Could not set resolution via xrandr"
+    fi
+    echo "New xrandr output:"
+    DISPLAY=:0 xrandr 2>&1 | head -20
 fi
 
 # Set display orientation if specified

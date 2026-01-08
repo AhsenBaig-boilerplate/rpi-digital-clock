@@ -371,6 +371,9 @@ class PygameClock:
     
     def render(self):
         """Render the clock display."""
+        import time as time_module
+        t_start = time_module.time()
+        
         # Clear screen
         self.screen.fill(self.bg_color)
         
@@ -384,6 +387,7 @@ class PygameClock:
         
         # Get current time
         now = datetime.now()
+        t_time = time_module.time()
         
         # Format strings
         time_str = self.format_time(now)
@@ -396,6 +400,7 @@ class PygameClock:
         # Render text surfaces with brightness applied
         time_surface = self.time_font.render(time_str, True, display_color)
         date_surface = self.date_font.render(date_str, True, display_color)
+        t_font = time_module.time()
         
         # Calculate positions (centered) with pixel shift offset
         center_x = self.screen_width // 2 + self.pixel_shift_x
@@ -418,8 +423,22 @@ class PygameClock:
         if self.show_status_bar:
             self.render_status_bar(status_color)
         
+        t_blit = time_module.time()
+        
         # Update display
         pygame.display.flip()
+        t_flip = time_module.time()
+        
+        # Log timing every 10 seconds
+        if not hasattr(self, '_last_timing_log'):
+            self._last_timing_log = 0
+        if time_module.time() - self._last_timing_log > 10:
+            self._last_timing_log = time_module.time()
+            total = (t_flip - t_start) * 1000
+            font = (t_font - t_time) * 1000
+            blit = (t_blit - t_font) * 1000
+            flip = (t_flip - t_blit) * 1000
+            logging.info(f"Render timing: total={total:.1f}ms (font={font:.1f}ms, blit={blit:.1f}ms, flip={flip:.1f}ms) @ {self.screen_width}x{self.screen_height}")
     
     def render_status_bar(self, status_color):
         """Render status bar with system information."""
