@@ -259,8 +259,32 @@ class PygameClock:
     
     def check_last_ntp_sync(self):
         """Check last NTP synchronization time."""
+        # Prefer parsing systemd-timesyncd journal for last sync event
         try:
-            # Try timedatectl first (systemd)
+            result = subprocess.run(
+                ['journalctl', '-u', 'systemd-timesyncd', '--since', '24 hours ago', '--no-pager', '--output', 'short-iso'],
+                capture_output=True,
+                text=True,
+                timeout=3
+            )
+            if result.returncode == 0 and result.stdout:
+                for line in reversed(result.stdout.splitlines()):
+                    if 'Synchronized' in line or 'System clock synchronized' in line:
+                        # short-iso format: YYYY-MM-DD HH:MM:SS[.ms] 
+                        ts = line.split()[0] + ' ' + line.split()[1]
+                        ts = ts.split('.')[0]  # drop milliseconds if present
+                        try:
+                            self.last_ntp_sync = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
+                            return
+                        except Exception:
+                            # If parsing fails, just set to now
+                            self.last_ntp_sync = datetime.now()
+                            return
+        except Exception:
+            pass
+        
+        # Fallback: timedatectl synchronized flag
+        try:
             result = subprocess.run(
                 ['timedatectl', 'show', '--property=NTPSynchronized', '--value'],
                 capture_output=True,
@@ -270,12 +294,11 @@ class PygameClock:
             if result.returncode == 0 and result.stdout.strip() == 'yes':
                 self.last_ntp_sync = datetime.now()
                 return
-        except:
+        except Exception:
             pass
         
-        # Fallback: check if ntpdate was used (from logs or assume recent sync)
+        # Last resort: assume synced at startup
         if not self.last_ntp_sync:
-            # Assume synced at startup
             self.last_ntp_sync = datetime.now()
     
     def get_time_since_sync(self):

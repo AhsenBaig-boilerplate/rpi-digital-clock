@@ -1,6 +1,6 @@
 # Raspberry Pi Digital Clock for balena.io
 
-A production-ready digital clock display for Raspberry Pi Zero (1st gen) with weather information, designed for HDMI TV displays. Built with Python and Tkinter, deployed via balena.io with comprehensive screen burn-in prevention features.
+A production-ready digital clock display for Raspberry Pi Zero (1st gen) with weather information, designed for HDMI TV displays. Built with Python and Pygame (SDL2), deployed via balena.io with comprehensive screen burn-in prevention features.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
@@ -17,10 +17,10 @@ A production-ready digital clock display for Raspberry Pi Zero (1st gen) with we
 - **Hardware RTC Support** - DS3231 RTC module for accurate time when offline
 
 ### Screen Burn-in Prevention 🛡️
-- **Automatic Screensaver** - Blanks screen after configurable inactivity period
-- **Pixel Shift** - Subtle automatic position changes to prevent static image burn-in
-- **Night Dimming** - Automatic brightness reduction during night hours
-- **Configurable Intervals** - Fully customizable timing for all burn-in prevention features
+- **Scheduled Screensaver** - Blanks screen during configured hours (e.g., 2:00–5:00)
+- **Pixel Shift** - Subtle position changes to prevent burn-in; can be disabled during viewing hours (e.g., 12:00–14:00)
+- **Night Dimming** - Automatic brightness reduction during night hours (e.g., 22:00–06:00)
+- **Flexible Windows** - All time windows support midnight wraparound
 
 ### Production Ready
 - **Error Handling** - Comprehensive error handling and recovery
@@ -47,20 +47,20 @@ You can one-click-deploy this project to balena using the button below:
 
 [![Deploy with balena](https://www.balena.io/deploy.svg)](https://dashboard.balena-cloud.com/deploy?repoUrl=https://github.com/AhsenBaig-boilerplate/rpi-digital-clock)
 
-### Environment Variables Setup
+### Environment Variables Setup (Global vs Service)
 
 After deployment, you **must** configure variables in your balena dashboard. The application supports both direct variable names and `BALENA_` prefixed versions.
 
 #### How to Add Variables in balena Dashboard:
 
-1. **Fleet-wide Variables** (applies to all devices):
+1. **Fleet-wide Variables (Global)** — applies to all devices:
    - Navigate to: Dashboard → Your Fleet → Variables tab
    - Click "Add variable"
    - Select "All services" or "clock" service
    - Enter variable name and value
    - Click "Add"
 
-2. **Device-specific Variables** (for individual devices):
+2. **Device-specific Variables** — for individual devices:
    - Navigate to: Dashboard → Your Device → Device Variables tab
    - Click "Add variable"
    - Enter variable name and value
@@ -80,20 +80,26 @@ After deployment, you **must** configure variables in your balena dashboard. The
 |--------------|---------|-------------|
 | `WEATHER_UNITS` | `metric` | Temperature units (`metric` or `imperial`) |
 | `WEATHER_ENABLED` | `true` | Enable/disable weather display |
-| `TIMEZONE` | `America/New_York` | Timezone ([List of timezones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
 | `LOG_LEVEL` | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `DISPLAY_ORIENTATION` | `landscape` | Display orientation (`landscape` or `portrait`) |
 | `DISPLAY_COLOR` | `#00FF00` | Clock color in hex format |
 | `FONT_FAMILY` | `Helvetica` | Font family name |
-| `TIME_FONT_SIZE` | `120` | Time display font size |
+| `TIME_FONT_SIZE` | `280` | Time display font size (scaled per resolution) |
 | `TIME_FORMAT_12H` | `true` | Use 12-hour format (true/false) |
 | `SHOW_SECONDS` | `true` | Show seconds in display |
 | `DATE_FORMAT` | `%A, %B %d, %Y` | Python strftime format |
-| `SCREENSAVER_ENABLED` | `true` | Enable screensaver |
-| `SCREENSAVER_DELAY_MINUTES` | `60` | Minutes before screensaver activates |
+| `SCREENSAVER_ENABLED` | `true` | Enable scheduled screensaver |
+| `SCREENSAVER_START_HOUR` | `2` | Screensaver start hour (0–23) |
+| `SCREENSAVER_END_HOUR` | `5` | Screensaver end hour (0–23) |
 | `PIXEL_SHIFT_ENABLED` | `true` | Enable pixel shifting |
+| `PIXEL_SHIFT_INTERVAL_SECONDS` | `30` | Interval between shifts |
+| `PIXEL_SHIFT_DISABLE_START_HOUR` | `12` | Disable pixel shift start hour |
+| `PIXEL_SHIFT_DISABLE_END_HOUR` | `14` | Disable pixel shift end hour |
 | `DIM_AT_NIGHT` | `true` | Dim display at night |
-| `NIGHT_BRIGHTNESS` | `0.3` | Night brightness (0.0-1.0) |
+| `NIGHT_BRIGHTNESS` | `0.3` | Night brightness (0.0–1.0) |
+| `NIGHT_START_HOUR` | `22` | Night start hour |
+| `NIGHT_END_HOUR` | `6` | Night end hour |
+| `USE_EMOJI` | `true` | Use emoji icons in status bar (requires pygame-emojis) |
 
 💡 **Multi-Device Setup:** Use Fleet Variables for common settings (like API key) and Device Variables for location-specific settings (like `WEATHER_LOCATION`).
 
@@ -476,22 +482,22 @@ cd app
 python main.py
 ```
 
-Note: Some features (NTP sync, HDMI output) may not work on non-Raspberry Pi systems.
+Note: Some features (NTP sync, HDMI output) may not work on non-Raspberry Pi systems. Emoji rendering requires `pygame-emojis`.
 
 ### Project Structure
 
 ```
 rpi-digital-clock/
 ├── app/
-│   ├── main.py          # Application entry point
-│   ├── clock_ui.py      # UI and display logic
+│   ├── clock_display.py # Pygame clock renderer (entry point)
+│   ├── start.sh         # X server + app startup script
 │   ├── weather.py       # Weather API integration
 │   ├── utils.py         # Helper functions
 │   └── config.yaml      # Configuration file
 ├── Dockerfile.template  # balena Dockerfile
 ├── docker-compose.yml   # balena service definition
 ├── requirements.txt     # Python dependencies
-└── README.md           # This file
+└── README.md            # This file
 ```
 
 ## 🤝 Contributing
