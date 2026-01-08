@@ -45,9 +45,9 @@ display:
   font_family: "Helvetica"
   
   # Font sizes for different elements
-  # Large sizes optimized for visibility from distance
-  time_font_size: 380
-  date_font_size: 110
+  # Optimized sizes for Pi Zero performance (280 renders faster than 380)
+  time_font_size: 280
+  date_font_size: 90
   weather_font_size: 60
   
   # Display color (hex format)
