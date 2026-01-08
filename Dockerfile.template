@@ -1,33 +1,23 @@
 # Use balenalib base image for Raspberry Pi Zero
-# Bookworm provides Python 3.11 (needed for pygame-emojis)
 FROM balenalib/raspberry-pi-debian-python:3.11-bookworm
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies for GUI, pygame, and NTP
+# Install system dependencies for framebuffer access, fonts, and NTP
+# No X11 or pygame needed - direct framebuffer rendering
 RUN install_packages \
-    python3-pygame \
-    libsdl2-2.0-0 \
-    libsdl2-image-2.0-0 \
-    libsdl2-mixer-2.0-0 \
-    libsdl2-ttf-2.0-0 \
     libfreetype6 \
-    libportmidi0 \
-    xserver-xorg \
-    xinit \
-    x11-xserver-utils \
-    xserver-xorg-video-fbdev \
-    xserver-xorg-input-evdev \
-    dbus \
-    dbus-x11 \
+    libjpeg62-turbo \
+    libopenjp2-7 \
+    libtiff5 \
+    libwebp7 \
     systemd-timesyncd \
     ntpdate \
     fonts-liberation \
     fonts-dejavu-core \
     fonts-freefont-ttf \
-    unclutter \
     i2c-tools \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -45,7 +35,7 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 COPY app/ .
 
 # Set permissions
-RUN chmod +x clock_display.py start.sh
+RUN chmod +x framebuffer_clock.py start.sh
 
 # Start application
 CMD ["./start.sh"]

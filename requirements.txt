@@ -1,13 +1,14 @@
 # Python Dependencies for Raspberry Pi Digital Clock
 # Compatible with Python 3.9+
 
+# Image processing for direct framebuffer rendering
+Pillow==10.0.0
+
 # HTTP requests for weather API
 requests==2.31.0
 
 # YAML configuration parsing
 PyYAML==6.0.1
-
-# Note: pygame installed via system package (python3-pygame) in Dockerfile
 # to avoid compilation issues on ARMv6
 
 # Timezone handling
