@@ -96,6 +96,8 @@ class PygameClock:
         # Network and sync tracking
         self.last_ntp_sync = None
         self.network_status = "Unknown"
+        self.network_offline_since = None  # Track when network went offline
+        self.network_was_connected = False  # Track previous connection state
         # Prefer TIMEZONE env var, fallback to TZ, else system default
         self.timezone_name = os.environ.get('TIMEZONE') or os.environ.get('TZ') or 'UTC'
         self.last_status_check = 0
@@ -251,9 +253,10 @@ class PygameClock:
         """Format time string."""
         if self.format_12h:
             if self.show_seconds:
-                return now.strftime("%I:%M:%S %p")
+                # Use %-I to remove leading zero (6:56:06 AM instead of 06:56:06 AM)
+                return now.strftime("%-I:%M:%S %p")
             else:
-                return now.strftime("%I:%M %p")
+                return now.strftime("%-I:%M %p")
         else:
             if self.show_seconds:
                 return now.strftime("%H:%M:%S")
@@ -302,8 +305,8 @@ class PygameClock:
     def check_network_status(self):
         """Check network/WiFi connectivity with detailed status."""
         try:
-            # Try to connect to Google DNS to verify internet connectivity
-            socket.create_connection(("8.8.8.8", 53), timeout=3)
+            # Try to connect to Google DNS to verify internet connectivity (0.5s timeout to avoid blocking)
+            socket.create_connection(("8.8.8.8", 53), timeout=0.5)
             
             # Check WiFi status and signal strength
             try:
@@ -378,11 +381,39 @@ class PygameClock:
             
             # Has internet but couldn't identify interface type
             self.network_status = "Connected"
+            self.network_was_connected = True
+            self.network_offline_since = None  # Reset offline timer
             
         except socket.timeout:
-            self.network_status = "No Internet"
+            self._handle_network_offline("No Internet")
         except:
-            self.network_status = "Offline"
+            self._handle_network_offline("Offline")
+    
+    def _handle_network_offline(self, base_status):
+        """Handle network offline state with duration tracking."""
+        # Start tracking offline time if we just went offline
+        if self.network_was_connected or self.network_offline_since is None:
+            self.network_offline_since = time.time()
+            self.network_was_connected = False
+            self.network_status = base_status
+            return
+        
+        # Calculate offline duration
+        offline_duration = time.time() - self.network_offline_since
+        
+        # Format duration
+        if offline_duration < 60:
+            duration_str = f"{int(offline_duration)}s"
+        elif offline_duration < 3600:
+            minutes = int(offline_duration / 60)
+            seconds = int(offline_duration % 60)
+            duration_str = f"{minutes}m {seconds}s"
+        else:
+            hours = int(offline_duration / 3600)
+            minutes = int((offline_duration % 3600) / 60)
+            duration_str = f"{hours}h {minutes}m"
+        
+        self.network_status = f"{base_status} {duration_str}"
     
     def check_last_ntp_sync(self):
         """Check last NTP synchronization time."""
