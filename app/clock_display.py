@@ -10,7 +10,6 @@ import logging
 import socket
 import subprocess
 import random
-import time
 from datetime import datetime
 from pathlib import Path
 import yaml
@@ -20,12 +19,6 @@ try:
     from weather import WeatherService
 except ImportError:
     WeatherService = None
-
-# Import RTC module (optional hardware)
-try:
-    from rtc import RTCManager
-except ImportError:
-    RTCManager = None
 
 
 class PygameClock:
@@ -70,8 +63,8 @@ class PygameClock:
         
         # Font sizes - scale based on resolution for optimal space usage
         # Large defaults for distance visibility (use 70-80% of screen height for time)
-        base_time_size = display_config.get('time_font_size', 380)
-        base_date_size = display_config.get('date_font_size', 110)
+        base_time_size = display_config.get('time_font_size', 280)
+        base_date_size = display_config.get('date_font_size', 90)
         base_weather_size = display_config.get('weather_font_size', 60)
         base_status_size = 28
         
@@ -97,8 +90,7 @@ class PygameClock:
         # Network and sync tracking
         self.last_ntp_sync = None
         self.network_status = "Unknown"
-        # Prefer TIMEZONE env var, fallback to TZ, else system default
-        self.timezone_name = os.environ.get('TIMEZONE') or os.environ.get('TZ') or 'UTC'
+        self.timezone_name = os.environ.get('TZ', 'UTC')
         self.last_status_check = 0
         
         # Screensaver configuration
@@ -128,7 +120,7 @@ class PygameClock:
         if self.dim_at_night:
             logging.info(f"Night dimming enabled: {self.night_start:02d}:00 - {self.night_end:02d}:00 at {self.night_brightness*100:.0f}% brightness")
         if self.pixel_shift_enabled:
-            logging.info(f"Pixel shift enabled: +/-{self.pixel_shift_max}px every {display_config.get('pixel_shift_interval_seconds', 30)}s (disabled {self.pixel_shift_disable_start:02d}:00-{self.pixel_shift_disable_end:02d}:00)")
+            logging.info(f"Pixel shift enabled: ±{self.pixel_shift_max}px every {display_config.get('pixel_shift_interval_seconds', 30)}s (disabled {self.pixel_shift_disable_start:02d}:00-{self.pixel_shift_disable_end:02d}:00)")
         
         # Weather service
         self.weather_service = None
@@ -136,20 +128,6 @@ class PygameClock:
             api_key = os.environ.get('WEATHER_API_KEY') or config.get('weather', {}).get('api_key', '')
             if api_key and WeatherService:
                 self.weather_service = WeatherService(config.get('weather', {}))
-        
-        # RTC module (optional hardware support)
-        self.rtc = None
-        rtc_enabled = os.environ.get('RTC_ENABLED', '').lower() == 'true' or config.get('time', {}).get('rtc_enabled', False)
-        if rtc_enabled and RTCManager:
-            self.rtc = RTCManager(enabled=True)
-            if self.rtc.available:
-                logging.info("DS3231 RTC available - will sync system time from RTC if network unavailable")
-                # Try to sync from RTC on startup if network is down
-                if self.network_status in ["No Network", "Unknown"]:
-                    self.rtc.sync_system_from_rtc()
-            else:
-                logging.warning("RTC enabled but hardware not detected")
-                self.rtc = None
         
         # Clock for FPS
         self.clock = pygame.time.Clock()
@@ -161,26 +139,19 @@ class PygameClock:
         # Get initial NTP sync time
         self.check_last_ntp_sync()
         
-        # Load emoji PNG icons (lightweight alternative to emoji fonts)
-        self.emoji_icons = self.load_emoji_icons()
-        
         # Log pixel shift status
         if self.pixel_shift_enabled:
-            logging.info(f"Pixel shift enabled: +/-{self.pixel_shift_max}px every {display_config.get('pixel_shift_interval_seconds', 30)}s")
+            logging.info(f"Pixel shift enabled: ±{self.pixel_shift_max}px every {display_config.get('pixel_shift_interval_seconds', 30)}s")
         else:
             logging.info("Pixel shift disabled")
         
-        # Startup runtime summary
-        pygame_ver = getattr(pygame, '__version__', 'unknown')
-        icon_mode = f"PNG ({len(self.emoji_icons)} icons)" if self.emoji_icons else "ASCII"
-        rtc_mode = "Active" if (self.rtc and self.rtc.available) else "Disabled"
-        logging.info(f"Runtime summary: pygame {pygame_ver} | Icons: {icon_mode} | RTC: {rtc_mode}")
         # Log build info summary if available
         try:
             from utils import format_build_info
             logging.info(f"Build info: {format_build_info(self.build_info)}")
         except Exception:
             pass
+        
         logging.info("Pygame clock initialized")
     
     def init_fonts(self):
@@ -200,54 +171,6 @@ class PygameClock:
             self.weather_font = pygame.font.Font(None, self.weather_font_size)
             self.status_font = pygame.font.Font(None, self.status_font_size)
             logging.warning("Using default pygame font")
-    
-    def load_emoji_icons(self) -> dict:
-        """
-        Load emoji PNG icons from assets/emojis/ directory.
-        Returns dict mapping icon names to pygame surfaces.
-        Falls back gracefully if icons not found.
-        """
-        icons = {}
-        emoji_dir = Path(__file__).parent / "assets" / "emojis"
-        
-        # Icon files to load (16x16 or 24x24 PNGs work well)
-        icon_files = {
-            'wifi': 'wifi.png',
-            'ethernet': 'ethernet.png',
-            'network_error': 'network_error.png',
-            'globe': 'globe.png',
-            'sync': 'sync.png',
-            'clock': 'clock.png',
-        }
-        
-        if not emoji_dir.exists():
-            logging.info("Emoji icons directory not found, using ASCII fallback")
-            return icons
-        
-        # Load each icon
-        for name, filename in icon_files.items():
-            icon_path = emoji_dir / filename
-            if icon_path.exists():
-                try:
-                    # Load and scale icon to appropriate size (24x24 for status bar)
-                    icon = pygame.image.load(str(icon_path))
-                    icon = pygame.transform.smoothscale(icon, (24, 24))
-                    icons[name] = icon
-                    logging.debug(f"Loaded emoji icon: {name}")
-                except Exception as e:
-                    logging.debug(f"Failed to load emoji icon {name}: {e}")
-        
-        if icons:
-            logging.info(f"Loaded {len(icons)} emoji PNG icons")
-            try:
-                names = ", ".join(sorted(icons.keys()))
-                logging.info(f"Emoji icons available: {names}")
-            except Exception:
-                pass
-        else:
-            logging.info("No emoji icons loaded, using ASCII fallback")
-        
-        return icons
     
     def hex_to_rgb(self, hex_color):
         """Convert hex color to RGB tuple."""
@@ -337,32 +260,8 @@ class PygameClock:
     
     def check_last_ntp_sync(self):
         """Check last NTP synchronization time."""
-        # Prefer parsing systemd-timesyncd journal for last sync event
         try:
-            result = subprocess.run(
-                ['journalctl', '-u', 'systemd-timesyncd', '--since', '24 hours ago', '--no-pager', '--output', 'short-iso'],
-                capture_output=True,
-                text=True,
-                timeout=3
-            )
-            if result.returncode == 0 and result.stdout:
-                for line in reversed(result.stdout.splitlines()):
-                    if 'Synchronized' in line or 'System clock synchronized' in line:
-                        # short-iso format: YYYY-MM-DD HH:MM:SS[.ms] 
-                        ts = line.split()[0] + ' ' + line.split()[1]
-                        ts = ts.split('.')[0]  # drop milliseconds if present
-                        try:
-                            self.last_ntp_sync = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
-                            return
-                        except Exception:
-                            # If parsing fails, just set to now
-                            self.last_ntp_sync = datetime.now()
-                            return
-        except Exception:
-            pass
-        
-        # Fallback: timedatectl synchronized flag
-        try:
+            # Try timedatectl first (systemd)
             result = subprocess.run(
                 ['timedatectl', 'show', '--property=NTPSynchronized', '--value'],
                 capture_output=True,
@@ -372,11 +271,12 @@ class PygameClock:
             if result.returncode == 0 and result.stdout.strip() == 'yes':
                 self.last_ntp_sync = datetime.now()
                 return
-        except Exception:
+        except:
             pass
         
-        # Last resort: assume synced at startup
+        # Fallback: check if ntpdate was used (from logs or assume recent sync)
         if not self.last_ntp_sync:
+            # Assume synced at startup
             self.last_ntp_sync = datetime.now()
     
     def get_time_since_sync(self):
@@ -432,12 +332,7 @@ class PygameClock:
             return
         
         self.check_network_status()
-        self.check_last_ntp_sync()
         self.last_status_check = current_time
-        
-        # Periodic RTC sync: save system time to RTC every 30s if network available
-        if self.rtc and self.rtc.available and self.network_status in ["WiFi", "Ethernet"]:
-            self.rtc.write_time()
     
     def format_date(self, now):
         """Format date string."""
@@ -520,109 +415,32 @@ class PygameClock:
         pygame.display.flip()
     
     def render_status_bar(self, status_color):
-        """Render status bar with system information using PNG icons or ASCII fallback."""
-        # Check if we have PNG emoji icons loaded
-        use_png_icons = bool(self.emoji_icons) and (os.environ.get('USE_EMOJI', 'true').lower() == 'true')
+        """Render status bar with system information."""
+        # Status items with symbols (pygame 1.9.6 compatible - no emoji support)
+        status_items = []
         
-        # Starting X position for left-aligned status items
-        x_pos = 10
-        y_pos = self.screen_height - 30
-        spacing = 5  # Space between icon and text
-        item_gap = 20  # Gap between status items
-        
-        # Network status
+        # Network status with symbol
         if self.network_status:
             if "WiFi" in self.network_status:
-                icon_key = 'wifi'
-                text = self.network_status
+                icon = "WiFi:"
             elif "Ethernet" in self.network_status:
-                icon_key = 'ethernet'
-                text = self.network_status
+                icon = "Net:"
             else:
-                icon_key = 'network_error'
-                text = self.network_status
+                icon = "X"
+            status_items.append(f"{icon} {self.network_status}")
         else:
-            icon_key = 'network_error'
-            text = "No Network"
+            status_items.append("X No Network")
         
-        # Render network status
-        if use_png_icons and icon_key in self.emoji_icons:
-            self.screen.blit(self.emoji_icons[icon_key], (x_pos, y_pos))
-            x_pos += 24 + spacing
-        else:
-            # ASCII fallback
-            prefix = "WiFi:" if "WiFi" in text else ("Net:" if "Ethernet" in text else "X")
-            text_surface = self.status_font.render(f"{prefix} {text}", True, status_color)
-            self.screen.blit(text_surface, (x_pos, y_pos))
-            x_pos += text_surface.get_width() + item_gap
-            text = ""  # Already included in prefix
+        # Timezone with symbol
+        if self.timezone_name:
+            status_items.append(f"TZ: {self.timezone_name}")
         
-        if text:
-            text_surface = self.status_font.render(text, True, status_color)
-            self.screen.blit(text_surface, (x_pos, y_pos))
-            x_pos += text_surface.get_width() + item_gap
+        # Last sync with symbol
+        status_items.append(f"Sync: {self.get_time_since_sync()}")
         
-        # Separator
-        sep_surface = self.status_font.render("|", True, status_color)
-        self.screen.blit(sep_surface, (x_pos, y_pos))
-        x_pos += sep_surface.get_width() + item_gap
-        
-        # Timezone with abbreviation
-        try:
-            tz_abbr = time.strftime('%Z')
-        except Exception:
-            tz_abbr = "TZ"
-        
-        if use_png_icons and 'globe' in self.emoji_icons:
-            self.screen.blit(self.emoji_icons['globe'], (x_pos, y_pos))
-            x_pos += 24 + spacing
-            tz_text = f"{tz_abbr} ({self.timezone_name})" if self.timezone_name else tz_abbr
-        else:
-            tz_text = f"TZ: {tz_abbr} ({self.timezone_name})" if self.timezone_name else f"TZ: {tz_abbr}"
-        
-        tz_surface = self.status_font.render(tz_text, True, status_color)
-        self.screen.blit(tz_surface, (x_pos, y_pos))
-        x_pos += tz_surface.get_width() + item_gap
-        
-        # Separator
-        self.screen.blit(sep_surface, (x_pos, y_pos))
-        x_pos += sep_surface.get_width() + item_gap
-        
-        # Last sync
-        sync_time = self.get_time_since_sync()
-        if use_png_icons and 'sync' in self.emoji_icons:
-            self.screen.blit(self.emoji_icons['sync'], (x_pos, y_pos))
-            x_pos += 24 + spacing
-            sync_text = sync_time
-        else:
-            sync_text = f"Sync: {sync_time}"
-        
-        sync_surface = self.status_font.render(sync_text, True, status_color)
-        self.screen.blit(sync_surface, (x_pos, y_pos))
-        x_pos += sync_surface.get_width() + item_gap
-        
-        # RTC status if available
-        if self.rtc and self.rtc.available:
-            # Separator
-            self.screen.blit(sep_surface, (x_pos, y_pos))
-            x_pos += sep_surface.get_width() + item_gap
-            
-            if use_png_icons and 'clock' in self.emoji_icons:
-                self.screen.blit(self.emoji_icons['clock'], (x_pos, y_pos))
-                x_pos += 24 + spacing
-                rtc_text = "Active"
-            else:
-                rtc_text = "RTC: Active"
-            
-            rtc_surface = self.status_font.render(rtc_text, True, status_color)
-            self.screen.blit(rtc_surface, (x_pos, y_pos))
-
         # Build/version info (concise)
         if self.build_info:
             try:
-                # Separator
-                self.screen.blit(sep_surface, (x_pos, y_pos))
-                x_pos += sep_surface.get_width() + item_gap
                 ver = self.build_info.get("git_version") or ""
                 sha = self.build_info.get("git_sha") or ""
                 short_sha = sha[:7] if isinstance(sha, str) and sha else ""
@@ -631,11 +449,29 @@ class PygameClock:
                     parts.append(ver)
                 if short_sha:
                     parts.append(short_sha)
-                text = " ".join(parts) if parts else "build"
-                ver_surface = self.status_font.render(text, True, status_color)
-                self.screen.blit(ver_surface, (x_pos, y_pos))
+                if parts:
+                    status_items.append(" ".join(parts))
             except Exception:
                 pass
+        
+        status_text = " | ".join(status_items)
+        
+        # Render status text with brightness-adjusted color
+        try:
+            status_surface = self.status_font.render(status_text, True, status_color)
+        except UnicodeError as e:
+            # Fallback to ASCII-only if Unicode fails
+            logging.warning(f"Unicode error in status bar, using ASCII fallback: {e}")
+            status_text = status_text.encode('ascii', 'replace').decode('ascii')
+            status_surface = self.status_font.render(status_text, True, status_color)
+        
+        # Position at bottom center with some padding
+        status_rect = status_surface.get_rect(
+            center=(self.screen_width // 2, self.screen_height - 20)
+        )
+        
+        # Draw status bar
+        self.screen.blit(status_surface, status_rect)
     
     def handle_events(self):
         """Handle pygame events."""
@@ -715,81 +551,6 @@ def main():
     except Exception as e:
         logging.error(f"Error loading configuration: {e}")
         sys.exit(1)
-    
-    # Log environment variables (mask sensitive values)
-    def mask(name: str, value: str) -> str:
-        if value is None:
-            return ""
-        upper = name.upper()
-        if any(s in upper for s in ["KEY", "TOKEN", "SECRET", "PASSWORD"]):
-            return "****"
-        return value
-    
-    env_names = [
-        # Weather
-        "WEATHER_API_KEY", "BALENA_WEATHER_API_KEY",
-        "WEATHER_LOCATION", "BALENA_WEATHER_LOCATION",
-        "WEATHER_UNITS", "BALENA_WEATHER_UNITS",
-        "WEATHER_ENABLED", "BALENA_WEATHER_ENABLED",
-        # Time / logging / display
-        "TIMEZONE", "BALENA_TIMEZONE", "TZ",
-        "RTC_ENABLED", "BALENA_RTC_ENABLED",
-        "LOG_LEVEL", "BALENA_LOG_LEVEL",
-        "DISPLAY_ORIENTATION", "BALENA_DISPLAY_ORIENTATION",
-        "DISPLAY_COLOR", "BALENA_DISPLAY_COLOR",
-        "FONT_FAMILY", "BALENA_FONT_FAMILY",
-        "TIME_FONT_SIZE", "BALENA_TIME_FONT_SIZE",
-        "TIME_FORMAT_12H", "BALENA_TIME_FORMAT_12H",
-        "SHOW_SECONDS", "BALENA_SHOW_SECONDS",
-        "DATE_FORMAT", "BALENA_DATE_FORMAT",
-        # Burn-in prevention
-        "SCREENSAVER_ENABLED", "BALENA_SCREENSAVER_ENABLED",
-        "SCREENSAVER_START_HOUR", "BALENA_SCREENSAVER_START_HOUR",
-        "SCREENSAVER_END_HOUR", "BALENA_SCREENSAVER_END_HOUR",
-        "PIXEL_SHIFT_ENABLED", "BALENA_PIXEL_SHIFT_ENABLED",
-        "PIXEL_SHIFT_INTERVAL_SECONDS", "BALENA_PIXEL_SHIFT_INTERVAL_SECONDS",
-        "PIXEL_SHIFT_DISABLE_START_HOUR", "BALENA_PIXEL_SHIFT_DISABLE_START_HOUR",
-        "PIXEL_SHIFT_DISABLE_END_HOUR", "BALENA_PIXEL_SHIFT_DISABLE_END_HOUR",
-        "DIM_AT_NIGHT", "BALENA_DIM_AT_NIGHT",
-        "NIGHT_BRIGHTNESS", "BALENA_NIGHT_BRIGHTNESS",
-        "NIGHT_START_HOUR", "BALENA_NIGHT_START_HOUR",
-        "NIGHT_END_HOUR", "BALENA_NIGHT_END_HOUR",
-    ]
-    service_name = os.environ.get("BALENA_SERVICE_NAME", "unknown")
-    logging.info(f"Service context: {service_name}")
-    logging.info("Environment variables (masked where sensitive):")
-    
-    # Log balena device/fleet metadata for visibility
-    logging.info("Device metadata (balena environment):")
-    device_envs = [
-        "BALENA_DEVICE_NAME",
-        "BALENA_DEVICE_TYPE",
-        "BALENA_DEVICE_UUID",
-        "BALENA_DEVICE_ARCH",
-        "BALENA_HOST_OS_VERSION",
-        "BALENA_SUPERVISOR_VERSION",
-        "BALENA_SUPERVISOR_ADDRESS",
-        "BALENA_SUPERVISOR_API_KEY",
-        "BALENA_APP_NAME",
-        "BALENA_APP_ID",
-        "BALENA_APP_COMMIT",
-        "BALENA_FLEET_SLUG",
-        "BALENA_SERVICE_NAME",
-    ]
-    for name in device_envs:
-        if name in os.environ:
-            value = mask(name, os.environ.get(name))
-            logging.info(f"  [Device] {name}={value}")
-    
-    def scope_label(var_name: str) -> str:
-        # Treat BALENA_ prefixed as Global; others as Service-scoped to current service
-        return "Global" if var_name.startswith("BALENA_") else f"Service({service_name})"
-    
-    for name in env_names:
-        if name in os.environ:
-            value = mask(name, os.environ.get(name))
-            scope = scope_label(name)
-            logging.info(f"  [{scope}] {name}={value}")
     
     # Build info logging
     build_info = load_build_info()
