@@ -10,6 +10,7 @@ import logging
 import socket
 import subprocess
 import random
+import time
 from datetime import datetime
 from pathlib import Path
 import yaml
@@ -89,7 +90,8 @@ class PygameClock:
         # Network and sync tracking
         self.last_ntp_sync = None
         self.network_status = "Unknown"
-        self.timezone_name = os.environ.get('TZ', 'UTC')
+        # Prefer TIMEZONE env var, fallback to TZ, else system default
+        self.timezone_name = os.environ.get('TIMEZONE') or os.environ.get('TZ') or 'UTC'
         self.last_status_check = 0
         
         # Screensaver configuration
@@ -423,9 +425,15 @@ class PygameClock:
         else:
             status_items.append("X No Network")
         
-        # Timezone with symbol
+        # Timezone with abbreviation and full name
+        try:
+            tz_abbr = time.strftime('%Z')
+        except Exception:
+            tz_abbr = "TZ"
         if self.timezone_name:
-            status_items.append(f"TZ: {self.timezone_name}")
+            status_items.append(f"TZ: {tz_abbr} ({self.timezone_name})")
+        else:
+            status_items.append(f"TZ: {tz_abbr}")
         
         # Last sync with symbol
         status_items.append(f"Sync: {self.get_time_since_sync()}")
@@ -527,6 +535,49 @@ def main():
     except Exception as e:
         logging.error(f"Error loading configuration: {e}")
         sys.exit(1)
+    
+    # Log environment variables (mask sensitive values)
+    def mask(name: str, value: str) -> str:
+        if value is None:
+            return ""
+        upper = name.upper()
+        if any(s in upper for s in ["KEY", "TOKEN", "SECRET", "PASSWORD"]):
+            return "****"
+        return value
+    
+    env_names = [
+        # Weather
+        "WEATHER_API_KEY", "BALENA_WEATHER_API_KEY",
+        "WEATHER_LOCATION", "BALENA_WEATHER_LOCATION",
+        "WEATHER_UNITS", "BALENA_WEATHER_UNITS",
+        "WEATHER_ENABLED", "BALENA_WEATHER_ENABLED",
+        # Time / logging / display
+        "TIMEZONE", "BALENA_TIMEZONE", "TZ",
+        "LOG_LEVEL", "BALENA_LOG_LEVEL",
+        "DISPLAY_ORIENTATION", "BALENA_DISPLAY_ORIENTATION",
+        "DISPLAY_COLOR", "BALENA_DISPLAY_COLOR",
+        "FONT_FAMILY", "BALENA_FONT_FAMILY",
+        "TIME_FONT_SIZE", "BALENA_TIME_FONT_SIZE",
+        "TIME_FORMAT_12H", "BALENA_TIME_FORMAT_12H",
+        "SHOW_SECONDS", "BALENA_SHOW_SECONDS",
+        "DATE_FORMAT", "BALENA_DATE_FORMAT",
+        # Burn-in prevention
+        "SCREENSAVER_ENABLED", "BALENA_SCREENSAVER_ENABLED",
+        "SCREENSAVER_START_HOUR", "BALENA_SCREENSAVER_START_HOUR",
+        "SCREENSAVER_END_HOUR", "BALENA_SCREENSAVER_END_HOUR",
+        "PIXEL_SHIFT_ENABLED", "BALENA_PIXEL_SHIFT_ENABLED",
+        "PIXEL_SHIFT_INTERVAL_SECONDS", "BALENA_PIXEL_SHIFT_INTERVAL_SECONDS",
+        "PIXEL_SHIFT_DISABLE_START_HOUR", "BALENA_PIXEL_SHIFT_DISABLE_START_HOUR",
+        "PIXEL_SHIFT_DISABLE_END_HOUR", "BALENA_PIXEL_SHIFT_DISABLE_END_HOUR",
+        "DIM_AT_NIGHT", "BALENA_DIM_AT_NIGHT",
+        "NIGHT_BRIGHTNESS", "BALENA_NIGHT_BRIGHTNESS",
+        "NIGHT_START_HOUR", "BALENA_NIGHT_START_HOUR",
+        "NIGHT_END_HOUR", "BALENA_NIGHT_END_HOUR",
+    ]
+    logging.info("Environment variables (masked where sensitive):")
+    for name in env_names:
+        if name in os.environ:
+            logging.info(f"  {name}={mask(name, os.environ.get(name))}")
     
     # Create and run clock
     clock = PygameClock(config)
