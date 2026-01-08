@@ -722,6 +722,28 @@ def main():
     logging.info(f"Service context: {service_name}")
     logging.info("Environment variables (masked where sensitive):")
     
+    # Log balena device/fleet metadata for visibility
+    logging.info("Device metadata (balena environment):")
+    device_envs = [
+        "BALENA_DEVICE_NAME",
+        "BALENA_DEVICE_TYPE",
+        "BALENA_DEVICE_UUID",
+        "BALENA_DEVICE_ARCH",
+        "BALENA_HOST_OS_VERSION",
+        "BALENA_SUPERVISOR_VERSION",
+        "BALENA_SUPERVISOR_ADDRESS",
+        "BALENA_SUPERVISOR_API_KEY",
+        "BALENA_APP_NAME",
+        "BALENA_APP_ID",
+        "BALENA_APP_COMMIT",
+        "BALENA_FLEET_SLUG",
+        "BALENA_SERVICE_NAME",
+    ]
+    for name in device_envs:
+        if name in os.environ:
+            value = mask(name, os.environ.get(name))
+            logging.info(f"  [Device] {name}={value}")
+    
     def scope_label(var_name: str) -> str:
         # Treat BALENA_ prefixed as Global; others as Service-scoped to current service
         return "Global" if var_name.startswith("BALENA_") else f"Service({service_name})"
