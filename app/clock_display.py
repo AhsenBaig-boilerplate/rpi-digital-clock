@@ -11,6 +11,7 @@ import socket
 import subprocess
 import random
 import time
+import threading
 from datetime import datetime
 from pathlib import Path
 import yaml
@@ -34,7 +35,6 @@ class PygameClock:
     def __init__(self, config: dict):
         """Initialize pygame clock."""
         self.config = config
-        self.running = True
         
         # Initialize pygame (disable audio mixer to prevent ALSA errors)
         pygame.init()
@@ -159,6 +159,17 @@ class PygameClock:
         # Weather update tracking
         self.last_weather_update = 0
         self.weather_text = ""
+        
+        # Background thread control
+        self.running = True
+        self.update_lock = threading.Lock()
+        
+        # Start background update threads (non-blocking)
+        self.weather_thread = threading.Thread(target=self._weather_update_loop, daemon=True)
+        self.network_thread = threading.Thread(target=self._network_update_loop, daemon=True)
+        self.weather_thread.start()
+        self.network_thread.start()
+        logging.info("Background update threads started")
         
         # Get initial NTP sync time
         self.check_last_ntp_sync()
@@ -504,49 +515,48 @@ class PygameClock:
         
         logging.info(f"Pixel shift applied: x={self.pixel_shift_x:+d}, y={self.pixel_shift_y:+d}")
     
-    def update_status(self):
-        """Update status information periodically."""
-        current_time = pygame.time.get_ticks()
-        
-        # Update every 30 seconds
-        if current_time - self.last_status_check < 30000:
-            return
-        
-        self.check_network_status()
-        self.check_last_ntp_sync()
-        self.last_status_check = current_time
-        
-        # Periodic RTC sync: save system time to RTC every 30s if network available
-        if self.rtc and self.rtc.available and self.network_status in ["WiFi", "Ethernet"]:
-            self.rtc.write_time()
-    
     def format_date(self, now):
         """Format date string."""
         date_format = self.config.get('display', {}).get('date_format', "%A, %B %d, %Y")
         return now.strftime(date_format)
     
-    def update_weather(self):
-        """Update weather data."""
-        if not self.weather_service:
-            return
-        
-        # Update every 10 minutes
-        current_time = pygame.time.get_ticks()
-        if current_time - self.last_weather_update < 600000:  # 10 minutes
-            return
-        
-        try:
-            weather_data = self.weather_service.get_weather()
-            if weather_data:
-                temp = weather_data.get('temp', '--')
-                condition = weather_data.get('condition', '')
-                humidity = weather_data.get('humidity', '--')
-                self.weather_text = f"{condition} • {temp}° • Humidity: {humidity}%"
-                logging.info(f"Weather updated: {self.weather_text}")
-        except Exception as e:
-            logging.error(f"Error updating weather: {e}")
-        
-        self.last_weather_update = current_time
+    def _weather_update_loop(self):
+        """Background thread for weather updates - never blocks the clock display."""
+        while self.running:
+            try:
+                if self.weather_service:
+                    weather_data = self.weather_service.get_weather()
+                    if weather_data:
+                        temp = weather_data.get('temp', '--')
+                        condition = weather_data.get('condition', '')
+                        humidity = weather_data.get('humidity', '--')
+                        with self.update_lock:
+                            self.weather_text = f"{condition} • {temp}° • Humidity: {humidity}%"
+                        logging.info(f"Weather updated: {self.weather_text}")
+            except Exception as e:
+                logging.error(f"Error updating weather: {e}")
+            
+            # Sleep for 10 minutes between updates
+            time.sleep(600)
+    
+    def _network_update_loop(self):
+        """Background thread for network/NTP status - never blocks the clock display."""
+        while self.running:
+            try:
+                # Check network status
+                self.check_network_status()
+                
+                # Check NTP sync
+                self.check_last_ntp_sync()
+                
+                # Periodic RTC sync if available
+                if self.rtc and self.rtc.available and self.network_status in ["WiFi", "Ethernet"]:
+                    self.rtc.write_time()
+            except Exception as e:
+                logging.error(f"Error in network update: {e}")
+            
+            # Sleep for 30 seconds between checks
+            time.sleep(30)
     
     def render(self):
         """Render the clock display."""
@@ -587,9 +597,11 @@ class PygameClock:
         self.screen.blit(time_surface, time_rect)
         self.screen.blit(date_surface, date_rect)
         
-        # Render weather if available
-        if self.weather_text:
-            weather_surface = self.weather_font.render(self.weather_text, True, display_color)
+        # Render weather if available (thread-safe read)
+        with self.update_lock:
+            weather_text_copy = self.weather_text
+        if weather_text_copy:
+            weather_surface = self.weather_font.render(weather_text_copy, True, display_color)
             weather_rect = weather_surface.get_rect(center=(center_x, center_y + 120))
             self.screen.blit(weather_surface, weather_rect)
         
@@ -715,10 +727,7 @@ class PygameClock:
     def run(self):
         """Main loop."""
         logging.info("Starting clock display loop")
-        
-        # Initial updates
-        self.update_weather()
-        self.check_network_status()
+        logging.info("Weather and network status updates running in background threads")
         
         frame_count = 0
         in_screensaver = False
@@ -728,13 +737,7 @@ class PygameClock:
                 # Handle events
                 self.handle_events()
                 
-                # Update weather periodically
-                self.update_weather()
-                
-                # Update status information
-                self.update_status()
-                
-                # Update pixel shift
+                # Update pixel shift (non-blocking, only checks time)
                 self.update_pixel_shift()
 
                 # Check if we're entering/exiting screensaver mode
@@ -750,7 +753,7 @@ class PygameClock:
                     logging.info("Exiting screensaver mode - clock reset")
 
                 
-                # Render
+                # Render (reads cached values from background threads)
                 self.render()
                 
                 # Limit to 10 FPS for smooth second updates (updates every 0.1 seconds)
