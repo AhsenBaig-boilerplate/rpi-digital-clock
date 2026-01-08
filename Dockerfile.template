@@ -45,7 +45,7 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 COPY app/ .
 
 # Set permissions
-RUN chmod +x main.py start.sh
+RUN chmod +x clock_display.py start.sh
 
 # Start application
 CMD ["./start.sh"]
