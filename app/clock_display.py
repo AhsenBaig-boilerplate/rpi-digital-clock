@@ -587,8 +587,11 @@ class PygameClock:
     
     def render(self):
         """Render the clock display."""
+        t0 = time.time()
+        
         # Clear screen
         self.screen.fill(self.bg_color)
+        t1 = time.time()
         
         # Check screensaver
         if not self.should_show_display():
@@ -603,6 +606,7 @@ class PygameClock:
         
         # Compute display color each frame (cheap) for consistent rendering
         display_color = self.apply_brightness(self.color)
+        t2 = time.time()
         
         # Format strings - recompute when epoch second changes (robust to timing)
         current_second_epoch = int(time.time())
@@ -610,14 +614,23 @@ class PygameClock:
             time_str = self.format_time(now)
             date_str = self.format_date(now)
             
+            t_render_start = time.time()
             # Re-render text surfaces
             self.time_surface = self.time_font.render(time_str, True, display_color)
+            t_time_render = time.time()
             self.date_surface = self.date_font.render(date_str, True, display_color)
+            t_date_render = time.time()
             
             # Update markers
             self._last_second_drawn = now.second
             self._last_second_epoch = current_second_epoch
+            
+            time_render_ms = (t_time_render - t_render_start) * 1000
+            date_render_ms = (t_date_render - t_time_render) * 1000
+            logging.warning(f"Font render - Time: {time_render_ms:.1f}ms, Date: {date_render_ms:.1f}ms")
             logging.debug(f"Time updated: {time_str}")
+        
+        t3 = time.time()
         
         # Use cached surfaces
         time_surface = self.time_surface
@@ -638,6 +651,7 @@ class PygameClock:
         # Blit to screen
         self.screen.blit(time_surface, time_rect)
         self.screen.blit(date_surface, date_rect)
+        t4 = time.time()
         
         # Render weather if available (thread-safe read) with cached surface
         with self.update_lock:
@@ -650,6 +664,7 @@ class PygameClock:
             if self.weather_surface:
                 weather_rect = self.weather_surface.get_rect(center=(center_x, center_y + 120))
                 self.screen.blit(self.weather_surface, weather_rect)
+        t5 = time.time()
         
         # Render status bar at bottom (cached surface)
         if self.show_status_bar:
@@ -658,6 +673,7 @@ class PygameClock:
                 status_rect = status_surface.get_rect()
                 status_rect.topleft = (10, self.screen_height - 30)
                 self.screen.blit(status_surface, status_rect)
+        t6 = time.time()
         
         # Optional debug overlay (top-left corner) showing FPS and frame time
         if self.show_debug_overlay:
@@ -670,8 +686,15 @@ class PygameClock:
             except Exception:
                 pass
         
+        t7 = time.time()
         # Update entire display (flip for reliability)
         pygame.display.flip()
+        t8 = time.time()
+        
+        # Log timing breakdown if slow
+        total_ms = (t8 - t0) * 1000
+        if total_ms > 50:
+            logging.warning(f"Render breakdown: clear={((t1-t0)*1000):.1f}ms, prep={((t2-t1)*1000):.1f}ms, cache={((t3-t2)*1000):.1f}ms, blit={((t4-t3)*1000):.1f}ms, weather={((t5-t4)*1000):.1f}ms, status={((t6-t5)*1000):.1f}ms, overlay={((t7-t6)*1000):.1f}ms, flip={((t8-t7)*1000):.1f}ms")
     
     def get_status_surface(self, status_color):
         """Build or return cached status bar surface."""
