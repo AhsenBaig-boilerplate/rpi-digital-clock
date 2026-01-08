@@ -103,6 +103,13 @@ class PygameClock:
         self.date_surface = None
         self._last_second_drawn = None
         
+        # Debug overlay to verify smoothness (FPS/frame time)
+        self.show_debug_overlay = (
+            os.environ.get('SHOW_DEBUG_OVERLAY', 'false').lower() == 'true' or
+            config.get('display', {}).get('show_debug_overlay', False)
+        )
+        self.last_fps = 0.0
+        
         # Status bar configuration
         self.show_status_bar = True
         self.status_color = tuple(int(c * 0.6) for c in self.color)  # Dimmer version of main color
@@ -610,9 +617,7 @@ class PygameClock:
         # Apply brightness to status color (time/date already applied when rendered)
         status_color = self.apply_brightness(self.status_color)
         
-        # Render text surfaces with brightness applied
-        time_surface = self.time_font.render(time_str, True, display_color)
-        date_surface = self.date_font.render(date_str, True, display_color)
+        # Use cached time/date surfaces
         
         # Calculate positions (centered) with pixel shift offset
         center_x = self.screen_width // 2 + self.pixel_shift_x
@@ -636,6 +641,17 @@ class PygameClock:
         # Render status bar at bottom
         if self.show_status_bar:
             self.render_status_bar(status_color)
+        
+        # Optional debug overlay (top-left corner) showing FPS and frame time
+        if self.show_debug_overlay:
+            try:
+                fps = self.last_fps if self.last_fps else 0.0
+                frame_ms = (1000.0 / fps) if fps > 0.0 else 0.0
+                debug_text = f"FPS: {fps:.1f} | {frame_ms:.1f} ms"
+                debug_surface = self.status_font.render(debug_text, True, status_color)
+                self.screen.blit(debug_surface, (10, 10))
+            except Exception:
+                pass
         
         # Update display
         pygame.display.flip()
@@ -786,6 +802,7 @@ class PygameClock:
                 
                 # Limit to 10 FPS for smooth second updates (updates every 0.1 seconds)
                 self.clock.tick(10)
+                self.last_fps = self.clock.get_fps()
                 
                 frame_count += 1
                 if frame_count % 60 == 0:  # Log every minute
