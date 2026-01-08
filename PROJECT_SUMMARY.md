@@ -13,13 +13,12 @@
 ```
 rpi-digital-clock/
 ├── app/
-│   ├── main.py              # Main application entry point
-│   ├── clock_ui.py          # Clock UI and display logic
+│   ├── clock_display.py     # Pygame clock renderer (main entry point)
+│   ├── start.sh             # X server + app startup script
 │   ├── weather.py           # Weather API integration
 │   ├── rtc.py               # DS3231 RTC module support
 │   ├── utils.py             # Utility functions (NTP, logging, validation)
-│   ├── config.yaml          # Configuration file with all settings
-│   └── start.sh             # Startup script for X server initialization
+│   └── config.yaml          # Configuration file with all settings
 ├── Dockerfile.template      # balena.io Dockerfile
 ├── docker-compose.yml       # Docker Compose service definition
 ├── requirements.txt         # Python dependencies
@@ -50,10 +49,10 @@ rpi-digital-clock/
 - ✅ Hardware RTC support (DS3231) for offline timekeeping
 
 ### Screen Burn-in Prevention
-- ✅ **Automatic Screensaver** - Blanks screen after inactivity
-- ✅ **Pixel Shift** - Subtle position changes prevent static burn-in
-- ✅ **Night Dimming** - Automatic brightness reduction at night
-- ✅ **Configurable Timers** - All intervals fully customizable
+- ✅ **Scheduled Screensaver** - Blanks screen during configured hours (e.g., 2:00-5:00)
+- ✅ **Pixel Shift** - Subtle position changes; can disable during viewing hours
+- ✅ **Night Dimming** - Automatic brightness reduction during night hours
+- ✅ **Flexible Windows** - All time windows support midnight wraparound
 
 ### Production Features
 - ✅ Comprehensive error handling
@@ -78,7 +77,7 @@ rpi-digital-clock/
 | Component | Technology |
 |-----------|-----------|
 | Language | Python 3.9+ |
-| GUI Framework | Tkinter |
+| GUI Framework | Pygame (SDL2) |
 | HTTP Client | Requests |
 | Config Format | YAML |
 | Containerization | Docker |

@@ -6,9 +6,12 @@
 ```yaml
 display:
   color: "#00FF00"
-  time_font_size: 120
+  time_font_size: 280
   screensaver_enabled: true
+  screensaver_start_hour: 2
+  screensaver_end_hour: 5
   pixel_shift_enabled: true
+  pixel_shift_interval_seconds: 30
 ```
 
 ### 2. White Modern Clock
@@ -16,9 +19,10 @@ display:
 display:
   color: "#FFFFFF"
   font_family: "Arial"
-  time_font_size: 140
+  time_font_size: 300
   show_seconds: false
-  screensaver_delay_minutes: 30
+  screensaver_start_hour: 3
+  screensaver_end_hour: 6
 ```
 
 ### 3. Retro Amber Clock
@@ -58,36 +62,58 @@ display:
 ## Screen Burn-in Prevention Settings
 
 ### Aggressive Protection
-- Screensaver after 15 minutes
-- Pixel shift every 15 seconds
+- Screensaver 1:00-7:00 (6 hours)
+- Pixel shift every 20 seconds, disabled noon-2pm
 - Maximum night dimming
 ```yaml
 display:
-  screensaver_delay_minutes: 15
-  pixel_shift_interval_seconds: 15
+  screensaver_enabled: true
+  screensaver_start_hour: 1
+  screensaver_end_hour: 7
+  pixel_shift_enabled: true
+  pixel_shift_interval_seconds: 20
+  pixel_shift_disable_start_hour: 12
+  pixel_shift_disable_end_hour: 14
+  dim_at_night: true
   night_brightness: 0.2
+  night_start_hour: 20
+  night_end_hour: 7
 ```
 
 ### Balanced Protection (Recommended)
-- Screensaver after 60 minutes
-- Pixel shift every 30 seconds
+- Screensaver 2:00-5:00 (3 hours)
+- Pixel shift every 30 seconds, disabled noon-2pm
 - Moderate night dimming
 ```yaml
 display:
-  screensaver_delay_minutes: 60
+  screensaver_enabled: true
+  screensaver_start_hour: 2
+  screensaver_end_hour: 5
+  pixel_shift_enabled: true
   pixel_shift_interval_seconds: 30
+  pixel_shift_disable_start_hour: 12
+  pixel_shift_disable_end_hour: 14
+  dim_at_night: true
   night_brightness: 0.3
+  night_start_hour: 22
+  night_end_hour: 6
 ```
 
 ### Minimal Protection
-- Screensaver after 2 hours
+- Screensaver 3:00-4:00 (1 hour)
 - Pixel shift every 60 seconds
 - Light night dimming
 ```yaml
 display:
-  screensaver_delay_minutes: 120
+  screensaver_enabled: true
+  screensaver_start_hour: 3
+  screensaver_end_hour: 4
+  pixel_shift_enabled: true
   pixel_shift_interval_seconds: 60
+  dim_at_night: true
   night_brightness: 0.5
+  night_start_hour: 23
+  night_end_hour: 6
 ```
 
 ## Color Schemes
