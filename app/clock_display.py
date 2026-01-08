@@ -899,21 +899,28 @@ class PygameClock:
 
                 
                 # Render (reads cached values from background threads)
-                render_start = time.time()
-                self.render()
-                render_time_ms = (time.time() - render_start) * 1000
+                # Only render when the second actually changes to minimize display updates
+                current_epoch_second = int(time.time())
+                if not hasattr(self, '_last_render_epoch') or self._last_render_epoch != current_epoch_second:
+                    render_start = time.time()
+                    self.render()
+                    render_time_ms = (time.time() - render_start) * 1000
+                    self._last_render_epoch = current_epoch_second
+                    
+                    if render_time_ms > 50:
+                        logging.warning(f"Slow render: {render_time_ms:.1f}ms")
+                    
+                    frame_count += 1
+                    if frame_count % 60 == 0:  # Log every 60 seconds
+                        logging.info(f"Clock running - {frame_count} renders (1/sec), last render: {render_time_ms:.1f}ms")
+                else:
+                    # Second hasn't changed yet, skip render
+                    pass
                 
-                if render_time_ms > 50:
-                    logging.warning(f"Slow render: {render_time_ms:.1f}ms")
+                # Sleep briefly to avoid busy-wait CPU burn
+                time.sleep(0.05)  # Check 20 times per second for second changes
+                self.last_fps = 1.0  # Actual render rate is 1 FPS (once per second)
                 
-                # Simple scheduler: sleep max 100ms to ensure we render at least 10 times per second
-                # This guarantees we'll catch every second boundary promptly
-                time.sleep(0.10)
-                self.last_fps = 10.0
-                
-                frame_count += 1
-                if frame_count % 100 == 0:  # Log every 10 seconds
-                    logging.info(f"Clock running - {frame_count} frames, last render: {render_time_ms:.1f}ms")
         
         except KeyboardInterrupt:
             logging.info("Clock interrupted by user")
