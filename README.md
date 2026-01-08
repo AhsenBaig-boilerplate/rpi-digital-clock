@@ -2,8 +2,10 @@
 
 A production-ready digital clock display for Raspberry Pi Zero (1st gen) with weather information, designed for HDMI TV displays. Built with Python and Pygame (SDL2), deployed via balena.io with comprehensive screen burn-in prevention features.
 
+Note: The container base uses Debian Bookworm with Python 3.11, optimized for Raspberry Pi Zero W (ARMv6). Emoji icons use PNG sprites for performance.
+
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
+![Python](https://img.shields.io/badge/python-3.11-blue.svg)
 ![Balena](https://img.shields.io/badge/balena-compatible-green.svg)
 
 ## ✨ Features

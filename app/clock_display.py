@@ -169,6 +169,11 @@ class PygameClock:
         else:
             logging.info("Pixel shift disabled")
         
+        # Startup runtime summary
+        pygame_ver = getattr(pygame, '__version__', 'unknown')
+        icon_mode = f"PNG ({len(self.emoji_icons)} icons)" if self.emoji_icons else "ASCII"
+        rtc_mode = "Active" if (self.rtc and self.rtc.available) else "Disabled"
+        logging.info(f"Runtime summary: pygame {pygame_ver} | Icons: {icon_mode} | RTC: {rtc_mode}")
         logging.info("Pygame clock initialized")
     
     def init_fonts(self):

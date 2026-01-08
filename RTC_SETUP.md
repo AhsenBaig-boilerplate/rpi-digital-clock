@@ -2,7 +2,11 @@
 
 This guide covers setup and integration of the DS3231 Real-Time Clock module for maintaining accurate time when WiFi/network is unavailable.
 
-**Note:** RTC support is optional and disabled by default. Set `RTC_ENABLED=true` to activate.
+**Note:** RTC support is optional and disabled by default. Enable via either:
+- Environment variable: `RTC_ENABLED=true`
+- Config: set `time.rtc_enabled: true` in `app/config.yaml`
+
+On startup, if RTC is enabled and hardware is detected, the system will sync time from the RTC when no network is available. When network is available, the app periodically saves system time to the RTC as backup.
 
 ---
 
