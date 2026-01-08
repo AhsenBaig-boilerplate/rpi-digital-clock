@@ -11,7 +11,6 @@ import socket
 import subprocess
 import random
 import time
-import threading
 from datetime import datetime
 from pathlib import Path
 import yaml
@@ -35,10 +34,10 @@ class PygameClock:
     def __init__(self, config: dict):
         """Initialize pygame clock."""
         self.config = config
+        self.running = True
         
-        # Initialize pygame (disable audio mixer to prevent ALSA errors)
+        # Initialize pygame
         pygame.init()
-        pygame.mixer.quit()  # We don't need audio for a clock display
         pygame.mouse.set_visible(False)
         
         # Get display info and set fullscreen
@@ -48,21 +47,11 @@ class PygameClock:
         
         logging.info(f"Screen resolution: {self.screen_width}x{self.screen_height}")
         
-        # Create fullscreen display with double buffering
-        # Use simple flags for better compatibility with SDL fbcon driver
-        try:
-            self.screen = pygame.display.set_mode(
-                (self.screen_width, self.screen_height),
-                pygame.FULLSCREEN | pygame.DOUBLEBUF
-            )
-            logging.info("Display mode: FULLSCREEN | DOUBLEBUF")
-        except Exception as e:
-            logging.warning(f"Double buffer not available: {e}")
-            self.screen = pygame.display.set_mode(
-                (self.screen_width, self.screen_height),
-                pygame.FULLSCREEN
-            )
-            logging.info("Display mode: FULLSCREEN (fallback)")
+        # Create fullscreen display
+        self.screen = pygame.display.set_mode(
+            (self.screen_width, self.screen_height),
+            pygame.FULLSCREEN
+        )
         pygame.display.set_caption("Digital Clock")
         
         # Load configuration
@@ -100,34 +89,13 @@ class PygameClock:
         # Initialize fonts (must be after font size definitions)
         self.init_fonts()
         
-        # Cached surfaces to avoid re-render overhead each frame
-        self.time_surface = None
-        self.date_surface = None
-        self._last_second_drawn = None
-        self._last_second_epoch = None
-        
-        # Cache weather surface to avoid re-render each frame
-        self.weather_surface = None
-        self._last_weather_text = None
-        
-        # Debug overlay to verify smoothness (FPS/frame time)
-        self.show_debug_overlay = (
-            os.environ.get('SHOW_DEBUG_OVERLAY', 'false').lower() == 'true' or
-            config.get('display', {}).get('show_debug_overlay', False)
-        )
-        self.last_fps = 0.0
-        
         # Status bar configuration
         self.show_status_bar = True
         self.status_color = tuple(int(c * 0.6) for c in self.color)  # Dimmer version of main color
-        self.status_surface = None
-        self._last_status_payload = None
         
         # Network and sync tracking
         self.last_ntp_sync = None
         self.network_status = "Unknown"
-        self.network_offline_since = None  # Track when network went offline
-        self.network_was_connected = False  # Track previous connection state
         # Prefer TIMEZONE env var, fallback to TZ, else system default
         self.timezone_name = os.environ.get('TIMEZONE') or os.environ.get('TZ') or 'UTC'
         self.last_status_check = 0
@@ -153,12 +121,6 @@ class PygameClock:
         self.pixel_shift_x = 0
         self.pixel_shift_y = 0
         self.pixel_shift_max = 10  # Maximum pixels to shift in any direction
-        
-        # Track previous positions for clearing artifacts when pixel shift moves content
-        self.prev_time_rect = None
-        self.prev_date_rect = None
-        self.prev_weather_rect = None
-        self.prev_status_rect = None
         
         if self.screensaver_enabled:
             logging.info(f"Screensaver enabled: {self.screensaver_start:02d}:00 - {self.screensaver_end:02d}:00")
@@ -194,17 +156,6 @@ class PygameClock:
         # Weather update tracking
         self.last_weather_update = 0
         self.weather_text = ""
-        
-        # Background thread control
-        self.running = True
-        self.update_lock = threading.Lock()
-        
-        # Start background update threads (non-blocking)
-        self.weather_thread = threading.Thread(target=self._weather_update_loop, daemon=True)
-        self.network_thread = threading.Thread(target=self._network_update_loop, daemon=True)
-        self.weather_thread.start()
-        self.network_thread.start()
-        logging.info("Background update threads started")
         
         # Get initial NTP sync time
         self.check_last_ntp_sync()
@@ -300,10 +251,9 @@ class PygameClock:
         """Format time string."""
         if self.format_12h:
             if self.show_seconds:
-                # Use %-I to remove leading zero (6:56:06 AM instead of 06:56:06 AM)
-                return now.strftime("%-I:%M:%S %p")
+                return now.strftime("%I:%M:%S %p")
             else:
-                return now.strftime("%-I:%M %p")
+                return now.strftime("%I:%M %p")
         else:
             if self.show_seconds:
                 return now.strftime("%H:%M:%S")
@@ -350,12 +300,12 @@ class PygameClock:
         return tuple(int(c * self.current_brightness) for c in color)
     
     def check_network_status(self):
-        """Check network/WiFi connectivity with detailed status."""
+        """Check network/WiFi connectivity."""
         try:
-            # Try to connect to Google DNS to verify internet connectivity (0.5s timeout to avoid blocking)
-            socket.create_connection(("8.8.8.8", 53), timeout=0.5)
+            # Try to connect to Google DNS
+            socket.create_connection(("8.8.8.8", 53), timeout=3)
             
-            # Check WiFi status and signal strength
+            # Try to get WiFi signal strength (works on Pi with wireless)
             try:
                 result = subprocess.run(
                     ['iwconfig'], 
@@ -363,104 +313,20 @@ class PygameClock:
                     text=True, 
                     timeout=2
                 )
-                
-                # Look for active WiFi interface
-                if 'ESSID:' in result.stdout and 'off/any' not in result.stdout.lower():
-                    # Extract signal quality and level
+                if 'Link Quality' in result.stdout:
+                    # Extract signal quality
                     for line in result.stdout.split('\n'):
                         if 'Link Quality' in line:
-                            # Parse: Link Quality=65/70  Signal level=-45 dBm
-                            try:
-                                quality_part = line.split('Link Quality=')[1].split()[0]
-                                current, maximum = quality_part.split('/')
-                                percentage = int((int(current) / int(maximum)) * 100)
-                                
-                                # Get signal level if available
-                                if 'Signal level=' in line:
-                                    signal = line.split('Signal level=')[1].split()[0]
-                                    self.network_status = f"WiFi {percentage}% ({signal}dBm)"
-                                else:
-                                    self.network_status = f"WiFi {percentage}%"
-                                return
-                            except:
-                                # Fallback if parsing fails
-                                self.network_status = f"WiFi Connected"
-                                return
-                    
-                    # WiFi interface active but couldn't parse quality
-                    self.network_status = "WiFi Active"
-                    return
+                            quality = line.split('Link Quality=')[1].split()[0]
+                            self.network_status = f"WiFi {quality}"
+                            return
+                # WiFi interface found but no quality info
+                self.network_status = "WiFi Connected"
             except:
-                pass
-            
-            # Check if we have Ethernet connection
-            try:
-                result = subprocess.run(
-                    ['ip', 'link', 'show'],
-                    capture_output=True,
-                    text=True,
-                    timeout=2
-                )
-                
-                # Look for eth0 or similar Ethernet interfaces that are UP
-                for line in result.stdout.split('\n'):
-                    if ('eth' in line.lower() or 'enp' in line.lower()) and 'state UP' in line:
-                        # Try to get link speed
-                        try:
-                            iface = line.split(':')[1].strip().split('@')[0]
-                            speed_result = subprocess.run(
-                                ['ethtool', iface],
-                                capture_output=True,
-                                text=True,
-                                timeout=2
-                            )
-                            if 'Speed:' in speed_result.stdout:
-                                speed = speed_result.stdout.split('Speed:')[1].split('\n')[0].strip()
-                                self.network_status = f"Ethernet {speed}"
-                                return
-                        except:
-                            pass
-                        
-                        self.network_status = "Ethernet"
-                        return
-            except:
-                pass
-            
-            # Has internet but couldn't identify interface type
-            self.network_status = "Connected"
-            self.network_was_connected = True
-            self.network_offline_since = None  # Reset offline timer
-            
-        except socket.timeout:
-            self._handle_network_offline("No Internet")
+                # Not WiFi, but has network
+                self.network_status = "Ethernet Connected"
         except:
-            self._handle_network_offline("Offline")
-    
-    def _handle_network_offline(self, base_status):
-        """Handle network offline state with duration tracking."""
-        # Start tracking offline time if we just went offline
-        if self.network_was_connected or self.network_offline_since is None:
-            self.network_offline_since = time.time()
-            self.network_was_connected = False
-            self.network_status = base_status
-            return
-        
-        # Calculate offline duration
-        offline_duration = time.time() - self.network_offline_since
-        
-        # Format duration
-        if offline_duration < 60:
-            duration_str = f"{int(offline_duration)}s"
-        elif offline_duration < 3600:
-            minutes = int(offline_duration / 60)
-            seconds = int(offline_duration % 60)
-            duration_str = f"{minutes}m {seconds}s"
-        else:
-            hours = int(offline_duration / 3600)
-            minutes = int((offline_duration % 3600) / 60)
-            duration_str = f"{hours}h {minutes}m"
-        
-        self.network_status = f"{base_status} {duration_str}"
+            self.network_status = "No Network"
     
     def check_last_ntp_sync(self):
         """Check last NTP synchronization time."""
@@ -548,67 +414,61 @@ class PygameClock:
         self.pixel_shift_y = random.randint(-self.pixel_shift_max, self.pixel_shift_max)
         self.last_pixel_shift = current_time
         
-        logging.debug(f"Pixel shift applied: x={self.pixel_shift_x:+d}, y={self.pixel_shift_y:+d}")
+        logging.info(f"Pixel shift applied: x={self.pixel_shift_x:+d}, y={self.pixel_shift_y:+d}")
+    
+    def update_status(self):
+        """Update status information periodically."""
+        current_time = pygame.time.get_ticks()
+        
+        # Update every 30 seconds
+        if current_time - self.last_status_check < 30000:
+            return
+        
+        self.check_network_status()
+        self.check_last_ntp_sync()
+        self.last_status_check = current_time
+        
+        # Periodic RTC sync: save system time to RTC every 30s if network available
+        if self.rtc and self.rtc.available and self.network_status in ["WiFi", "Ethernet"]:
+            self.rtc.write_time()
     
     def format_date(self, now):
         """Format date string."""
         date_format = self.config.get('display', {}).get('date_format', "%A, %B %d, %Y")
         return now.strftime(date_format)
     
-    def _weather_update_loop(self):
-        """Background thread for weather updates - never blocks the clock display."""
-        while self.running:
-            try:
-                if self.weather_service:
-                    weather_data = self.weather_service.get_weather()
-                    if weather_data:
-                        temp = weather_data.get('temp', '--')
-                        condition = weather_data.get('condition', '')
-                        humidity = weather_data.get('humidity', '--')
-                        with self.update_lock:
-                            self.weather_text = f"{condition} • {temp}° • Humidity: {humidity}%"
-                        logging.info(f"Weather updated: {self.weather_text}")
-            except Exception as e:
-                logging.error(f"Error updating weather: {e}")
-            
-            # Sleep for 10 minutes between updates
-            time.sleep(600)
-    
-    def _network_update_loop(self):
-        """Background thread for network/NTP status - never blocks the clock display."""
-        while self.running:
-            try:
-                # Check network status
-                self.check_network_status()
-                
-                # Check NTP sync
-                self.check_last_ntp_sync()
-                
-                # Periodic RTC sync if available
-                if self.rtc and self.rtc.available and self.network_status in ["WiFi", "Ethernet"]:
-                    self.rtc.write_time()
-            except Exception as e:
-                logging.error(f"Error in network update: {e}")
-            
-            # Sleep for 30 seconds between checks
-            time.sleep(30)
+    def update_weather(self):
+        """Update weather data."""
+        if not self.weather_service:
+            return
+        
+        # Update every 10 minutes
+        current_time = pygame.time.get_ticks()
+        if current_time - self.last_weather_update < 600000:  # 10 minutes
+            return
+        
+        try:
+            weather_data = self.weather_service.get_weather()
+            if weather_data:
+                temp = weather_data.get('temp', '--')
+                condition = weather_data.get('condition', '')
+                humidity = weather_data.get('humidity', '--')
+                self.weather_text = f"{condition} • {temp}° • Humidity: {humidity}%"
+                logging.info(f"Weather updated: {self.weather_text}")
+        except Exception as e:
+            logging.error(f"Error updating weather: {e}")
+        
+        self.last_weather_update = current_time
     
     def render(self):
         """Render the clock display."""
-        t0 = time.time()
+        # Clear screen
+        self.screen.fill(self.bg_color)
         
-        # Check screensaver first
+        # Check screensaver
         if not self.should_show_display():
-            # Only clear and update if transitioning to screensaver
-            if not hasattr(self, '_screensaver_active') or not self._screensaver_active:
-                self.screen.fill(self.bg_color)
-                pygame.display.flip()  # One-time full update for screensaver
-                self._screensaver_active = True
+            pygame.display.flip()
             return
-        
-        # Mark screensaver as inactive
-        self._screensaver_active = False
-        t1 = time.time()
         
         # Update brightness
         self.update_brightness()
@@ -616,43 +476,17 @@ class PygameClock:
         # Get current time
         now = datetime.now()
         
-        # Compute display color each frame (cheap) for consistent rendering
+        # Format strings
+        time_str = self.format_time(now)
+        date_str = self.format_date(now)
+        
+        # Apply brightness to colors
         display_color = self.apply_brightness(self.color)
-        t2 = time.time()
-        
-        # Format strings - recompute when epoch second changes (robust to timing)
-        current_second_epoch = int(time.time())
-        if self._last_second_epoch != current_second_epoch:
-            time_str = self.format_time(now)
-            date_str = self.format_date(now)
-            
-            t_render_start = time.time()
-            # Re-render text surfaces (antialias=True creates surfaces with transparency)
-            # Don't use .convert() as it creates opaque blocks - leave as-is for proper alpha
-            self.time_surface = self.time_font.render(time_str, True, display_color)
-            t_time_render = time.time()
-            self.date_surface = self.date_font.render(date_str, True, display_color)
-            t_date_render = time.time()
-            
-            # Update markers
-            self._last_second_drawn = now.second
-            self._last_second_epoch = current_second_epoch
-            
-            time_render_ms = (t_time_render - t_render_start) * 1000
-            date_render_ms = (t_date_render - t_time_render) * 1000
-            logging.warning(f"Font render - Time: {time_render_ms:.1f}ms, Date: {date_render_ms:.1f}ms")
-            logging.debug(f"Time updated: {time_str}")
-        
-        t3 = time.time()
-        
-        # Use cached surfaces
-        time_surface = self.time_surface
-        date_surface = self.date_surface
-        
-        # Apply brightness to status color (time/date already applied when rendered)
         status_color = self.apply_brightness(self.status_color)
         
-        # Use cached time/date surfaces
+        # Render text surfaces with brightness applied
+        time_surface = self.time_font.render(time_str, True, display_color)
+        date_surface = self.date_font.render(date_str, True, display_color)
         
         # Calculate positions (centered) with pixel shift offset
         center_x = self.screen_width // 2 + self.pixel_shift_x
@@ -661,112 +495,35 @@ class PygameClock:
         time_rect = time_surface.get_rect(center=(center_x, center_y - 60))
         date_rect = date_surface.get_rect(center=(center_x, center_y + 60))
         
-        # Clear and blit time/date areas
-        # Clear old positions if pixel shift moved content
-        if self.prev_time_rect:
-            self.screen.fill(self.bg_color, self.prev_time_rect)
-        if self.prev_date_rect:
-            self.screen.fill(self.bg_color, self.prev_date_rect)
-        if self.prev_weather_rect:
-            self.screen.fill(self.bg_color, self.prev_weather_rect)
-        if self.prev_status_rect:
-            self.screen.fill(self.bg_color, self.prev_status_rect)
-        
-        # Clear new positions
-        self.screen.fill(self.bg_color, time_rect)
+        # Blit to screen
         self.screen.blit(time_surface, time_rect)
-        self.screen.fill(self.bg_color, date_rect)
         self.screen.blit(date_surface, date_rect)
         
-        # Store current rects as previous for next frame
-        self.prev_time_rect = time_rect.copy()
-        self.prev_date_rect = date_rect.copy()
+        # Render weather if available
+        if self.weather_text:
+            weather_surface = self.weather_font.render(self.weather_text, True, display_color)
+            weather_rect = weather_surface.get_rect(center=(center_x, center_y + 120))
+            self.screen.blit(weather_surface, weather_rect)
         
-        t4 = time.time()
-        
-        # Render weather if available (thread-safe read) with cached surface
-        weather_rect = None
-        with self.update_lock:
-            weather_text_copy = self.weather_text
-        if weather_text_copy:
-            if weather_text_copy != self._last_weather_text:
-                # Re-render weather surface only when text changes
-                self.weather_surface = self.weather_font.render(weather_text_copy, True, display_color)
-                self._last_weather_text = weather_text_copy
-            if self.weather_surface:
-                weather_rect = self.weather_surface.get_rect(center=(center_x, center_y + 120))
-                self.screen.fill(self.bg_color, weather_rect)
-                self.screen.blit(self.weather_surface, weather_rect)
-                self.prev_weather_rect = weather_rect.copy()
-        t5 = time.time()
-        
-        # Render status bar at bottom (cached surface)
-        status_surface = None
-        status_rect = None
+        # Render status bar at bottom
         if self.show_status_bar:
-            status_surface = self.get_status_surface(status_color)
-            if status_surface:
-                status_rect = status_surface.get_rect()
-                status_rect.topleft = (10, self.screen_height - 30)
-                self.screen.fill(self.bg_color, status_rect)
-                self.screen.blit(status_surface, status_rect)
-                self.prev_status_rect = status_rect.copy()
-        t6 = time.time()
+            self.render_status_bar(status_color)
         
-        # Optional debug overlay (top-left corner) showing FPS and frame time
-        debug_rect = None
-        if self.show_debug_overlay:
-            try:
-                fps = self.last_fps if self.last_fps else 0.0
-                frame_ms = (1000.0 / fps) if fps > 0.0 else 0.0
-                debug_text = f"FPS: {fps:.1f} | {frame_ms:.1f} ms"
-                debug_surface = self.status_font.render(debug_text, True, status_color)
-                debug_rect = pygame.Rect(10, 10, 300, 40)
-                self.screen.fill(self.bg_color, debug_rect)
-                self.screen.blit(debug_surface, (10, 10))
-            except Exception:
-                pass
-        
-        t7 = time.time()
-        
-        # Flip buffers (with DOUBLEBUF this is efficient)
+        # Update display
         pygame.display.flip()
-        t8 = time.time()
-        
-        # Log timing breakdown if slow
-        total_ms = (t8 - t0) * 1000
-        if total_ms > 50:
-            logging.warning(f"Render breakdown: clear={((t1-t0)*1000):.1f}ms, prep={((t2-t1)*1000):.1f}ms, cache={((t3-t2)*1000):.1f}ms, blit={((t4-t3)*1000):.1f}ms, weather={((t5-t4)*1000):.1f}ms, status={((t6-t5)*1000):.1f}ms, overlay={((t7-t6)*1000):.1f}ms, flip={((t8-t7)*1000):.1f}ms")
     
-    def get_status_surface(self, status_color):
-        """Build or return cached status bar surface."""
+    def render_status_bar(self, status_color):
+        """Render status bar with system information using PNG icons or ASCII fallback."""
+        # Check if we have PNG emoji icons loaded
         use_png_icons = bool(self.emoji_icons) and (os.environ.get('USE_EMOJI', 'true').lower() == 'true')
-        try:
-            tz_abbr = time.strftime('%Z')
-        except Exception:
-            tz_abbr = "TZ"
-        sync_time = self.get_time_since_sync()
-        rtc_active = bool(self.rtc and self.rtc.available)
         
-        # Simple payload tuple for cache check
-        payload = (self.network_status, tz_abbr, sync_time, rtc_active, status_color)
-        
-        if self._last_status_payload == payload and self.status_surface is not None:
-            return self.status_surface
-        
-        # Log rebuilds to track frequency
-        logging.debug(f"Rebuilding status bar: {payload[0]}, {payload[2]}")
-        
-        # Build surfaces
-        spacing = 5
-        item_gap = 20
-        parts = []  # list of (surface, kind)
-        width = 0
-        height = max(24, self.status_font.get_height())
+        # Starting X position for left-aligned status items
+        x_pos = 10
+        y_pos = self.screen_height - 30
+        spacing = 5  # Space between icon and text
+        item_gap = 20  # Gap between status items
         
         # Network status
-        text = "No Network"
-        icon_key = 'network_error'
         if self.network_status:
             if "WiFi" in self.network_status:
                 icon_key = 'wifi'
@@ -774,85 +531,84 @@ class PygameClock:
             elif "Ethernet" in self.network_status:
                 icon_key = 'ethernet'
                 text = self.network_status
-            elif "Connected" in self.network_status:
-                icon_key = 'ethernet'
-                text = self.network_status
             else:
                 icon_key = 'network_error'
                 text = self.network_status
-        
-        if use_png_icons and icon_key in self.emoji_icons:
-            parts.append((self.emoji_icons[icon_key], 'icon'))
-            width += 24 + spacing
         else:
+            icon_key = 'network_error'
+            text = "No Network"
+        
+        # Render network status
+        if use_png_icons and icon_key in self.emoji_icons:
+            self.screen.blit(self.emoji_icons[icon_key], (x_pos, y_pos))
+            x_pos += 24 + spacing
+        else:
+            # ASCII fallback
             prefix = "WiFi:" if "WiFi" in text else ("Net:" if "Ethernet" in text else "X")
-            net_text_surface = self.status_font.render(f"{prefix} {text}", True, status_color)
-            parts.append((net_text_surface, 'text'))
-            width += net_text_surface.get_width() + item_gap
-            text = ""
+            text_surface = self.status_font.render(f"{prefix} {text}", True, status_color)
+            self.screen.blit(text_surface, (x_pos, y_pos))
+            x_pos += text_surface.get_width() + item_gap
+            text = ""  # Already included in prefix
         
         if text:
-            net_detail_surface = self.status_font.render(text, True, status_color)
-            parts.append((net_detail_surface, 'text'))
-            width += net_detail_surface.get_width() + item_gap
+            text_surface = self.status_font.render(text, True, status_color)
+            self.screen.blit(text_surface, (x_pos, y_pos))
+            x_pos += text_surface.get_width() + item_gap
         
+        # Separator
         sep_surface = self.status_font.render("|", True, status_color)
-        parts.append((sep_surface, 'text'))
-        width += sep_surface.get_width() + item_gap
+        self.screen.blit(sep_surface, (x_pos, y_pos))
+        x_pos += sep_surface.get_width() + item_gap
         
-        # Timezone
+        # Timezone with abbreviation
+        try:
+            tz_abbr = time.strftime('%Z')
+        except Exception:
+            tz_abbr = "TZ"
+        
         if use_png_icons and 'globe' in self.emoji_icons:
-            parts.append((self.emoji_icons['globe'], 'icon'))
-            width += 24 + spacing
+            self.screen.blit(self.emoji_icons['globe'], (x_pos, y_pos))
+            x_pos += 24 + spacing
             tz_text = f"{tz_abbr} ({self.timezone_name})" if self.timezone_name else tz_abbr
         else:
             tz_text = f"TZ: {tz_abbr} ({self.timezone_name})" if self.timezone_name else f"TZ: {tz_abbr}"
+        
         tz_surface = self.status_font.render(tz_text, True, status_color)
-        parts.append((tz_surface, 'text'))
-        width += tz_surface.get_width() + item_gap
+        self.screen.blit(tz_surface, (x_pos, y_pos))
+        x_pos += tz_surface.get_width() + item_gap
         
-        parts.append((sep_surface, 'text'))
-        width += sep_surface.get_width() + item_gap
+        # Separator
+        self.screen.blit(sep_surface, (x_pos, y_pos))
+        x_pos += sep_surface.get_width() + item_gap
         
-        # Sync
+        # Last sync
+        sync_time = self.get_time_since_sync()
         if use_png_icons and 'sync' in self.emoji_icons:
-            parts.append((self.emoji_icons['sync'], 'icon'))
-            width += 24 + spacing
+            self.screen.blit(self.emoji_icons['sync'], (x_pos, y_pos))
+            x_pos += 24 + spacing
             sync_text = sync_time
         else:
             sync_text = f"Sync: {sync_time}"
-        sync_surface = self.status_font.render(sync_text, True, status_color)
-        parts.append((sync_surface, 'text'))
-        width += sync_surface.get_width() + item_gap
         
-        # RTC
-        if rtc_active:
-            parts.append((sep_surface, 'text'))
-            width += sep_surface.get_width() + item_gap
+        sync_surface = self.status_font.render(sync_text, True, status_color)
+        self.screen.blit(sync_surface, (x_pos, y_pos))
+        x_pos += sync_surface.get_width() + item_gap
+        
+        # RTC status if available
+        if self.rtc and self.rtc.available:
+            # Separator
+            self.screen.blit(sep_surface, (x_pos, y_pos))
+            x_pos += sep_surface.get_width() + item_gap
+            
             if use_png_icons and 'clock' in self.emoji_icons:
-                parts.append((self.emoji_icons['clock'], 'icon'))
-                width += 24 + spacing
+                self.screen.blit(self.emoji_icons['clock'], (x_pos, y_pos))
+                x_pos += 24 + spacing
                 rtc_text = "Active"
             else:
                 rtc_text = "RTC: Active"
+            
             rtc_surface = self.status_font.render(rtc_text, True, status_color)
-            parts.append((rtc_surface, 'text'))
-            width += rtc_surface.get_width()
-        
-        # Create surface and blit parts
-        status_surface = pygame.Surface((max(1, width), height), pygame.SRCALPHA)
-        x = 0
-        for surf, kind in parts:
-            status_surface.blit(surf, (x, 0))
-            if kind == 'icon':
-                x += 24 + spacing
-            else:
-                x += surf.get_width() + item_gap
-        
-        # Cache and return
-        self.status_surface = status_surface
-        self._last_status_payload = payload
-        return self.status_surface
+            self.screen.blit(rtc_surface, (x_pos, y_pos))
     
     def handle_events(self):
         """Handle pygame events."""
@@ -866,55 +622,36 @@ class PygameClock:
     def run(self):
         """Main loop."""
         logging.info("Starting clock display loop")
-        logging.info("Weather and network status updates running in background threads")
+        
+        # Initial updates
+        self.update_weather()
+        self.check_network_status()
         
         frame_count = 0
-        in_screensaver = False
         
         try:
             while self.running:
                 # Handle events
                 self.handle_events()
                 
-                # Update pixel shift (non-blocking, only checks time)
+                # Update weather periodically
+                self.update_weather()
+                
+                # Update status information
+                self.update_status()
+                
+                # Update pixel shift
                 self.update_pixel_shift()
-
-                # Check if we're entering/exiting screensaver mode
-                should_show = self.should_show_display()
-                if not should_show and not in_screensaver:
-                    # Entering screensaver mode
-                    in_screensaver = True
-                    logging.info("Entering screensaver mode")
-                elif should_show and in_screensaver:
-                    # Exiting screensaver mode - reset pygame clock to prevent drift
-                    in_screensaver = False
-                    self.clock = pygame.time.Clock()
-                    logging.info("Exiting screensaver mode - clock reset")
-
                 
-                # Render (reads cached values from background threads)
-                # Only render when the second actually changes to minimize display updates
-                current_epoch_second = int(time.time())
-                if not hasattr(self, '_last_render_epoch') or self._last_render_epoch != current_epoch_second:
-                    render_start = time.time()
-                    self.render()
-                    render_time_ms = (time.time() - render_start) * 1000
-                    self._last_render_epoch = current_epoch_second
-                    
-                    if render_time_ms > 50:
-                        logging.warning(f"Slow render: {render_time_ms:.1f}ms")
-                    
-                    frame_count += 1
-                    if frame_count % 60 == 0:  # Log every 60 seconds
-                        logging.info(f"Clock running - {frame_count} renders (1/sec), last render: {render_time_ms:.1f}ms")
-                else:
-                    # Second hasn't changed yet, skip render
-                    pass
+                # Render
+                self.render()
                 
-                # Sleep briefly to avoid busy-wait CPU burn
-                time.sleep(0.05)  # Check 20 times per second for second changes
-                self.last_fps = 1.0  # Actual render rate is 1 FPS (once per second)
+                # Limit to 1 FPS (update once per second)
+                self.clock.tick(1)
                 
+                frame_count += 1
+                if frame_count % 60 == 0:  # Log every minute
+                    logging.debug(f"Clock running - {frame_count} frames rendered")
         
         except KeyboardInterrupt:
             logging.info("Clock interrupted by user")
