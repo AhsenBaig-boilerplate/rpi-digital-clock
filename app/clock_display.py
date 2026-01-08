@@ -127,7 +127,7 @@ class PygameClock:
         if self.dim_at_night:
             logging.info(f"Night dimming enabled: {self.night_start:02d}:00 - {self.night_end:02d}:00 at {self.night_brightness*100:.0f}% brightness")
         if self.pixel_shift_enabled:
-            logging.info(f"Pixel shift enabled: ±{self.pixel_shift_max}px every {display_config.get('pixel_shift_interval_seconds', 30)}s (disabled {self.pixel_shift_disable_start:02d}:00-{self.pixel_shift_disable_end:02d}:00)")
+            logging.info(f"Pixel shift enabled: +/-{self.pixel_shift_max}px every {display_config.get('pixel_shift_interval_seconds', 30)}s (disabled {self.pixel_shift_disable_start:02d}:00-{self.pixel_shift_disable_end:02d}:00)")
         
         # Weather service
         self.weather_service = None
@@ -165,7 +165,7 @@ class PygameClock:
         
         # Log pixel shift status
         if self.pixel_shift_enabled:
-            logging.info(f"Pixel shift enabled: ±{self.pixel_shift_max}px every {display_config.get('pixel_shift_interval_seconds', 30)}s")
+            logging.info(f"Pixel shift enabled: +/-{self.pixel_shift_max}px every {display_config.get('pixel_shift_interval_seconds', 30)}s")
         else:
             logging.info("Pixel shift disabled")
         

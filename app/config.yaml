@@ -31,7 +31,7 @@ time:
   # Enable DS3231 RTC module support
   # Set to true if you have a hardware RTC connected
   # RTC provides accurate time when WiFi/network is unavailable
-  rtc_enabled: true
+  rtc_enabled: false
 
 # Display Settings
 display:
