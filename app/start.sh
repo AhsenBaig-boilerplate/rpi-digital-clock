@@ -88,19 +88,33 @@ fi
 
 # Set display resolution if specified (for performance)
 if [ -n "$DISPLAY_RESOLUTION" ]; then
-    echo "=== Attempting to set display resolution to: $DISPLAY_RESOLUTION ==="
-    echo "Current xrandr output:"
-    DISPLAY=:0 xrandr 2>&1 || echo "xrandr failed"
-    echo "Trying to set resolution..."
-    if DISPLAY=:0 xrandr --output HDMI-1 --mode "$DISPLAY_RESOLUTION" 2>&1; then
-        echo "✓ Resolution set via HDMI-1"
-    elif DISPLAY=:0 xrandr --output HDMI-0 --mode "$DISPLAY_RESOLUTION" 2>&1; then
-        echo "✓ Resolution set via HDMI-0"
+    echo "=== DISPLAY_RESOLUTION is set to: $DISPLAY_RESOLUTION ==="
+    echo "Available modes:"
+    DISPLAY=:0 xrandr 2>&1 | grep -E "connected|[0-9]+x[0-9]+" | head -15
+    echo ""
+    echo "Attempting to change resolution..."
+    
+    # Try both possible HDMI outputs
+    if DISPLAY=:0 xrandr --output HDMI-1 --mode "$DISPLAY_RESOLUTION" 2>&1 | tee /tmp/xrandr.log; then
+        echo "✓ Successfully set resolution via HDMI-1"
+    elif DISPLAY=:0 xrandr --output HDMI-0 --mode "$DISPLAY_RESOLUTION" 2>&1 | tee -a /tmp/xrandr.log; then
+        echo "✓ Successfully set resolution via HDMI-0"  
     else
-        echo "✗ Warning: Could not set resolution via xrandr"
+        echo "✗ Failed to set resolution. xrandr output:"
+        cat /tmp/xrandr.log
+        echo "Trying to add the mode manually..."
+        # Sometimes the mode needs to be added first
+        DISPLAY=:0 xrandr --newmode "1280x720_60" 74.25 1280 1390 1430 1650 720 725 730 750 -hsync +vsync 2>&1 || true
+        DISPLAY=:0 xrandr --addmode HDMI-1 "1280x720_60" 2>&1 || DISPLAY=:0 xrandr --addmode HDMI-0 "1280x720_60" 2>&1 || true
+        DISPLAY=:0 xrandr --output HDMI-1 --mode "1280x720_60" 2>&1 || DISPLAY=:0 xrandr --output HDMI-0 --mode "1280x720_60" 2>&1 || echo "Still failed"
     fi
-    echo "New xrandr output:"
-    DISPLAY=:0 xrandr 2>&1 | head -20
+    
+    echo ""
+    echo "Current resolution after change:"
+    DISPLAY=:0 xrandr 2>&1 | grep -E "\*|current" | head -5
+    echo "=== End resolution setup ==="
+else
+    echo "DISPLAY_RESOLUTION not set, using default"
 fi
 
 # Set display orientation if specified
