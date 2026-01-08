@@ -95,10 +95,17 @@ class FramebufferClock:
         
         # Weather service
         self.weather_service = None
-        if config.get('weather', {}).get('enabled', False):
+        weather_enabled = os.environ.get('WEATHER_ENABLED', '').lower() in ('true', '1', 'yes') or config.get('weather', {}).get('enabled', False)
+        if weather_enabled:
             api_key = os.environ.get('WEATHER_API_KEY') or config.get('weather', {}).get('api_key', '')
-            if api_key and WeatherService:
+            location = os.environ.get('WEATHER_LOCATION') or config.get('weather', {}).get('location', '')
+            if api_key and location and WeatherService:
                 self.weather_service = WeatherService(config.get('weather', {}))
+                logging.info(f"Weather service enabled for location: {location}")
+            elif not api_key:
+                logging.warning("Weather service disabled: WEATHER_API_KEY not set")
+            elif not location:
+                logging.warning("Weather service disabled: WEATHER_LOCATION not set")
         
         # Weather update tracking
         self.last_weather_update = 0

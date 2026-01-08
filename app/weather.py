@@ -14,9 +14,11 @@ class WeatherService:
     
     def __init__(self, weather_config: dict):
         """Initialize weather service with configuration."""
-        self.api_key = weather_config.get('api_key', '')
-        self.location = weather_config.get('location', '')
-        self.units = weather_config.get('units', 'metric')  # metric, imperial, or kelvin
+        import os
+        # Environment variables override config file settings
+        self.api_key = os.environ.get('WEATHER_API_KEY') or weather_config.get('api_key', '')
+        self.location = os.environ.get('WEATHER_LOCATION') or weather_config.get('location', '')
+        self.units = os.environ.get('WEATHER_UNITS') or weather_config.get('units', 'metric')  # metric, imperial, or kelvin
         self.language = weather_config.get('language', 'en')
         
         # API endpoint
