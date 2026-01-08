@@ -8,6 +8,8 @@ ENV PYTHONUNBUFFERED=1 \
 # Install system dependencies for framebuffer access, fonts, and NTP
 # No X11 or pygame needed - direct framebuffer rendering
 RUN install_packages \
+    gcc \
+    python3-dev \
     zlib1g-dev \
     libjpeg-dev \
     libtiff-dev \
