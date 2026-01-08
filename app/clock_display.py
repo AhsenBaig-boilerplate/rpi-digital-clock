@@ -682,10 +682,15 @@ class PygameClock:
             tz_abbr = "TZ"
         sync_time = self.get_time_since_sync()
         rtc_active = bool(self.rtc and self.rtc.available)
-        payload = (self.network_status, tz_abbr, self.timezone_name, sync_time, rtc_active, use_png_icons, status_color)
+        
+        # Simple payload tuple for cache check
+        payload = (self.network_status, tz_abbr, sync_time, rtc_active, status_color)
         
         if self._last_status_payload == payload and self.status_surface is not None:
             return self.status_surface
+        
+        # Log rebuilds to track frequency
+        logging.debug(f"Rebuilding status bar: {payload[0]}, {payload[2]}")
         
         # Build surfaces
         spacing = 5
@@ -823,7 +828,12 @@ class PygameClock:
 
                 
                 # Render (reads cached values from background threads)
+                render_start = time.time()
                 self.render()
+                render_time_ms = (time.time() - render_start) * 1000
+                
+                if render_time_ms > 50:
+                    logging.warning(f"Slow render: {render_time_ms:.1f}ms")
                 
                 # Simple scheduler: sleep max 100ms to ensure we render at least 10 times per second
                 # This guarantees we'll catch every second boundary promptly
@@ -831,8 +841,8 @@ class PygameClock:
                 self.last_fps = 10.0
                 
                 frame_count += 1
-                if frame_count % 60 == 0:  # Log every minute
-                    logging.debug(f"Clock running - {frame_count} frames rendered")
+                if frame_count % 100 == 0:  # Log every 10 seconds
+                    logging.info(f"Clock running - {frame_count} frames, last render: {render_time_ms:.1f}ms")
         
         except KeyboardInterrupt:
             logging.info("Clock interrupted by user")
