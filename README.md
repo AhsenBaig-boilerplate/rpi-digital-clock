@@ -40,6 +40,25 @@ Note: The container base uses Debian Bookworm with Python 3.11, optimized for Ra
   - Provide PNGs (24x24 recommended) named: `wifi.png`, `ethernet.png`, `network_error.png`, `globe.png`, `sync.png`, `clock.png`
   - Set `USE_EMOJI=true` to enable icons; falls back to ASCII if files missing
 
+### Runtime Summary (example startup logs)
+
+On startup, the application logs a concise runtime summary and environment scopes to aid troubleshooting:
+
+```
+2026-01-07 20:39:52 - root - INFO - Runtime summary: pygame 1.9.6 | Icons: PNG (6 icons) | RTC: Disabled
+2026-01-07 20:39:52 - root - INFO - Emoji icons available: clock, ethernet, globe, network_error, sync, wifi
+2026-01-07 20:39:52 - root - INFO - Device metadata (balena environment):
+2026-01-07 20:39:52 - root - INFO -   [Device] BALENA_DEVICE_NAME=LivingRoomClock
+2026-01-07 20:39:52 - root - INFO -   [Device] BALENA_DEVICE_TYPE=raspberry-pi
+2026-01-07 20:39:52 - root - INFO -   [Device] BALENA_DEVICE_UUID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+2026-01-07 20:39:52 - root - INFO -   [Device] BALENA_SERVICE_NAME=clock
+2026-01-07 20:39:52 - root - INFO - Environment variables (masked where sensitive):
+2026-01-07 20:39:52 - root - INFO -   [Service(clock)] WEATHER_API_KEY=****
+2026-01-07 20:39:52 - root - INFO -   [Service(clock)] TIMEZONE=America/Los_Angeles
+```
+
+This helps confirm the runtime (pygame version), icon mode (PNG vs ASCII), RTC status, device context, and scoped variables.
+
 ## 📋 Prerequisites
 
 - Raspberry Pi Zero (1st generation)
