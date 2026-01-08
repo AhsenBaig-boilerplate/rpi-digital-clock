@@ -617,6 +617,7 @@ class PygameClock:
             # Update markers
             self._last_second_drawn = now.second
             self._last_second_epoch = current_second_epoch
+            logging.debug(f"Time updated: {time_str}")
         
         # Use cached surfaces
         time_surface = self.time_surface
@@ -831,28 +832,10 @@ class PygameClock:
                 # Render (reads cached values from background threads)
                 self.render()
                 
-                # Precise second-boundary scheduler:
-                # Sleep adaptively so we re-render right after each second flips,
-                # minimizing CPU while keeping the seconds "live".
-                now_for_schedule = datetime.now()
-                ms_until_next = 1000 - (now_for_schedule.microsecond // 1000)
-                
-                if ms_until_next > 300:
-                    # Far from next second: longer sleep to save CPU
-                    time.sleep(0.25)
-                    self.last_fps = 4.0
-                elif ms_until_next > 120:
-                    # Approaching second: moderate sleep
-                    time.sleep(0.10)
-                    self.last_fps = 10.0
-                else:
-                    # Very close: sleep until just before boundary, then tick briefly
-                    sleep_sec = max((ms_until_next / 1000.0) - 0.02, 0.0)
-                    if sleep_sec > 0:
-                        time.sleep(sleep_sec)
-                    # Short busy tick to cross boundary promptly
-                    self.clock.tick(50)
-                    self.last_fps = self.clock.get_fps()
+                # Simple scheduler: sleep max 100ms to ensure we render at least 10 times per second
+                # This guarantees we'll catch every second boundary promptly
+                time.sleep(0.10)
+                self.last_fps = 10.0
                 
                 frame_count += 1
                 if frame_count % 60 == 0:  # Log every minute
