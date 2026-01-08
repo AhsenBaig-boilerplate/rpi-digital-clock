@@ -619,7 +619,12 @@ class PygameClock:
             elif "Ethernet" in self.network_status:
                 icon_key = 'ethernet'
                 text = self.network_status
+            elif "Connected" in self.network_status:
+                # Generic connection (couldn't determine type)
+                icon_key = 'ethernet'  # Use ethernet icon as fallback for connected state
+                text = self.network_status
             else:
+                # Offline, No Internet, or error states
                 icon_key = 'network_error'
                 text = self.network_status
         else:
