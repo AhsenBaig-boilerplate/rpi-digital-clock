@@ -498,7 +498,123 @@ git push balena main
 
 balena will automatically rebuild and deploy the updated application.
 
-## 🛠️ Development
+## � Build Tracking & Versioning
+
+This project includes comprehensive build tracking to help you identify exactly which version is running on your device.
+
+### CI/CD Integration
+
+Every deployment via GitHub Actions records:
+- **GitHub commit SHA** and branch/tag
+- **Balena release ID** and commit
+- **Build timestamp** and workflow run URL
+- **Version string** (git tag or `tag+revN`)
+
+### Required GitHub Secrets
+
+To enable automated deployment, configure these secrets in your GitHub repository (Settings → Secrets and variables → Actions):
+
+| Secret Name | Description |
+|------------|-------------|
+| `BALENA_TOKEN` | Balena API token ([Generate here](https://dashboard.balena-cloud.com/preferences/access-tokens)) |
+| `BALENA_FLEET` | Your fleet slug (e.g., `yourorg/rpi-digital-clock`) |
+
+### How Build Info Works
+
+1. **Embedded in Image**: `app/build-info.json` is generated during CI and baked into the container
+2. **Startup Logs**: Build info is logged when the app starts
+3. **Status Bar**: Version and short commit SHA displayed in bottom-left corner
+4. **Balena Release Tags**: GitHub metadata automatically tagged on each release
+5. **CI Artifacts**: `build-metadata.json` uploaded for every workflow run
+
+### Viewing Build Info
+
+**In logs** (on device or via balena dashboard):
+```
+2026-01-08 10:15:30 - root - INFO - Build info: commit=abc1234 ref=main version=0.0.0+rev22 built=2026-01-08T10:10:00Z
+```
+
+**On device** (via SSH or local balena CLI):
+```bash
+# Print build info JSON
+balena ssh <device-uuid> clock
+python3 /app/build_info.py
+
+# Or enable on every startup
+balena env add PRINT_BUILD_INFO true --service clock
+```
+
+**On screen**: Status bar shows `v0.0.0+rev22 abc1234` in the bottom-right corner
+
+**In CI artifacts**: Download `build-metadata.json` from GitHub Actions run page
+
+**In Balena dashboard**: Release page shows tags: `git.sha`, `git.ref`, `github.run_id`, `github.run_url`
+
+### Example build-info.json
+
+```json
+{
+  "git_sha": "731a341e6416f617652879a9bbf79bd75211363f",
+  "git_ref": "main",
+  "repo": "yourusername/rpi-digital-clock",
+  "workflow": "Deploy to balena",
+  "run_id": "12345678",
+  "run_url": "https://github.com/yourusername/rpi-digital-clock/actions/runs/12345678",
+  "git_version": "0.0.0+rev22",
+  "build_time": "2026-01-08T10:10:00Z",
+  "balena_release_id": "2468101",
+  "balena_release_commit": "def5678...",
+  "balena_release_version": "0.0.0+rev22"
+}
+```
+
+### Troubleshooting with Build Info
+
+When reporting issues or comparing behaviors between deployments:
+
+1. **Check the status bar** for version/commit displayed on screen
+2. **Read startup logs** for full build info line
+3. **Download CI artifact** to see exact GitHub ↔ Balena mapping
+4. **Compare release tags** in Balena dashboard to identify regressions
+
+This ensures you can always trace a running instance back to the exact source code commit and deployment run.
+
+## � Versioning & Releases
+
+This project follows [Semantic Versioning 2.0.0](https://semver.org/) with Git tags.
+
+**Current status**: 76 commits since v1.3.0 → Ready for v1.4.0 release!
+
+### Quick Release
+
+```bash
+# Create a new release
+./scripts/release.sh 1.4.0
+
+# Push to trigger deployment
+git push origin v1.4.0
+```
+
+The workflow automatically:
+- Uses the tag version in balena.yml
+- Embeds version in build-info.json
+- Shows version in logs and on-screen status bar
+- Tags the Balena release with GitHub metadata
+
+### Version Format
+
+- **Tagged releases**: `v1.4.0` (shows as "v1.4.0" in UI)
+- **Development builds**: `v1.3.0+rev76` (76 commits after v1.3.0 tag)
+
+### When to Release
+
+- **MAJOR** (2.0.0): Breaking changes (config format, API changes)
+- **MINOR** (1.4.0): New features (backward compatible) ← **Current recommendation**
+- **PATCH** (1.3.1): Bug fixes only
+
+See [VERSIONING.md](VERSIONING.md) for detailed guidelines.
+
+## �🛠️ Development
 
 ### Local Testing (Non-Raspberry Pi)
 
@@ -508,25 +624,30 @@ pip install -r requirements.txt
 
 # Edit config.yaml with your settings
 cd app
-python main.py
+python3 clock_display.py
 ```
 
-Note: Some features (NTP sync, HDMI output) may not work on non-Raspberry Pi systems. Emoji rendering requires `pygame-emojis`.
+Note: Some features (NTP sync, HDMI output) may not work on non-Raspberry Pi systems.
 
 ### Project Structure
 
 ```
 rpi-digital-clock/
+├── .github/
+│   └── workflows/
+│       └── balena-deploy.yml  # CI/CD pipeline with build tracking
 ├── app/
-│   ├── clock_display.py # Pygame clock renderer (entry point)
-│   ├── start.sh         # X server + app startup script
-│   ├── weather.py       # Weather API integration
-│   ├── utils.py         # Helper functions
-│   └── config.yaml      # Configuration file
-├── Dockerfile.template  # balena Dockerfile
-├── docker-compose.yml   # balena service definition
-├── requirements.txt     # Python dependencies
-└── README.md            # This file
+│   ├── clock_display.py       # Pygame clock renderer (entry point)
+│   ├── build_info.py          # CLI to print build metadata
+│   ├── start.sh               # X server + app startup script
+│   ├── weather.py             # Weather API integration
+│   ├── utils.py               # Helper functions (includes build info loaders)
+│   ├── config.yaml            # Configuration file
+│   └── build-info.json        # Build metadata (generated by CI)
+├── Dockerfile.template        # balena Dockerfile
+├── docker-compose.yml         # balena service definition
+├── requirements.txt           # Python dependencies
+└── README.md                  # This file
 ```
 
 ## 🤝 Contributing

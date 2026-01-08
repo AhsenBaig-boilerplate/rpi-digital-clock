@@ -38,6 +38,23 @@ jobs:
           echo "Deploying version: ${VERSION}"
           echo "Base version for balena.yml: ${BASE_VERSION}"
 
+      - name: Generate build-info.json (embedded in image)
+        run: |
+          mkdir -p app
+          cat > app/build-info.json <<JSON
+          {
+            "git_sha": "${{ github.sha }}",
+            "git_ref": "${{ github.ref_name }}",
+            "repo": "${{ github.repository }}",
+            "workflow": "${{ github.workflow }}",
+            "run_id": "${{ github.run_id }}",
+            "run_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "git_version": "${{ steps.version.outputs.version }}",
+            "build_time": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          JSON
+          echo "Embedded build-info.json:" && cat app/build-info.json
+
       - name: Update balena.yml with version
         run: |
           # Use base version without +rev suffix (balena adds that automatically)
@@ -56,3 +73,49 @@ jobs:
           echo "Built release ID: ${{ steps.build.outputs.release_id }}"
           echo "Release version: ${{ steps.build.outputs.version }}"
           echo "Git version: ${{ steps.version.outputs.version }}"
+
+      - name: Install jq and balena CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          npm install -g balena-cli@19.0.12 --production
+          balena version
+
+      - name: Login to balena (CLI)
+        env:
+          BALENA_TOKEN: ${{ secrets.BALENA_TOKEN }}
+        run: |
+          balena login --token "$BALENA_TOKEN"
+
+      - name: Tag balena release with GitHub info
+        if: ${{ steps.build.outputs.release_id }}
+        env:
+          RELEASE_ID: ${{ steps.build.outputs.release_id }}
+        run: |
+          echo "Tagging release $RELEASE_ID with GitHub metadata"
+          balena tag set release "$RELEASE_ID" git.sha "${{ github.sha }}"
+          balena tag set release "$RELEASE_ID" git.ref "${{ github.ref_name }}"
+          balena tag set release "$RELEASE_ID" github.run_id "${{ github.run_id }}"
+          balena tag set release "$RELEASE_ID" github.run_url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Write build-metadata.json (artifact)
+        run: |
+          cat > build-metadata.json <<JSON
+          {
+            "git_sha": "${{ github.sha }}",
+            "git_ref": "${{ github.ref_name }}",
+            "repo": "${{ github.repository }}",
+            "run_id": "${{ github.run_id }}",
+            "run_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "git_version": "${{ steps.version.outputs.version }}",
+            "balena_release_id": "${{ steps.build.outputs.release_id }}",
+            "balena_release_version": "${{ steps.build.outputs.version }}"
+          }
+          JSON
+          echo "Build metadata artifact: " && cat build-metadata.json
+
+      - name: Upload build metadata artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-metadata
+          path: build-metadata.json

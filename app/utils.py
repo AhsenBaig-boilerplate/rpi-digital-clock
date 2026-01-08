@@ -1,9 +1,11 @@
 """
-Utility Functions - Logging configuration for the application.
+Utility Functions - Logging configuration and build info helpers.
 """
 
 import logging
 import sys
+import json
+from pathlib import Path
 
 
 def setup_logging(log_level: str = 'INFO'):
@@ -33,3 +35,28 @@ def setup_logging(log_level: str = 'INFO'):
     )
     
     logging.info(f"Logging initialized at {log_level} level")
+
+
+def load_build_info() -> dict | None:
+    """Load build info JSON embedded in the app image if present."""
+    build_path = Path(__file__).parent / "build-info.json"
+    try:
+        if build_path.exists():
+            with open(build_path, "r") as f:
+                data = json.load(f)
+            return data
+    except Exception:
+        pass
+    return None
+
+
+def format_build_info(info: dict) -> str:
+    """Return a concise single-line summary of build info for logging."""
+    if not info:
+        return "(no build-info.json)"
+    sha = str(info.get("git_sha", ""))
+    short_sha = sha[:7] if sha else ""
+    ref = info.get("git_ref") or ""
+    ver = info.get("git_version") or ""
+    time_str = info.get("build_time") or ""
+    return f"commit={short_sha} ref={ref} version={ver} built={time_str}"

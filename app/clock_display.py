@@ -31,10 +31,11 @@ except ImportError:
 class PygameClock:
     """Pygame-based digital clock display."""
     
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, build_info: dict | None = None):
         """Initialize pygame clock."""
         self.config = config
         self.running = True
+        self.build_info = build_info or {}
         
         # Initialize pygame
         pygame.init()
@@ -174,6 +175,12 @@ class PygameClock:
         icon_mode = f"PNG ({len(self.emoji_icons)} icons)" if self.emoji_icons else "ASCII"
         rtc_mode = "Active" if (self.rtc and self.rtc.available) else "Disabled"
         logging.info(f"Runtime summary: pygame {pygame_ver} | Icons: {icon_mode} | RTC: {rtc_mode}")
+        # Log build info summary if available
+        try:
+            from utils import format_build_info
+            logging.info(f"Build info: {format_build_info(self.build_info)}")
+        except Exception:
+            pass
         logging.info("Pygame clock initialized")
     
     def init_fonts(self):
@@ -609,6 +616,26 @@ class PygameClock:
             
             rtc_surface = self.status_font.render(rtc_text, True, status_color)
             self.screen.blit(rtc_surface, (x_pos, y_pos))
+
+        # Build/version info (concise)
+        if self.build_info:
+            try:
+                # Separator
+                self.screen.blit(sep_surface, (x_pos, y_pos))
+                x_pos += sep_surface.get_width() + item_gap
+                ver = self.build_info.get("git_version") or ""
+                sha = self.build_info.get("git_sha") or ""
+                short_sha = sha[:7] if isinstance(sha, str) and sha else ""
+                parts = []
+                if ver:
+                    parts.append(ver)
+                if short_sha:
+                    parts.append(short_sha)
+                text = " ".join(parts) if parts else "build"
+                ver_surface = self.status_font.render(text, True, status_color)
+                self.screen.blit(ver_surface, (x_pos, y_pos))
+            except Exception:
+                pass
     
     def handle_events(self):
         """Handle pygame events."""
@@ -669,7 +696,7 @@ class PygameClock:
 
 def main():
     """Main entry point."""
-    from utils import setup_logging
+    from utils import setup_logging, load_build_info, format_build_info
     
     # Setup logging
     log_level = os.environ.get('LOG_LEVEL', 'INFO')
@@ -764,8 +791,12 @@ def main():
             scope = scope_label(name)
             logging.info(f"  [{scope}] {name}={value}")
     
+    # Build info logging
+    build_info = load_build_info()
+    logging.info(f"Build info: {format_build_info(build_info)}")
+    
     # Create and run clock
-    clock = PygameClock(config)
+    clock = PygameClock(config, build_info=build_info)
     clock.run()
 
 

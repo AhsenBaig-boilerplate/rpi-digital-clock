@@ -111,5 +111,9 @@ fi
 # Launch pygame clock application
 echo "Launching clock application..."
 cd /app
+if [ "${PRINT_BUILD_INFO}" = "true" ]; then
+    echo "Printing build info before launch..."
+    python3 build_info.py || true
+fi
 exec python3 clock_display.py
 
