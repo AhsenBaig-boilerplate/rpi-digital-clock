@@ -11,7 +11,7 @@ RUN install_packages \
     libfreetype6 \
     libjpeg62-turbo \
     libopenjp2-7 \
-    libtiff5 \
+    libtiff6 \
     libwebp7 \
     systemd-timesyncd \
     ntpdate \
