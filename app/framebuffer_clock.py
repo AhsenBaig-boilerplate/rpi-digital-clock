@@ -11,6 +11,9 @@ import socket
 import subprocess
 import random
 import time
+import select
+import termios
+import tty
 from datetime import datetime
 from pathlib import Path
 import yaml
@@ -134,6 +137,9 @@ class FramebufferClock:
         
         # Get initial NTP sync time
         self.check_last_ntp_sync()
+        
+        # Settings menu state
+        self.show_settings_menu = False
         
         # Log build info
         try:
@@ -424,11 +430,21 @@ class FramebufferClock:
         # Draw status bar
         if self.show_status_bar:
             status_items = []
+            # Network with emoji
             if self.network_status:
-                status_items.append(f"Net: {self.network_status}")
+                if "Connected" in self.network_status:
+                    status_items.append(f"🌐 {self.network_status}")
+                else:
+                    status_items.append(f"✗ {self.network_status}")
+            # Timezone with emoji
             if self.timezone_name:
-                status_items.append(f"TZ: {self.timezone_name}")
-            status_items.append(f"Sync: {self.get_time_since_sync()}")
+                status_items.append(f"📍 {self.timezone_name}")
+            # Sync with emoji
+            sync_time = self.get_time_since_sync()
+            if sync_time == "Just now" or "m ago" in sync_time:
+                status_items.append(f"✓ Sync: {sync_time}")
+            else:
+                status_items.append(f"⏰ Sync: {sync_time}")
             
             # Add version info
             if self.build_info:
@@ -447,8 +463,9 @@ class FramebufferClock:
             status_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), status_text, font=self.status_font)
             status_w = status_bbox[2] - status_bbox[0]
             status_h = status_bbox[3] - status_bbox[1]
-            status_x = max(margin, min(self.fb_width - margin - status_w, self.fb_width // 2 - status_w // 2))
-            status_y = max(margin, self.fb_height - status_h - margin)
+            # Apply pixel shift to status bar for burn-in protection
+            status_x = max(margin, min(self.fb_width - margin - status_w, self.fb_width // 2 - status_w // 2 + self.pixel_shift_x))
+            status_y = max(margin, self.fb_height - status_h - margin + self.pixel_shift_y)
             status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
             # Draw at negative bbox origin to include full glyph bounds
             ImageDraw.Draw(status_img).text((-status_bbox[0], -status_bbox[1]), status_text, font=self.status_font, fill=status_color)
@@ -535,9 +552,121 @@ class FramebufferClock:
         # Store rect
         setattr(self, clear_last_rect_attr, (x, y, w, h))
     
+    def render_settings_menu(self):
+        """Render on-screen settings menu overlay."""
+        # Create semi-transparent overlay
+        overlay_w = int(self.fb_width * 0.6)
+        overlay_h = int(self.fb_height * 0.8)
+        overlay_x = (self.fb_width - overlay_w) // 2
+        overlay_y = (self.fb_height - overlay_h) // 2
+        
+        # Create menu background with border
+        menu_img = Image.new('RGB', (overlay_w, overlay_h), (20, 20, 40))
+        draw = ImageDraw.Draw(menu_img)
+        
+        # Draw border
+        draw.rectangle([0, 0, overlay_w-1, overlay_h-1], outline=(0, 255, 0), width=3)
+        
+        # Menu title
+        title_text = "⚙ SETTINGS MENU"
+        title_font = self.date_font
+        draw.text((20, 20), title_text, font=title_font, fill=(0, 255, 0))
+        
+        # Menu items
+        menu_items = [
+            "",
+            "Press keys to adjust settings:",
+            "",
+            "1 - Toggle 12/24 hour format",
+            "2 - Toggle seconds display",
+            "3 - Toggle screensaver",
+            "4 - Toggle night dimming",
+            "5 - Toggle pixel shift",
+            "6 - Restart clock",
+            "",
+            "ESC or Q - Close menu",
+        ]
+        
+        y_offset = 100
+        item_font = self.status_font
+        for item in menu_items:
+            draw.text((40, y_offset), item, font=item_font, fill=(200, 200, 200))
+            y_offset += 40
+        
+        # Current settings display
+        y_offset += 20
+        draw.text((40, y_offset), "Current Settings:", font=title_font, fill=(0, 255, 0))
+        y_offset += 50
+        
+        settings_info = [
+            f"Time Format: {'12-hour' if self.format_12h else '24-hour'}",
+            f"Show Seconds: {'Yes' if self.show_seconds else 'No'}",
+            f"Screensaver: {'Enabled' if self.screensaver_enabled else 'Disabled'}",
+            f"Night Dim: {'Enabled' if self.dim_at_night else 'Disabled'}",
+            f"Pixel Shift: {'Enabled' if self.pixel_shift_enabled else 'Disabled'}",
+        ]
+        
+        for info in settings_info:
+            draw.text((40, y_offset), info, font=item_font, fill=(200, 200, 200))
+            y_offset += 35
+        
+        # Blit menu overlay
+        self.blit_rgb_image(menu_img, overlay_x, overlay_y, clear_last_rect_attr='_last_menu_rect')
+    
+    def check_keyboard_input(self):
+        """Check for keyboard input (non-blocking)."""
+        if select.select([sys.stdin], [], [], 0)[0]:
+            try:
+                # Read one character
+                old_settings = termios.tcgetattr(sys.stdin)
+                try:
+                    tty.setcbreak(sys.stdin.fileno())
+                    key = sys.stdin.read(1)
+                finally:
+                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+                
+                return key
+            except Exception as e:
+                logging.debug(f"Keyboard input error: {e}")
+                return None
+        return None
+    
+    def handle_settings_input(self, key):
+        """Handle keyboard input for settings menu."""
+        if key in ['q', 'Q', '\x1b']:  # ESC or Q
+            self.show_settings_menu = False
+            # Clear menu rect
+            if hasattr(self, '_last_menu_rect'):
+                lx, ly, lw, lh = self._last_menu_rect
+                self.fb_shadow[ly:ly+lh, lx:lx+lw].fill(0)
+                self._last_menu_rect = None
+            logging.info("Settings menu closed")
+            return
+        
+        # Setting toggles
+        if key == '1':
+            self.format_12h = not self.format_12h
+            logging.info(f"Time format: {'12h' if self.format_12h else '24h'}")
+        elif key == '2':
+            self.show_seconds = not self.show_seconds
+            logging.info(f"Show seconds: {self.show_seconds}")
+        elif key == '3':
+            self.screensaver_enabled = not self.screensaver_enabled
+            logging.info(f"Screensaver: {self.screensaver_enabled}")
+        elif key == '4':
+            self.dim_at_night = not self.dim_at_night
+            logging.info(f"Night dimming: {self.dim_at_night}")
+        elif key == '5':
+            self.pixel_shift_enabled = not self.pixel_shift_enabled
+            logging.info(f"Pixel shift: {self.pixel_shift_enabled}")
+        elif key == '6':
+            logging.info("Restart requested from settings menu")
+            self.running = False
+    
     def run(self):
         """Main loop."""
         logging.info("Starting framebuffer clock display loop")
+        logging.info("Press 'S' key to open settings menu")
         
         # Initial updates
         self.update_weather()
@@ -550,6 +679,24 @@ class FramebufferClock:
         try:
             while self.running:
                 loop_count += 1
+                
+                # Check for keyboard input
+                key = self.check_keyboard_input()
+                if key:
+                    if key == 's' or key == 'S':
+                        # Toggle settings menu
+                        self.show_settings_menu = not self.show_settings_menu
+                        logging.info(f"Settings menu: {'opened' if self.show_settings_menu else 'closed'}")
+                    elif self.show_settings_menu:
+                        # Handle settings menu input
+                        self.handle_settings_input(key)
+                
+                # Render settings menu if open
+                if self.show_settings_menu:
+                    self.render_settings_menu()
+                    self.write_to_framebuffer(None)
+                    time.sleep(0.1)
+                    continue
                 
                 # Check if second has changed
                 current_second = datetime.now().second
