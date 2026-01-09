@@ -11,11 +11,6 @@ if [ -n "$TIMEZONE" ]; then
     echo "$TIMEZONE" > /etc/timezone 2>/dev/null || true
 fi
 
-# Start web UI in background
-echo "Starting web UI on port 8080..."
-python3 web_ui.py &
-WEB_UI_PID=$!
-
 # Launch pygame clock application (SDL FBDEV mode - no X11 required)
 echo "Launching pygame clock application (SDL framebuffer mode)..."
 cd /app

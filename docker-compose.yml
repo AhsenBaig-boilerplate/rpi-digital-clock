@@ -7,10 +7,6 @@ services:
     restart: always
     network_mode: host
     
-    # Web UI port for settings
-    ports:
-      - "8080:8080"
-    
     # Environment variables for configuration
     environment:
       # SDL configuration for direct framebuffer access (no X server)

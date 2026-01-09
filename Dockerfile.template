@@ -10,7 +10,6 @@ ENV PYTHONUNBUFFERED=1
 RUN install_packages \
     python3-pygame \
     python3-yaml \
-    python3-flask \
     python3-requests \
     libsdl2-2.0-0 \
     libsdl2-mixer-2.0-0 \
@@ -35,7 +34,7 @@ COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
 # Sanity check: verify critical imports
-RUN python3 -c "import yaml, requests, flask, pygame; print('Import check: OK')"
+RUN python3 -c "import yaml, requests, pygame; print('Import check: OK')"
 
 # Copy application files
 COPY app/ .

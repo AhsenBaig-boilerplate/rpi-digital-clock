@@ -39,7 +39,6 @@ class PygameClock:
         os.environ['SDL_AUDIODRIVER'] = 'dummy'
         pygame.init()
         pygame.mixer.quit()  # Explicitly disable audio
-        pygame.mouse.set_visible(False)
         
         # Get display info and set fullscreen
         display_info = pygame.display.Info()
@@ -54,6 +53,9 @@ class PygameClock:
             pygame.FULLSCREEN
         )
         pygame.display.set_caption("Digital Clock")
+        
+        # Hide mouse cursor AFTER display is initialized
+        pygame.mouse.set_visible(False)
         
         # Load configuration
         display_config = config.get('display', {})
@@ -491,9 +493,9 @@ class PygameClock:
             status_text = status_text.encode('ascii', 'replace').decode('ascii')
             status_surface = self.status_font.render(status_text, True, status_color)
         
-        # Position at bottom center with some padding
+        # Position at bottom center with pixel shift for burn-in protection
         status_rect = status_surface.get_rect(
-            center=(self.screen_width // 2, self.screen_height - 20)
+            center=(self.screen_width // 2 + self.pixel_shift_x, self.screen_height - 20 + self.pixel_shift_y)
         )
         
         # Draw status bar
