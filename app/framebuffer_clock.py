@@ -758,18 +758,22 @@ class FramebufferClock:
         
         # Render time to its own surface (RGB888), then blit
         time_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), time_str, font=self.time_font)
+        # Use full bbox dimensions (accounts for negative left bearing and descenders)
         time_w = time_bbox[2] - time_bbox[0]
         time_h = time_bbox[3] - time_bbox[1]
-        pad_left = 12
-        # Add generous right padding to prevent right-edge glyph clipping (e.g., 'M' in 'AM')
-        pad_right = 60
-        pad_top = 6
-        pad_bottom = 6
-        # Clamp to avoid cropping
-        time_x = max(margin, min(self.fb_width - margin - (time_w+pad_left+pad_right), center_x - (time_w+pad_left+pad_right) // 2))
-        time_y = max(margin, min(self.fb_height - margin - (time_h+pad_top+pad_bottom), center_y - (time_h+pad_top+pad_bottom) // 2 - time_offset_y))
-        time_img = Image.new('RGB', (time_w+pad_left+pad_right, time_h+pad_top+pad_bottom), (0,0,0))
-        # Draw with padding to include full glyph bounds
+        # Extra padding to ensure no clipping at edges
+        pad_left = max(20, -time_bbox[0] + 5)  # Account for left bearing
+        pad_right = 80  # Generous right padding for wide glyphs like 'M'
+        pad_top = max(8, -time_bbox[1] + 5)  # Account for ascenders
+        pad_bottom = 8
+        # Total image dimensions
+        img_w = time_w + pad_left + pad_right
+        img_h = time_h + pad_top + pad_bottom
+        # Clamp position to keep entire image on screen
+        time_x = max(margin, min(self.fb_width - margin - img_w, center_x - img_w // 2))
+        time_y = max(margin, min(self.fb_height - margin - img_h, center_y - img_h // 2 - time_offset_y))
+        time_img = Image.new('RGB', (img_w, img_h), (0,0,0))
+        # Draw with proper offset to include full glyph bounds
         ImageDraw.Draw(time_img).text((pad_left - time_bbox[0], pad_top - time_bbox[1]), time_str, font=self.time_font, fill=display_color)
         self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect')
         
@@ -847,18 +851,24 @@ class FramebufferClock:
                 temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
                 status_w = 0
                 status_h = 0
+                min_y_offset = 0  # Track negative y offset for descenders
                 for idx, (name, label) in enumerate(status_items):
                     # Add icon width
                     if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
                         status_w += 12
-                    # Add label width
+                    # Add label width and track full height including descenders
                     lb = temp_draw.textbbox((0,0), label, font=self.status_font)
                     status_w += lb[2] - lb[0]
                     status_h = max(status_h, lb[3] - lb[1])
+                    min_y_offset = min(min_y_offset, lb[1])  # Track descenders
                     # Add separator width
                     if idx < len(status_items) - 1:
                         sep = temp_draw.textbbox((0,0), " | ", font=self.status_font)
                         status_w += sep[2] - sep[0]
+                
+                # Add vertical padding for descenders
+                v_pad = max(5, -min_y_offset + 3)
+                status_h += v_pad
                 
                 # Position based on rotation
                 if position_name == 'bottom-left':
@@ -876,15 +886,16 @@ class FramebufferClock:
                 
                 status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
                 status_draw = ImageDraw.Draw(status_img)
-                # Draw icons and text
+                # Draw icons and text with proper y offset for descenders
                 cursor_x = 0
+                text_y = -min_y_offset if min_y_offset < 0 else 0
                 for idx, (name, label) in enumerate(status_items):
                     # Draw icon if applicable
                     if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
-                        self._draw_icon(status_draw, cursor_x, 0, name, status_color)
+                        self._draw_icon(status_draw, cursor_x, text_y, name, status_color)
                         cursor_x += 12  # icon width + spacing
                     # Draw label text
-                    status_draw.text((cursor_x, 0), label, font=self.status_font, fill=status_color)
+                    status_draw.text((cursor_x, text_y), label, font=self.status_font, fill=status_color)
                     lb = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), label, font=self.status_font)
                     cursor_x += lb[2] - lb[0]
                     if idx < len(status_items) - 1:
@@ -910,18 +921,24 @@ class FramebufferClock:
                 temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
                 status_w = 0
                 status_h = 0
+                min_y_offset = 0  # Track negative y offset for descenders
                 for idx, (name, label) in enumerate(status_items):
                     # Add icon width
                     if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
                         status_w += 12
-                    # Add label width
+                    # Add label width and track full height including descenders
                     lb = temp_draw.textbbox((0,0), label, font=self.status_font)
                     status_w += lb[2] - lb[0]
                     status_h = max(status_h, lb[3] - lb[1])
+                    min_y_offset = min(min_y_offset, lb[1])  # Track descenders
                     # Add separator width
                     if idx < len(status_items) - 1:
                         sep = temp_draw.textbbox((0,0), " | ", font=self.status_font)
                         status_w += sep[2] - sep[0]
+                
+                # Add vertical padding for descenders
+                v_pad = max(5, -min_y_offset + 3)
+                status_h += v_pad
                 
                 # Position based on rotation
                 if position_name == 'bottom-left':
@@ -939,15 +956,16 @@ class FramebufferClock:
                 
                 status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
                 status_draw = ImageDraw.Draw(status_img)
-                # Draw icons and text
+                # Draw icons and text with proper y offset for descenders
                 cursor_x = 0
+                text_y = -min_y_offset if min_y_offset < 0 else 0
                 for idx, (name, label) in enumerate(status_items):
                     # Draw icon if applicable
                     if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
-                        self._draw_icon(status_draw, cursor_x, 0, name, status_color)
+                        self._draw_icon(status_draw, cursor_x, text_y, name, status_color)
                         cursor_x += 12  # icon width + spacing
                     # Draw label text
-                    status_draw.text((cursor_x, 0), label, font=self.status_font, fill=status_color)
+                    status_draw.text((cursor_x, text_y), label, font=self.status_font, fill=status_color)
                     lb = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), label, font=self.status_font)
                     cursor_x += lb[2] - lb[0]
                     if idx < len(status_items) - 1:
