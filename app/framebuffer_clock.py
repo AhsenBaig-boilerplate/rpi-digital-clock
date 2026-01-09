@@ -344,6 +344,10 @@ class FramebufferClock:
                     dev = InputDevice(path)
                     caps = dev.capabilities(verbose=True)
                     if 'EV_ABS' in dict(caps) or 'EV_REL' in dict(caps):
+                        try:
+                            dev.set_nonblocking(True)
+                        except Exception:
+                            pass
                         self.input_devices.append(dev)
                         logging.info(f"Input device added: {dev.name} ({path})")
                 except Exception as e:
@@ -786,6 +790,13 @@ class FramebufferClock:
                 if parts:
                     status_items.append(("version", " ".join(parts)))
             
+            # If no emoji font, replace certain emoji with ASCII fallbacks to avoid tofu rectangles
+            if not self.emoji_font:
+                fallback_items = []
+                for name, label in status_items:
+                    label = label.replace('🌐', 'NET').replace('⏰', '!').replace('✓', 'OK').replace('✗', 'X')
+                    fallback_items.append((name, label))
+                status_items = fallback_items
             status_text = " | ".join([label for _, label in status_items])
             
             # Rotate status bar position for burn-in protection
