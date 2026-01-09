@@ -460,27 +460,41 @@ class FramebufferClock:
         self.check_network_status()
         
         frame_count = 0
+        last_second = -1
         
         try:
             while self.running:
-                # Update weather periodically
-                self.update_weather()
+                # Check if second has changed
+                current_second = datetime.now().second
                 
-                # Update status information
-                self.update_status()
+                # Only render when time changes (or every 10 seconds for pixel shift)
+                if current_second != last_second or frame_count % 100 == 0:
+                    # Update weather periodically
+                    self.update_weather()
+                    
+                    # Update status information
+                    self.update_status()
+                    
+                    # Update pixel shift
+                    self.update_pixel_shift()
+                    
+                    # Render
+                    self.render()
+                    
+                    last_second = current_second
+                    frame_count += 1
+                    
+                    if frame_count % 600 == 0:  # Log every minute
+                        logging.debug(f"Clock running - {frame_count} frames rendered")
                 
-                # Update pixel shift
-                self.update_pixel_shift()
+                # Check for restart flag
+                if os.path.exists('/tmp/restart_clock'):
+                    logging.info("Restart flag detected - exiting")
+                    os.remove('/tmp/restart_clock')
+                    break
                 
-                # Render
-                self.render()
-                
-                # Sleep for 100ms (10 FPS)
-                time.sleep(0.1)
-                
-                frame_count += 1
-                if frame_count % 600 == 0:  # Log every minute
-                    logging.debug(f"Clock running - {frame_count} frames rendered")
+                # Short sleep to avoid busy-waiting
+                time.sleep(0.05)
         
         except KeyboardInterrupt:
             logging.info("Clock interrupted by user")
