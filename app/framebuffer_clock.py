@@ -731,27 +731,31 @@ class FramebufferClock:
         time_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), time_str, font=self.time_font)
         time_w = time_bbox[2] - time_bbox[0]
         time_h = time_bbox[3] - time_bbox[1]
-        pad_w = 14
-        pad_h = 4
+        pad_left = 8
+        pad_right = 16
+        pad_top = 4
+        pad_bottom = 4
         # Clamp to avoid cropping
-        time_x = max(margin, min(self.fb_width - margin - (time_w+pad_w), center_x - (time_w+pad_w) // 2))
-        time_y = max(margin, min(self.fb_height - margin - (time_h+pad_h), center_y - (time_h+pad_h) // 2 - time_offset_y))
-        time_img = Image.new('RGB', (time_w+pad_w, time_h+pad_h), (0,0,0))
-        # Draw at negative bbox origin to include full glyph bounds
-        ImageDraw.Draw(time_img).text((-time_bbox[0], -time_bbox[1]), time_str, font=self.time_font, fill=display_color)
+        time_x = max(margin, min(self.fb_width - margin - (time_w+pad_left+pad_right), center_x - (time_w+pad_left+pad_right) // 2))
+        time_y = max(margin, min(self.fb_height - margin - (time_h+pad_top+pad_bottom), center_y - (time_h+pad_top+pad_bottom) // 2 - time_offset_y))
+        time_img = Image.new('RGB', (time_w+pad_left+pad_right, time_h+pad_top+pad_bottom), (0,0,0))
+        # Draw with padding to include full glyph bounds
+        ImageDraw.Draw(time_img).text((pad_left - time_bbox[0], pad_top - time_bbox[1]), time_str, font=self.time_font, fill=display_color)
         self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect')
         
         # Render date
         date_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), date_str, font=self.date_font)
         date_w = date_bbox[2] - date_bbox[0]
         date_h = date_bbox[3] - date_bbox[1]
-        d_pad_w = 10
-        d_pad_h = 4
-        date_x = max(margin, min(self.fb_width - margin - (date_w+d_pad_w), center_x - (date_w+d_pad_w) // 2))
-        date_y = max(margin, min(self.fb_height - margin - (date_h+d_pad_h), center_y + date_offset_y))
-        date_img = Image.new('RGB', (date_w+d_pad_w, date_h+d_pad_h), (0,0,0))
-        # Draw at negative bbox origin to include full glyph bounds
-        ImageDraw.Draw(date_img).text((-date_bbox[0], -date_bbox[1]), date_str, font=self.date_font, fill=display_color)
+        d_pad_left = 6
+        d_pad_right = 12
+        d_pad_top = 4
+        d_pad_bottom = 4
+        date_x = max(margin, min(self.fb_width - margin - (date_w+d_pad_left+d_pad_right), center_x - (date_w+d_pad_left+d_pad_right) // 2))
+        date_y = max(margin, min(self.fb_height - margin - (date_h+d_pad_top+d_pad_bottom), center_y + date_offset_y))
+        date_img = Image.new('RGB', (date_w+d_pad_left+d_pad_right, date_h+d_pad_top+d_pad_bottom), (0,0,0))
+        # Draw with padding to include full glyph bounds
+        ImageDraw.Draw(date_img).text((d_pad_left - date_bbox[0], d_pad_top - date_bbox[1]), date_str, font=self.date_font, fill=display_color)
         self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect')
         
         # Draw weather if available
