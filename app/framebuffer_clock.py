@@ -417,12 +417,19 @@ class FramebufferClock:
                 # 24-bit BGR
                 buf = image.convert('BGR').tobytes()
             elif self.fb_bpp == 16:
-                # 16-bit RGB565; Pillow raw encoder supports 'BGR;16'
-                # Try BGR;16 first (little-endian). If colors look off, switch to 'RGB;16'
-                try:
-                    buf = image.convert('RGB').tobytes('raw', 'BGR;16')
-                except Exception:
-                    buf = image.convert('RGB').tobytes('raw', 'RGB;16')
+                # 16-bit RGB565 - manually convert since Pillow doesn't have packer on this system
+                # RGB565: RRRRRGGGGGGBBBBB (5 bits red, 6 bits green, 5 bits blue)
+                import struct
+                rgb_image = image.convert('RGB')
+                pixels = rgb_image.tobytes()
+                rgb565_data = bytearray()
+                for i in range(0, len(pixels), 3):
+                    r = pixels[i] >> 3      # 8-bit to 5-bit
+                    g = pixels[i+1] >> 2    # 8-bit to 6-bit
+                    b = pixels[i+2] >> 3    # 8-bit to 5-bit
+                    rgb565 = (r << 11) | (g << 5) | b
+                    rgb565_data.extend(struct.pack('H', rgb565))  # little-endian uint16
+                buf = bytes(rgb565_data)
             else:
                 # Fallback: write 24-bit BGR
                 buf = image.convert('BGR').tobytes()
