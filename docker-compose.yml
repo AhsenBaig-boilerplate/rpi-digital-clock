@@ -7,6 +7,11 @@ services:
     restart: always
     network_mode: host
     
+    # Framebuffer device access
+    devices:
+      - "/dev/fb0:/dev/fb0"
+      - "/dev/tty0:/dev/tty0"
+    
     # Environment variables for configuration
     environment:
       # SDL configuration for direct framebuffer access (no X server)

@@ -26,36 +26,63 @@ class PygameClock:
     """Pygame-based digital clock display."""
     
     def __init__(self, config: dict, build_info: Optional[dict] = None):
-        """Initialize pygame clock."""
+        """Initialize pygame clock with robust error handling."""
         self.config = config
         self.running = True
         self.build_info = build_info or {}
         
-        # SDL video driver set via environment (SDL_VIDEODRIVER)
-        # fbcon = direct framebuffer (no X server)
-        # Default set in docker-compose.yml
+        # SDL configuration - must be set BEFORE pygame.init()
+        os.environ['SDL_AUDIODRIVER'] = 'dummy'  # Disable audio
+        if 'SDL_VIDEODRIVER' not in os.environ:
+            os.environ['SDL_VIDEODRIVER'] = 'fbcon'  # Direct framebuffer
         
-        # Initialize pygame without audio (eliminates ALSA errors)
-        os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        pygame.init()
-        pygame.mixer.quit()  # Explicitly disable audio
+        logging.info(f"SDL Video Driver: {os.environ.get('SDL_VIDEODRIVER')}")
         
-        # Get display info and set fullscreen
-        display_info = pygame.display.Info()
-        self.screen_width = display_info.current_w
-        self.screen_height = display_info.current_h
+        # Initialize pygame display subsystem explicitly
+        try:
+            pygame.display.init()
+            logging.info("Pygame display subsystem initialized")
+        except Exception as e:
+            logging.error(f"Failed to initialize pygame display: {e}")
+            raise
         
-        logging.info(f"Screen resolution: {self.screen_width}x{self.screen_height}")
+        # Disable audio explicitly (already disabled via env, but belt and suspenders)
+        try:
+            if pygame.mixer.get_init():
+                pygame.mixer.quit()
+        except:
+            pass
+        
+        # Get framebuffer resolution
+        try:
+            display_info = pygame.display.Info()
+            self.screen_width = display_info.current_w
+            self.screen_height = display_info.current_h
+            logging.info(f"Framebuffer resolution: {self.screen_width}x{self.screen_height}")
+        except Exception as e:
+            logging.error(f"Failed to get display info: {e}")
+            # Fallback to common resolution
+            self.screen_width = 1920
+            self.screen_height = 1200
+            logging.warning(f"Using fallback resolution: {self.screen_width}x{self.screen_height}")
         
         # Create fullscreen display
-        self.screen = pygame.display.set_mode(
-            (self.screen_width, self.screen_height),
-            pygame.FULLSCREEN
-        )
-        pygame.display.set_caption("Digital Clock")
+        try:
+            self.screen = pygame.display.set_mode(
+                (self.screen_width, self.screen_height),
+                pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF
+            )
+            pygame.display.set_caption("Digital Clock")
+            logging.info("Pygame display created successfully")
+        except Exception as e:
+            logging.error(f"Failed to create display: {e}")
+            raise
         
-        # Hide mouse cursor AFTER display is initialized
-        pygame.mouse.set_visible(False)
+        # Hide mouse cursor
+        try:
+            pygame.mouse.set_visible(False)
+        except:
+            pass  # Not critical
         
         # Load configuration
         display_config = config.get('display', {})
