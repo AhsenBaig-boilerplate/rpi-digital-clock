@@ -200,6 +200,12 @@ class FramebufferClock:
                 '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
             ]
             
+            # Emoji font path
+            emoji_font_paths = [
+                '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf',
+                '/usr/share/fonts/truetype/noto/NotoEmoji-Regular.ttf',
+            ]
+            
             font_file = None
             for path in font_paths:
                 if os.path.exists(path):
@@ -208,6 +214,17 @@ class FramebufferClock:
             
             if not font_file:
                 raise Exception("No suitable font found")
+            
+            # Load emoji font if available
+            self.emoji_font = None
+            for emoji_path in emoji_font_paths:
+                if os.path.exists(emoji_path):
+                    try:
+                        self.emoji_font = ImageFont.truetype(emoji_path, self.status_font_size)
+                        logging.info(f"Emoji font loaded: {emoji_path}")
+                        break
+                    except Exception as e:
+                        logging.debug(f"Failed to load emoji font {emoji_path}: {e}")
             
             self.time_font = ImageFont.truetype(font_file, self.time_font_size)
             self.date_font = ImageFont.truetype(font_file, self.date_font_size)
@@ -227,6 +244,30 @@ class FramebufferClock:
         """Convert hex color to RGB tuple."""
         hex_color = hex_color.lstrip('#')
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    
+    def draw_text_with_emoji(self, draw, text, position, font, emoji_font, fill):
+        """Draw text with emoji support using font fallback."""
+        if not emoji_font:
+            # No emoji font available, draw normally
+            draw.text(position, text, font=font, fill=fill)
+            return
+        
+        # Simple approach: try to use emoji font for known emoji characters
+        # For production, would need proper Unicode analysis
+        x, y = position
+        emoji_chars = set('🌐📍✓⏰⚙')
+        
+        for char in text:
+            if char in emoji_chars:
+                # Use emoji font
+                draw.text((x, y), char, font=emoji_font, fill=fill)
+                bbox = draw.textbbox((x, y), char, font=emoji_font)
+            else:
+                # Use regular font
+                draw.text((x, y), char, font=font, fill=fill)
+                bbox = draw.textbbox((x, y), char, font=font)
+            
+            x += bbox[2] - bbox[0]
     
     def format_time(self, now):
         """Format time string."""
@@ -430,18 +471,21 @@ class FramebufferClock:
         # Draw status bar
         if self.show_status_bar:
             status_items = []
-            # Network with symbol
+            # Network with emoji
             if self.network_status:
                 if "Connected" in self.network_status:
-                    status_items.append(f"Net: {self.network_status}")
+                    status_items.append(f"🌐 {self.network_status}")
                 else:
-                    status_items.append(f"X {self.network_status}")
-            # Timezone with symbol
+                    status_items.append(f"✗ {self.network_status}")
+            # Timezone with emoji
             if self.timezone_name:
-                status_items.append(f"TZ: {self.timezone_name}")
+                status_items.append(f"📍 {self.timezone_name}")
             # Sync status
             sync_time = self.get_time_since_sync()
-            status_items.append(f"Sync: {sync_time}")
+            if sync_time == "Just now" or "m ago" in sync_time:
+                status_items.append(f"✓ Sync: {sync_time}")
+            else:
+                status_items.append(f"⏰ Sync: {sync_time}")
             
             # Add version info
             if self.build_info:
