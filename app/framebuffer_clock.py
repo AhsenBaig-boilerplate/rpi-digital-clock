@@ -430,21 +430,21 @@ class FramebufferClock:
         # Draw status bar
         if self.show_status_bar:
             status_items = []
-            # Network with emoji
+            # Network with symbol
             if self.network_status:
                 if "Connected" in self.network_status:
-                    status_items.append(f"🌐 {self.network_status}")
+                    status_items.append(f"Net: {self.network_status}")
                 else:
-                    status_items.append(f"✗ {self.network_status}")
-            # Timezone with emoji
+                    status_items.append(f"X {self.network_status}")
+            # Timezone with symbol
             if self.timezone_name:
-                status_items.append(f"📍 {self.timezone_name}")
-            # Sync with emoji
+                status_items.append(f"TZ: {self.timezone_name}")
+            # Sync with symbol
             sync_time = self.get_time_since_sync()
             if sync_time == "Just now" or "m ago" in sync_time:
-                status_items.append(f"✓ Sync: {sync_time}")
+                status_items.append(f"Sync: {sync_time} \u2713")
             else:
-                status_items.append(f"⏰ Sync: {sync_time}")
+                status_items.append(f"Sync: {sync_time}")
             
             # Add version info
             if self.build_info:
@@ -568,7 +568,7 @@ class FramebufferClock:
         draw.rectangle([0, 0, overlay_w-1, overlay_h-1], outline=(0, 255, 0), width=3)
         
         # Menu title
-        title_text = "⚙ SETTINGS MENU"
+        title_text = ">> SETTINGS MENU <<"
         title_font = self.date_font
         draw.text((20, 20), title_text, font=title_font, fill=(0, 255, 0))
         
