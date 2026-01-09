@@ -27,6 +27,12 @@ try:
 except ImportError:
     WeatherService = None
 
+# Import RTC manager
+try:
+    from rtc import RTCManager
+except ImportError:
+    RTCManager = None
+
 
 class FramebufferClock:
     """Direct framebuffer digital clock display."""
@@ -134,6 +140,17 @@ class FramebufferClock:
         # Weather update tracking
         self.last_weather_update = 0
         self.weather_text = ""
+        
+        # Initialize RTC manager if available
+        rtc_enabled = os.environ.get('RTC_ENABLED', '').lower() in ('true', '1', 'yes') or config.get('time', {}).get('rtc_enabled', False)
+        self.rtc_manager = None
+        if RTCManager and rtc_enabled:
+            try:
+                self.rtc_manager = RTCManager(enabled=True)
+                if self.rtc_manager.available:
+                    logging.info("RTC manager initialized and hardware detected")
+            except Exception as e:
+                logging.warning(f"RTC initialization failed: {e}")
         
         # Get initial NTP sync time
         self.check_last_ntp_sync()
@@ -255,7 +272,7 @@ class FramebufferClock:
         # Simple approach: try to use emoji font for known emoji characters
         # For production, would need proper Unicode analysis
         x, y = position
-        emoji_chars = set('🌐📍✓⏰⚙')
+        emoji_chars = set('🌐📍✓⏰⚙✗')
         
         for char in text:
             if char in emoji_chars:
@@ -268,6 +285,30 @@ class FramebufferClock:
                 bbox = draw.textbbox((x, y), char, font=font)
             
             x += bbox[2] - bbox[0]
+    
+    def get_text_bbox_with_emoji(self, text, font, emoji_font):
+        """Get bounding box for text with emoji support."""
+        if not emoji_font:
+            # No emoji font, use regular bbox
+            temp_draw = ImageDraw.Draw(Image.new('RGB', (1, 1)))
+            return temp_draw.textbbox((0, 0), text, font=font)
+        
+        # Calculate width with emoji support
+        x = 0
+        max_height = 0
+        emoji_chars = set('🌐📍✓⏰⚙✗')
+        temp_draw = ImageDraw.Draw(Image.new('RGB', (1, 1)))
+        
+        for char in text:
+            if char in emoji_chars:
+                bbox = temp_draw.textbbox((0, 0), char, font=emoji_font)
+            else:
+                bbox = temp_draw.textbbox((0, 0), char, font=font)
+            
+            x += bbox[2] - bbox[0]
+            max_height = max(max_height, bbox[3] - bbox[1])
+        
+        return (0, 0, x, max_height)
     
     def format_time(self, now):
         """Format time string."""
@@ -335,15 +376,52 @@ class FramebufferClock:
             self.network_status = "No Network"
     
     def check_last_ntp_sync(self):
-        """Check last NTP synchronization time."""
+        """Check last NTP synchronization time using multiple methods."""
+        # Method 1: Try timedatectl
         try:
             result = subprocess.run(['timedatectl', 'show', '--property=NTPSynchronized', '--value'],
                                     capture_output=True, text=True, timeout=2)
             if result.returncode == 0 and result.stdout.strip() == 'yes':
                 self.last_ntp_sync = datetime.now()
+                return
         except:
-            if not self.last_ntp_sync:
+            pass
+        
+        # Method 2: Check systemd-timesyncd status
+        try:
+            result = subprocess.run(['systemctl', 'status', 'systemd-timesyncd'],
+                                    capture_output=True, text=True, timeout=2)
+            if result.returncode == 0 and 'synchronized' in result.stdout.lower():
                 self.last_ntp_sync = datetime.now()
+                return
+        except:
+            pass
+        
+        # Method 3: Check if chrony or ntpd is running
+        try:
+            for service in ['chronyd', 'ntpd']:
+                result = subprocess.run(['pgrep', service],
+                                        capture_output=True, timeout=2)
+                if result.returncode == 0:
+                    # Service is running, assume sync happened
+                    if not self.last_ntp_sync:
+                        self.last_ntp_sync = datetime.now()
+                    return
+        except:
+            pass
+        
+        # Method 4: Use RTC if available
+        if self.rtc_manager and self.rtc_manager.available:
+            rtc_time = self.rtc_manager.read_time()
+            if rtc_time:
+                self.last_ntp_sync = rtc_time
+                logging.info("Using RTC time as sync reference")
+                return
+        
+        # Fallback: Assume synced if network is available
+        if not self.last_ntp_sync and self.network_status == "Connected":
+            self.last_ntp_sync = datetime.now()
+            logging.debug("Assumed NTP sync based on network connectivity")
     
     def get_time_since_sync(self):
         """Get human-readable time since last NTP sync."""
@@ -501,16 +579,35 @@ class FramebufferClock:
                     status_items.append(" ".join(parts))
             
             status_text = " | ".join(status_items)
-            status_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), status_text, font=self.status_font)
-            status_w = status_bbox[2] - status_bbox[0]
-            status_h = status_bbox[3] - status_bbox[1]
-            # Apply pixel shift to status bar for burn-in protection
-            status_x = max(margin, min(self.fb_width - margin - status_w, self.fb_width // 2 - status_w // 2 + self.pixel_shift_x))
-            status_y = max(margin, self.fb_height - status_h - margin + self.pixel_shift_y)
-            status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
-            # Draw at negative bbox origin to include full glyph bounds
-            ImageDraw.Draw(status_img).text((-status_bbox[0], -status_bbox[1]), status_text, font=self.status_font, fill=status_color)
-            self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
+            
+            # Use emoji-aware rendering if emoji font is available
+            if self.emoji_font:
+                # Calculate size using emoji-aware function
+                temp_img = Image.new('RGB', (self.fb_width, 100), (0,0,0))
+                temp_draw = ImageDraw.Draw(temp_img)
+                status_bbox = self.get_text_bbox_with_emoji(status_text, self.status_font, self.emoji_font)
+                status_w = status_bbox[2] - status_bbox[0]
+                status_h = status_bbox[3] - status_bbox[1]
+                # Apply pixel shift to status bar for burn-in protection
+                status_x = max(margin, min(self.fb_width - margin - status_w, self.fb_width // 2 - status_w // 2 + self.pixel_shift_x))
+                status_y = max(margin, self.fb_height - status_h - margin + self.pixel_shift_y)
+                status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
+                status_draw = ImageDraw.Draw(status_img)
+                # Draw with emoji support
+                self.draw_text_with_emoji(status_draw, status_text, (0, 0), self.status_font, self.emoji_font, status_color)
+                self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
+            else:
+                # Fallback to regular rendering
+                status_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), status_text, font=self.status_font)
+                status_w = status_bbox[2] - status_bbox[0]
+                status_h = status_bbox[3] - status_bbox[1]
+                # Apply pixel shift to status bar for burn-in protection
+                status_x = max(margin, min(self.fb_width - margin - status_w, self.fb_width // 2 - status_w // 2 + self.pixel_shift_x))
+                status_y = max(margin, self.fb_height - status_h - margin + self.pixel_shift_y)
+                status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
+                # Draw at negative bbox origin to include full glyph bounds
+                ImageDraw.Draw(status_img).text((-status_bbox[0], -status_bbox[1]), status_text, font=self.status_font, fill=status_color)
+                self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
         
         t_draw = time.time()
         # Write shadow buffer to framebuffer
