@@ -330,6 +330,34 @@ class FramebufferClock:
         
         return (0, 0, x, max_height)
 
+    def _draw_icon(self, draw, x, y, icon_type, color):
+        """Draw a tiny bitmap icon (10x10) for status items."""
+        if icon_type == 'network':
+            # Globe/wifi icon
+            draw.ellipse([x+2, y+2, x+8, y+8], outline=color)
+            draw.line([x+5, y+2, x+5, y+8], fill=color)
+            draw.line([x+2, y+5, x+8, y+5], fill=color)
+        elif icon_type == 'sync_ok':
+            # Checkmark
+            draw.line([x+2, y+5, x+4, y+7], fill=color, width=2)
+            draw.line([x+4, y+7, x+8, y+3], fill=color, width=2)
+        elif icon_type == 'sync_old':
+            # Clock icon
+            draw.ellipse([x+2, y+2, x+8, y+8], outline=color)
+            draw.line([x+5, y+3, x+5, y+5], fill=color)
+            draw.line([x+5, y+5, x+7, y+5], fill=color)
+        elif icon_type == 'error':
+            # X mark
+            draw.line([x+2, y+2, x+8, y+8], fill=color, width=2)
+            draw.line([x+8, y+2, x+2, y+8], fill=color, width=2)
+        elif icon_type == 'settings':
+            # Gear icon
+            draw.rectangle([x+3, y+3, x+7, y+7], outline=color)
+            draw.line([x+5, y+1, x+5, y+3], fill=color)
+            draw.line([x+5, y+7, x+5, y+9], fill=color)
+            draw.line([x+1, y+5, x+3, y+5], fill=color)
+            draw.line([x+7, y+5, x+9, y+5], fill=color)
+
     # ------------------------
     # Input handling
     # ------------------------
@@ -731,10 +759,10 @@ class FramebufferClock:
         time_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), time_str, font=self.time_font)
         time_w = time_bbox[2] - time_bbox[0]
         time_h = time_bbox[3] - time_bbox[1]
-        pad_left = 8
-        pad_right = 16
-        pad_top = 4
-        pad_bottom = 4
+        pad_left = 12
+        pad_right = 35
+        pad_top = 6
+        pad_bottom = 6
         # Clamp to avoid cropping
         time_x = max(margin, min(self.fb_width - margin - (time_w+pad_left+pad_right), center_x - (time_w+pad_left+pad_right) // 2))
         time_y = max(margin, min(self.fb_height - margin - (time_h+pad_top+pad_bottom), center_y - (time_h+pad_top+pad_bottom) // 2 - time_offset_y))
@@ -747,10 +775,10 @@ class FramebufferClock:
         date_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), date_str, font=self.date_font)
         date_w = date_bbox[2] - date_bbox[0]
         date_h = date_bbox[3] - date_bbox[1]
-        d_pad_left = 6
-        d_pad_right = 12
-        d_pad_top = 4
-        d_pad_bottom = 4
+        d_pad_left = 10
+        d_pad_right = 25
+        d_pad_top = 6
+        d_pad_bottom = 6
         date_x = max(margin, min(self.fb_width - margin - (date_w+d_pad_left+d_pad_right), center_x - (date_w+d_pad_left+d_pad_right) // 2))
         date_y = max(margin, min(self.fb_height - margin - (date_h+d_pad_top+d_pad_bottom), center_y + date_offset_y))
         date_img = Image.new('RGB', (date_w+d_pad_left+d_pad_right, date_h+d_pad_top+d_pad_bottom), (0,0,0))
@@ -769,21 +797,21 @@ class FramebufferClock:
         # Draw status bar
         if self.show_status_bar:
             status_items = []  # list of (name, label)
-            # Network with emoji
+            # Network with icon
             if self.network_status:
                 if "Connected" in self.network_status:
-                    status_items.append(("network", f"🌐 {self.network_status}"))
+                    status_items.append(("network", self.network_status))
                 else:
-                    status_items.append(("network", f"✗ {self.network_status}"))
-            # Timezone (text prefix instead of emoji)
+                    status_items.append(("error", self.network_status))
+            # Timezone
             if self.timezone_name:
                 status_items.append(("timezone", f"TZ:{self.timezone_name}"))
             # Sync status
             sync_time = self.get_time_since_sync()
             if sync_time == "Just now" or "m ago" in sync_time:
-                status_items.append(("sync", f"✓ Sync: {sync_time}"))
+                status_items.append(("sync_ok", f"Sync: {sync_time}"))
             else:
-                status_items.append(("sync", f"⏰ Sync: {sync_time}"))
+                status_items.append(("sync_old", f"Sync: {sync_time}"))
             
             # Add version info
             if self.build_info:
@@ -798,18 +826,8 @@ class FramebufferClock:
                 if parts:
                     status_items.append(("version", " ".join(parts)))
             # Always append settings item for overlay access
-            if self.emoji_font:
-                status_items.append(("settings", "⚙ Settings"))
-            else:
-                status_items.append(("settings", "SET"))
+            status_items.append(("settings", "Settings"))
             
-            # If no emoji font, replace certain emoji with ASCII fallbacks to avoid tofu rectangles
-            if not self.emoji_font:
-                fallback_items = []
-                for name, label in status_items:
-                    label = label.replace('🌐', 'NET').replace('⏰', '!').replace('✓', 'OK').replace('✗', 'X')
-                    fallback_items.append((name, label))
-                status_items = fallback_items
             status_text = " | ".join([label for _, label in status_items])
             
             # Rotate status bar position for burn-in protection
@@ -823,12 +841,22 @@ class FramebufferClock:
             
             # Use emoji-aware rendering if emoji font is available
             if self.emoji_font:
-                # Calculate size using emoji-aware function
-                temp_img = Image.new('RGB', (self.fb_width, 100), (0,0,0))
-                temp_draw = ImageDraw.Draw(temp_img)
-                status_bbox = self.get_text_bbox_with_emoji(status_text, self.status_font, self.emoji_font)
-                status_w = status_bbox[2] - status_bbox[0]
-                status_h = status_bbox[3] - status_bbox[1]
+                # Calculate size including icons
+                temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
+                status_w = 0
+                status_h = 0
+                for idx, (name, label) in enumerate(status_items):
+                    # Add icon width
+                    if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
+                        status_w += 12
+                    # Add label width
+                    lb = temp_draw.textbbox((0,0), label, font=self.status_font)
+                    status_w += lb[2] - lb[0]
+                    status_h = max(status_h, lb[3] - lb[1])
+                    # Add separator width
+                    if idx < len(status_items) - 1:
+                        sep = temp_draw.textbbox((0,0), " | ", font=self.status_font)
+                        status_w += sep[2] - sep[0]
                 
                 # Position based on rotation
                 if position_name == 'bottom-left':
@@ -846,26 +874,52 @@ class FramebufferClock:
                 
                 status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
                 status_draw = ImageDraw.Draw(status_img)
-                # Draw with emoji support
-                self.draw_text_with_emoji(status_draw, status_text, (0, 0), self.status_font, self.emoji_font, status_color)
+                # Draw icons and text
+                cursor_x = 0
+                for idx, (name, label) in enumerate(status_items):
+                    # Draw icon if applicable
+                    if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
+                        self._draw_icon(status_draw, cursor_x, 0, name, status_color)
+                        cursor_x += 12  # icon width + spacing
+                    # Draw label text
+                    status_draw.text((cursor_x, 0), label, font=self.status_font, fill=status_color)
+                    lb = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), label, font=self.status_font)
+                    cursor_x += lb[2] - lb[0]
+                    if idx < len(status_items) - 1:
+                        status_draw.text((cursor_x, 0), " | ", font=self.status_font, fill=status_color)
+                        sep = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), " | ", font=self.status_font)
+                        cursor_x += sep[2] - sep[0]
                 # Build clickable regions
                 self.status_item_regions = []
                 cursor_rel_x = 0
                 for idx, (name, label) in enumerate(status_items):
-                    lb = self.get_text_bbox_with_emoji(label, self.status_font, self.emoji_font)
-                    iw = lb[2] - lb[0]
+                    icon_w = 12 if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings'] else 0
+                    lb = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), label, font=self.status_font)
+                    iw = icon_w + (lb[2] - lb[0])
                     ih = lb[3] - lb[1]
                     self.status_item_regions.append((name, (status_x + cursor_rel_x, status_y, iw, ih)))
                     cursor_rel_x += iw
                     if idx < len(status_items) - 1:
-                        sep = self.get_text_bbox_with_emoji(" | ", self.status_font, self.emoji_font)
+                        sep = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), " | ", font=self.status_font)
                         cursor_rel_x += sep[2] - sep[0]
                 self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
             else:
                 # Fallback to regular rendering
-                status_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), status_text, font=self.status_font)
-                status_w = status_bbox[2] - status_bbox[0]
-                status_h = status_bbox[3] - status_bbox[1]
+                temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
+                status_w = 0
+                status_h = 0
+                for idx, (name, label) in enumerate(status_items):
+                    # Add icon width
+                    if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
+                        status_w += 12
+                    # Add label width
+                    lb = temp_draw.textbbox((0,0), label, font=self.status_font)
+                    status_w += lb[2] - lb[0]
+                    status_h = max(status_h, lb[3] - lb[1])
+                    # Add separator width
+                    if idx < len(status_items) - 1:
+                        sep = temp_draw.textbbox((0,0), " | ", font=self.status_font)
+                        status_w += sep[2] - sep[0]
                 
                 # Position based on rotation
                 if position_name == 'bottom-left':
@@ -882,14 +936,29 @@ class FramebufferClock:
                     status_y = margin
                 
                 status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
-                # Draw at negative bbox origin to include full glyph bounds
-                ImageDraw.Draw(status_img).text((-status_bbox[0], -status_bbox[1]), status_text, font=self.status_font, fill=status_color)
+                status_draw = ImageDraw.Draw(status_img)
+                # Draw icons and text
+                cursor_x = 0
+                for idx, (name, label) in enumerate(status_items):
+                    # Draw icon if applicable
+                    if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
+                        self._draw_icon(status_draw, cursor_x, 0, name, status_color)
+                        cursor_x += 12  # icon width + spacing
+                    # Draw label text
+                    status_draw.text((cursor_x, 0), label, font=self.status_font, fill=status_color)
+                    lb = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), label, font=self.status_font)
+                    cursor_x += lb[2] - lb[0]
+                    if idx < len(status_items) - 1:
+                        status_draw.text((cursor_x, 0), " | ", font=self.status_font, fill=status_color)
+                        sep = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), " | ", font=self.status_font)
+                        cursor_x += sep[2] - sep[0]
                 # Build clickable regions (approximate without emoji)
                 self.status_item_regions = []
                 cursor_rel_x = 0
                 for idx, (name, label) in enumerate(status_items):
+                    icon_w = 12 if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings'] else 0
                     lb = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), label, font=self.status_font)
-                    iw = lb[2] - lb[0]
+                    iw = icon_w + (lb[2] - lb[0])
                     ih = lb[3] - lb[1]
                     self.status_item_regions.append((name, (status_x + cursor_rel_x, status_y, iw, ih)))
                     cursor_rel_x += iw
