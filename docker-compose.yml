@@ -9,9 +9,8 @@ services:
     
     # Environment variables for configuration
     environment:
-      # SDL configuration for direct framebuffer access (no X server)
-      - SDL_VIDEODRIVER=fbcon
-      - SDL_FBDEV=/dev/fb0
+      # SDL configuration for direct display access (no X server)
+      - SDL_VIDEODRIVER=kmsdrm
       - SDL_NOMOUSE=1
       
       # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
@@ -64,6 +63,7 @@ services:
       - "/dev/tty0:/dev/tty0"
       - "/dev/tty1:/dev/tty1"
       - "/dev/fb0:/dev/fb0"
+      - "/dev/dri:/dev/dri"
       - "/dev/vchiq:/dev/vchiq"
       - "/dev/i2c-1:/dev/i2c-1"  # I2C for DS3231 RTC module
       - "/dev/rtc0:/dev/rtc0"     # RTC device

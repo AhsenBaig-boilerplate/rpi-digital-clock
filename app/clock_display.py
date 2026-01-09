@@ -31,20 +31,44 @@ class PygameClock:
         self.running = True
         self.build_info = build_info or {}
         
-        # SDL configuration - must be set BEFORE pygame.init()
+        # SDL configuration - must be set BEFORE initializing display
         os.environ['SDL_AUDIODRIVER'] = 'dummy'  # Disable audio
-        if 'SDL_VIDEODRIVER' not in os.environ:
-            os.environ['SDL_VIDEODRIVER'] = 'fbcon'  # Direct framebuffer
-        
-        logging.info(f"SDL Video Driver: {os.environ.get('SDL_VIDEODRIVER')}")
-        
-        # Initialize pygame display subsystem explicitly
-        try:
-            pygame.display.init()
-            logging.info("Pygame display subsystem initialized")
-        except Exception as e:
-            logging.error(f"Failed to initialize pygame display: {e}")
-            raise
+        preferred_drivers = [
+            os.environ.get('SDL_VIDEODRIVER'),
+            'kmsdrm',
+            'fbcon',
+            'directfb',
+            'x11',
+        ]
+        # Remove Nones and duplicates while preserving order
+        seen = set()
+        drivers = [d for d in preferred_drivers if d and (d not in seen and not seen.add(d))]
+        if not drivers:
+            drivers = ['kmsdrm', 'fbcon', 'x11']
+
+        self.screen = None
+        init_error = None
+        for drv in drivers:
+            try:
+                os.environ['SDL_VIDEODRIVER'] = drv
+                logging.info(f"Trying SDL driver: {drv}")
+                pygame.display.init()
+                # Create fullscreen display with desktop size (0,0)
+                self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF)
+                pygame.display.set_caption("Digital Clock")
+                logging.info(f"Pygame display created with driver '{drv}'")
+                break
+            except Exception as e:
+                init_error = e
+                logging.error(f"SDL driver '{drv}' failed: {e}")
+                try:
+                    pygame.display.quit()
+                except:
+                    pass
+
+        if self.screen is None:
+            logging.error(f"All SDL drivers failed to initialize. Last error: {init_error}")
+            raise init_error or RuntimeError("No SDL video driver worked")
         
         # Disable audio explicitly (already disabled via env, but belt and suspenders)
         try:
@@ -53,30 +77,15 @@ class PygameClock:
         except:
             pass
         
-        # Get framebuffer resolution
+        # Determine resolution from surface
         try:
-            display_info = pygame.display.Info()
-            self.screen_width = display_info.current_w
-            self.screen_height = display_info.current_h
-            logging.info(f"Framebuffer resolution: {self.screen_width}x{self.screen_height}")
+            self.screen_width, self.screen_height = self.screen.get_size()
+            logging.info(f"Display resolution: {self.screen_width}x{self.screen_height}")
         except Exception as e:
-            logging.error(f"Failed to get display info: {e}")
-            # Fallback to common resolution
+            logging.error(f"Failed to get display surface size: {e}")
             self.screen_width = 1920
             self.screen_height = 1200
             logging.warning(f"Using fallback resolution: {self.screen_width}x{self.screen_height}")
-        
-        # Create fullscreen display
-        try:
-            self.screen = pygame.display.set_mode(
-                (self.screen_width, self.screen_height),
-                pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF
-            )
-            pygame.display.set_caption("Digital Clock")
-            logging.info("Pygame display created successfully")
-        except Exception as e:
-            logging.error(f"Failed to create display: {e}")
-            raise
         
         # Hide mouse cursor
         try:
