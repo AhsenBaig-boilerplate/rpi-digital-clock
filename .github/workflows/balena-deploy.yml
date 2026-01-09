@@ -174,12 +174,12 @@ jobs:
           path: build-metadata.json
 
       - name: Create GitHub Release with prefixed title
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v1
         if: ${{ always() }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.version.outputs.version }}
-          release_name: ${{ steps.release_title.outputs.title }}
+          name: ${{ steps.release_title.outputs.title }}
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

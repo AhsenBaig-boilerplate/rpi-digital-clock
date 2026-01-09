@@ -751,7 +751,8 @@ class FramebufferClock:
         
         # Dynamic margins and offsets scaled to DISPLAY_RESOLUTION if provided
         scale = self.get_display_scale()
-        margin = int(10 * scale)
+        # Increase margin to keep time text away from framebuffer edges
+        margin = int(30 * scale)
         time_offset_y = int(60 * scale)
         date_offset_y = int(100 * scale)
         
@@ -760,7 +761,8 @@ class FramebufferClock:
         time_w = time_bbox[2] - time_bbox[0]
         time_h = time_bbox[3] - time_bbox[1]
         pad_left = 12
-        pad_right = 35
+        # Add generous right padding to prevent right-edge glyph clipping (e.g., 'M' in 'AM')
+        pad_right = 60
         pad_top = 6
         pad_bottom = 6
         # Clamp to avoid cropping
