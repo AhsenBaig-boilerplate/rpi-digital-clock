@@ -349,11 +349,11 @@ class FramebufferClock:
         time_y = center_y - time_h // 2 - 60
         draw.text((time_x, time_y), time_str, font=self.time_font, fill=display_color)
         
-        # Draw date (centered)
+        # Draw date (centered with more spacing)
         date_bbox = draw.textbbox((0, 0), date_str, font=self.date_font)
         date_w = date_bbox[2] - date_bbox[0]
         date_x = center_x - date_w // 2
-        date_y = center_y + 60
+        date_y = center_y + 100  # Increased from 60 to 100
         draw.text((date_x, date_y), date_str, font=self.date_font, fill=display_color)
         
         # Draw weather if available
@@ -400,10 +400,10 @@ class FramebufferClock:
         
         t_write = time.time()
         
-        # Log timing periodically
+        # Log timing on every render for debugging
         if not hasattr(self, '_last_timing_log'):
             self._last_timing_log = 0
-        if time.time() - self._last_timing_log > 10:
+        if time.time() - self._last_timing_log > 5:  # Log every 5 seconds
             self._last_timing_log = time.time()
             total = (t_write - t_start) * 1000
             prep = (t_prep - t_start) * 1000
@@ -461,14 +461,17 @@ class FramebufferClock:
         
         frame_count = 0
         last_second = -1
+        loop_count = 0
         
         try:
             while self.running:
+                loop_count += 1
+                
                 # Check if second has changed
                 current_second = datetime.now().second
                 
-                # Only render when time changes (or every 10 seconds for pixel shift)
-                if current_second != last_second or frame_count % 100 == 0:
+                # Only render when time changes
+                if current_second != last_second:
                     # Update weather periodically
                     self.update_weather()
                     
@@ -484,8 +487,9 @@ class FramebufferClock:
                     last_second = current_second
                     frame_count += 1
                     
-                    if frame_count % 600 == 0:  # Log every minute
-                        logging.debug(f"Clock running - {frame_count} frames rendered")
+                    if frame_count % 60 == 0:  # Log every minute
+                        avg_loops = loop_count / frame_count if frame_count > 0 else 0
+                        logging.info(f"Clock stats: {frame_count} renders, {loop_count} loops, {avg_loops:.1f} loops/render")
                 
                 # Check for restart flag
                 if os.path.exists('/tmp/restart_clock'):
