@@ -309,13 +309,18 @@ class FramebufferClock:
         """Render the clock display to framebuffer."""
         t_start = time.time()
         
-        # Create image
-        image = Image.new('RGB', (self.fb_width, self.fb_height), self.bg_color)
-        draw = ImageDraw.Draw(image)
-        
-        # Check screensaver
-        if not self.should_show_display():
-            self.write_to_framebuffer(image)
+        try:
+            # Create image
+            image = Image.new('RGB', (self.fb_width, self.fb_height), self.bg_color)
+            draw = ImageDraw.Draw(image)
+            
+            # Check screensaver
+            if not self.should_show_display():
+                logging.debug("Screensaver active - blanking display")
+                self.write_to_framebuffer(image)
+                return
+        except Exception as e:
+            logging.error(f"Error in render setup: {e}", exc_info=True)
             return
         
         # Update brightness
@@ -417,19 +422,24 @@ class FramebufferClock:
                 # 24-bit BGR
                 buf = image.convert('BGR').tobytes()
             elif self.fb_bpp == 16:
-                # 16-bit RGB565 - manually convert since Pillow doesn't have packer on this system
+                # 16-bit RGB565 - fast conversion using array module
                 # RGB565: RRRRRGGGGGGBBBBB (5 bits red, 6 bits green, 5 bits blue)
-                import struct
+                import array
                 rgb_image = image.convert('RGB')
-                pixels = rgb_image.tobytes()
-                rgb565_data = bytearray()
-                for i in range(0, len(pixels), 3):
-                    r = pixels[i] >> 3      # 8-bit to 5-bit
-                    g = pixels[i+1] >> 2    # 8-bit to 6-bit
-                    b = pixels[i+2] >> 3    # 8-bit to 5-bit
-                    rgb565 = (r << 11) | (g << 5) | b
-                    rgb565_data.extend(struct.pack('H', rgb565))  # little-endian uint16
-                buf = bytes(rgb565_data)
+                rgb_bytes = rgb_image.tobytes()
+                
+                # Pre-allocate uint16 array
+                pixel_count = self.fb_width * self.fb_height
+                rgb565 = array.array('H')  # unsigned short (uint16)
+                
+                # Vectorized conversion: process pixels in stride
+                for i in range(0, len(rgb_bytes), 3):
+                    r = (rgb_bytes[i] >> 3) & 0x1F       # Top 5 bits of red
+                    g = (rgb_bytes[i+1] >> 2) & 0x3F     # Top 6 bits of green
+                    b = (rgb_bytes[i+2] >> 3) & 0x1F     # Top 5 bits of blue
+                    rgb565.append((r << 11) | (g << 5) | b)
+                
+                buf = rgb565.tobytes()
             else:
                 # Fallback: write 24-bit BGR
                 buf = image.convert('BGR').tobytes()
