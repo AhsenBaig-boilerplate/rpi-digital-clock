@@ -422,24 +422,22 @@ class FramebufferClock:
                 # 24-bit BGR
                 buf = image.convert('BGR').tobytes()
             elif self.fb_bpp == 16:
-                # 16-bit RGB565 - fast conversion using array module
+                # 16-bit RGB565 - optimized with list comprehension + struct
                 # RGB565: RRRRRGGGGGGBBBBB (5 bits red, 6 bits green, 5 bits blue)
-                import array
+                import struct
                 rgb_image = image.convert('RGB')
                 rgb_bytes = rgb_image.tobytes()
                 
-                # Pre-allocate uint16 array
-                pixel_count = self.fb_width * self.fb_height
-                rgb565 = array.array('H')  # unsigned short (uint16)
+                # List comprehension is much faster than array.append()
+                rgb565_values = [
+                    ((rgb_bytes[i] >> 3) << 11) |      # Red: bits 11-15
+                    ((rgb_bytes[i+1] >> 2) << 5) |     # Green: bits 5-10
+                    (rgb_bytes[i+2] >> 3)              # Blue: bits 0-4
+                    for i in range(0, len(rgb_bytes), 3)
+                ]
                 
-                # Vectorized conversion: process pixels in stride
-                for i in range(0, len(rgb_bytes), 3):
-                    r = (rgb_bytes[i] >> 3) & 0x1F       # Top 5 bits of red
-                    g = (rgb_bytes[i+1] >> 2) & 0x3F     # Top 6 bits of green
-                    b = (rgb_bytes[i+2] >> 3) & 0x1F     # Top 5 bits of blue
-                    rgb565.append((r << 11) | (g << 5) | b)
-                
-                buf = rgb565.tobytes()
+                # Pack all values at once
+                buf = struct.pack(f'<{len(rgb565_values)}H', *rgb565_values)
             else:
                 # Fallback: write 24-bit BGR
                 buf = image.convert('BGR').tobytes()
