@@ -13,6 +13,7 @@ import random
 from datetime import datetime
 from pathlib import Path
 import yaml
+from typing import Optional
 
 # Import weather service
 try:
@@ -24,7 +25,7 @@ except ImportError:
 class PygameClock:
     """Pygame-based digital clock display."""
     
-    def __init__(self, config: dict, build_info: dict | None = None):
+    def __init__(self, config: dict, build_info: Optional[dict] = None):
         """Initialize pygame clock."""
         self.config = config
         self.running = True

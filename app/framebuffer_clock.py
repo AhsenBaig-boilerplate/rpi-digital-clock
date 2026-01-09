@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 import yaml
 from PIL import Image, ImageDraw, ImageFont
+from typing import Optional
 
 # Import weather service
 try:
@@ -26,7 +27,7 @@ except ImportError:
 class FramebufferClock:
     """Direct framebuffer digital clock display."""
     
-    def __init__(self, config: dict, build_info: dict | None = None):
+    def __init__(self, config: dict, build_info: Optional[dict] = None):
         """Initialize framebuffer clock."""
         self.config = config
         self.running = True

@@ -6,6 +6,7 @@ import logging
 import sys
 import json
 from pathlib import Path
+from typing import Optional
 
 
 def setup_logging(log_level: str = 'INFO'):
@@ -37,7 +38,7 @@ def setup_logging(log_level: str = 'INFO'):
     logging.info(f"Logging initialized at {log_level} level")
 
 
-def load_build_info() -> dict | None:
+def load_build_info() -> Optional[dict]:
     """Load build info JSON embedded in the app image if present."""
     build_path = Path(__file__).parent / "build-info.json"
     try:
