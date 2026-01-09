@@ -12,6 +12,7 @@ RUN install_packages \
     python3-yaml \
     python3-flask \
     python3-requests \
+    python3-numpy \
     python3-pip \
     systemd-timesyncd \
     ntpdate \
@@ -33,7 +34,7 @@ COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
 # Sanity check: verify critical imports
-RUN python3 -c "import yaml, requests, flask; from PIL import Image, ImageDraw, ImageFont; print('Import check: OK')"
+RUN python3 -c "import yaml, requests, flask, numpy; from PIL import Image, ImageDraw, ImageFont; print('Import check: OK')"
 
 # Copy application files
 COPY app/ .

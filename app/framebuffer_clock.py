@@ -422,22 +422,23 @@ class FramebufferClock:
                 # 24-bit BGR
                 buf = image.convert('BGR').tobytes()
             elif self.fb_bpp == 16:
-                # 16-bit RGB565 - optimized with list comprehension + struct
+                # 16-bit RGB565 - ultra-fast numpy vectorized conversion
                 # RGB565: RRRRRGGGGGGBBBBB (5 bits red, 6 bits green, 5 bits blue)
-                import struct
+                import numpy as np
                 rgb_image = image.convert('RGB')
-                rgb_bytes = rgb_image.tobytes()
                 
-                # List comprehension is much faster than array.append()
-                rgb565_values = [
-                    ((rgb_bytes[i] >> 3) << 11) |      # Red: bits 11-15
-                    ((rgb_bytes[i+1] >> 2) << 5) |     # Green: bits 5-10
-                    (rgb_bytes[i+2] >> 3)              # Blue: bits 0-4
-                    for i in range(0, len(rgb_bytes), 3)
-                ]
+                # Convert to numpy array for vectorized operations
+                rgb_array = np.frombuffer(rgb_image.tobytes(), dtype=np.uint8)
+                rgb_array = rgb_array.reshape((self.fb_height, self.fb_width, 3))
                 
-                # Pack all values at once
-                buf = struct.pack(f'<{len(rgb565_values)}H', *rgb565_values)
+                # Vectorized RGB to RGB565 conversion (MUCH faster than Python loops)
+                r = (rgb_array[:, :, 0] >> 3).astype(np.uint16)
+                g = (rgb_array[:, :, 1] >> 2).astype(np.uint16)
+                b = (rgb_array[:, :, 2] >> 3).astype(np.uint16)
+                rgb565 = (r << 11) | (g << 5) | b
+                
+                # Convert to little-endian bytes
+                buf = rgb565.astype('<u2').tobytes()
             else:
                 # Fallback: write 24-bit BGR
                 buf = image.convert('BGR').tobytes()
