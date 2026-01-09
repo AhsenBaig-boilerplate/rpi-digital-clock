@@ -19,6 +19,7 @@ RUN install_packages \
     fonts-dejavu-core \
     fonts-freefont-ttf \
     fonts-noto-color-emoji \
+    fonts-noto-emoji \
     bash \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*

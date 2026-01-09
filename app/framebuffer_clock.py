@@ -731,10 +731,12 @@ class FramebufferClock:
         time_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), time_str, font=self.time_font)
         time_w = time_bbox[2] - time_bbox[0]
         time_h = time_bbox[3] - time_bbox[1]
+        pad_w = 6
+        pad_h = 2
         # Clamp to avoid cropping
-        time_x = max(margin, min(self.fb_width - margin - time_w, center_x - time_w // 2))
-        time_y = max(margin, min(self.fb_height - margin - time_h, center_y - time_h // 2 - time_offset_y))
-        time_img = Image.new('RGB', (time_w, time_h), (0,0,0))
+        time_x = max(margin, min(self.fb_width - margin - (time_w+pad_w), center_x - (time_w+pad_w) // 2))
+        time_y = max(margin, min(self.fb_height - margin - (time_h+pad_h), center_y - (time_h+pad_h) // 2 - time_offset_y))
+        time_img = Image.new('RGB', (time_w+pad_w, time_h+pad_h), (0,0,0))
         # Draw at negative bbox origin to include full glyph bounds
         ImageDraw.Draw(time_img).text((-time_bbox[0], -time_bbox[1]), time_str, font=self.time_font, fill=display_color)
         self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect')
@@ -743,9 +745,11 @@ class FramebufferClock:
         date_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), date_str, font=self.date_font)
         date_w = date_bbox[2] - date_bbox[0]
         date_h = date_bbox[3] - date_bbox[1]
-        date_x = max(margin, min(self.fb_width - margin - date_w, center_x - date_w // 2))
-        date_y = max(margin, min(self.fb_height - margin - date_h, center_y + date_offset_y))
-        date_img = Image.new('RGB', (date_w, date_h), (0,0,0))
+        d_pad_w = 4
+        d_pad_h = 2
+        date_x = max(margin, min(self.fb_width - margin - (date_w+d_pad_w), center_x - (date_w+d_pad_w) // 2))
+        date_y = max(margin, min(self.fb_height - margin - (date_h+d_pad_h), center_y + date_offset_y))
+        date_img = Image.new('RGB', (date_w+d_pad_w, date_h+d_pad_h), (0,0,0))
         # Draw at negative bbox origin to include full glyph bounds
         ImageDraw.Draw(date_img).text((-date_bbox[0], -date_bbox[1]), date_str, font=self.date_font, fill=display_color)
         self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect')
@@ -789,6 +793,11 @@ class FramebufferClock:
                     parts.append(short_sha)
                 if parts:
                     status_items.append(("version", " ".join(parts)))
+            # Always append settings item for overlay access
+            if self.emoji_font:
+                status_items.append(("settings", "⚙ Settings"))
+            else:
+                status_items.append(("settings", "SET"))
             
             # If no emoji font, replace certain emoji with ASCII fallbacks to avoid tofu rectangles
             if not self.emoji_font:
@@ -889,6 +898,15 @@ class FramebufferClock:
         # Render settings overlay if active
         if self.show_settings_overlay:
             self._render_settings_overlay()
+        # Optional pointer cursor (visible when input present)
+        if getattr(self, 'input_devices', None):
+            cur_size = 8
+            cur_img = Image.new('RGB', (cur_size, cur_size), (0,0,0))
+            cd = ImageDraw.Draw(cur_img)
+            cd.ellipse((1,1,cur_size-2,cur_size-2), outline=(255,255,255))
+            px = max(0, min(self.fb_width - cur_size, self.pointer_x))
+            py = max(0, min(self.fb_height - cur_size, self.pointer_y))
+            self.blit_rgb_image(cur_img, px, py)
         # Write shadow buffer to framebuffer
         self.write_to_framebuffer(None)
         t_write = time.time()
@@ -1130,7 +1148,7 @@ class FramebufferClock:
                     break
                 
                 # Sleep to avoid busy-waiting (longer when no change needed)
-                time.sleep(0.25)  # Increased sleep to reduce CPU usage
+                time.sleep(0.5)
         
         except KeyboardInterrupt:
             logging.info("Clock interrupted by user")
