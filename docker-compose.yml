@@ -13,6 +13,11 @@ services:
     
     # Environment variables for configuration
     environment:
+      # SDL configuration for direct framebuffer access (no X server)
+      - SDL_VIDEODRIVER=fbcon
+      - SDL_FBDEV=/dev/fb0
+      - SDL_NOMOUSE=1
+      
       # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
       - LOG_LEVEL=INFO
       

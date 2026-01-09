@@ -31,10 +31,9 @@ class PygameClock:
         self.running = True
         self.build_info = build_info or {}
         
-        # Set SDL video driver to framebuffer for better performance
-        # Try fbcon (direct framebuffer) first, fall back to X11
-        if 'SDL_VIDEODRIVER' not in os.environ:
-            os.environ['SDL_VIDEODRIVER'] = 'x11'  # x11 for now, can switch to fbcon if needed
+        # SDL video driver set via environment (SDL_VIDEODRIVER)
+        # fbcon = direct framebuffer (no X server)
+        # Default set in docker-compose.yml
         
         # Initialize pygame without audio (eliminates ALSA errors)
         os.environ['SDL_AUDIODRIVER'] = 'dummy'
