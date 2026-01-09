@@ -41,6 +41,10 @@ class FramebufferClock:
         self.fb_width, self.fb_height = self.get_framebuffer_size()
         logging.info(f"Framebuffer resolution: {self.fb_width}x{self.fb_height}")
         
+        
+        # Detect framebuffer pixel format
+        self.fb_bpp = self.get_bits_per_pixel()
+        logging.info(f"Framebuffer bits-per-pixel: {self.fb_bpp}")
         # Load configuration
         display_config = config.get('display', {})
         self.color = self.hex_to_rgb(display_config.get('color', '#00FF00'))
