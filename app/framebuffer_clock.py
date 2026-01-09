@@ -439,12 +439,9 @@ class FramebufferClock:
             # Timezone with symbol
             if self.timezone_name:
                 status_items.append(f"TZ: {self.timezone_name}")
-            # Sync with symbol
+            # Sync status
             sync_time = self.get_time_since_sync()
-            if sync_time == "Just now" or "m ago" in sync_time:
-                status_items.append(f"Sync: {sync_time} \u2713")
-            else:
-                status_items.append(f"Sync: {sync_time}")
+            status_items.append(f"Sync: {sync_time}")
             
             # Add version info
             if self.build_info:
@@ -680,24 +677,6 @@ class FramebufferClock:
             while self.running:
                 loop_count += 1
                 
-                # Check for keyboard input
-                key = self.check_keyboard_input()
-                if key:
-                    if key == 's' or key == 'S':
-                        # Toggle settings menu
-                        self.show_settings_menu = not self.show_settings_menu
-                        logging.info(f"Settings menu: {'opened' if self.show_settings_menu else 'closed'}")
-                    elif self.show_settings_menu:
-                        # Handle settings menu input
-                        self.handle_settings_input(key)
-                
-                # Render settings menu if open
-                if self.show_settings_menu:
-                    self.render_settings_menu()
-                    self.write_to_framebuffer(None)
-                    time.sleep(0.1)
-                    continue
-                
                 # Check if second has changed
                 current_second = datetime.now().second
                 
@@ -728,8 +707,8 @@ class FramebufferClock:
                     os.remove('/tmp/restart_clock')
                     break
                 
-                # Short sleep to avoid busy-waiting
-                time.sleep(0.05)
+                # Sleep to avoid busy-waiting (longer when no change needed)
+                time.sleep(0.1)
         
         except KeyboardInterrupt:
             logging.info("Clock interrupted by user")
