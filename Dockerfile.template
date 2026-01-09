@@ -30,17 +30,7 @@ COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
 # Sanity check: verify critical imports to catch missing deps early
-RUN python3 - <<'PY'
-import sys
-print('Python:', sys.version)
-try:
-    import yaml, requests, flask
-    from PIL import Image, ImageDraw, ImageFont
-    print('Import check: OK')
-except Exception as e:
-    print('Import check failed:', e)
-    raise
-PY
+RUN python3 -c "import sys; print('Python:', sys.version); import yaml, requests, flask; from PIL import Image, ImageDraw, ImageFont; print('Import check: OK')"
 
 # Copy application files
 COPY app/ .
