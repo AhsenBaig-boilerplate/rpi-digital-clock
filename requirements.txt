@@ -1,14 +1,20 @@
 # Python Dependencies for Raspberry Pi Digital Clock
-# Most dependencies provided by Alpine system packages
-# This file only lists packages not available as apk packages
+# All installed via pip for consistency across Alpine Linux
 
-# Image processing - provided by py3-pillow (Alpine)
-# Flask web framework - provided by py3-flask (Alpine)
-# YAML parsing - provided by py3-yaml (Alpine)
-# HTTP requests - provided by py3-requests (Alpine)
+# Image processing for direct framebuffer rendering
+Pillow>=10.0.0
+
+# Flask web framework for settings UI
+Flask>=3.0.0
+
+# HTTP requests for weather API
+requests>=2.31.0
+
+# YAML configuration parsing
+PyYAML>=6.0.1
 
 # Timezone handling
-pytz==2023.3
+pytz>=2023.3
 
-# Type hints runtime support (if needed)
-typing-extensions==4.8.0
+# Type hints runtime support
+typing-extensions>=4.8.0
