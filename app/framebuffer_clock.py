@@ -60,11 +60,17 @@ class FramebufferClock:
         self.color = self.hex_to_rgb(display_config.get('color', '#00FF00'))
         self.bg_color = (0, 0, 0)  # Black background
         
-        # Font sizes
-        self.time_font_size = display_config.get('time_font_size', 280)
-        self.date_font_size = display_config.get('date_font_size', 90)
-        self.weather_font_size = display_config.get('weather_font_size', 60)
+        # Base font sizes (before scaling)
+        self.base_time_font_size = display_config.get('time_font_size', 280)
+        self.base_date_font_size = display_config.get('date_font_size', 90)
+        self.base_weather_font_size = display_config.get('weather_font_size', 60)
         self.status_font_size = 28
+        
+        # Optional logical resolution scaling from env DISPLAY_RESOLUTION (e.g. "1280x720")
+        scale = self.get_display_scale()
+        self.time_font_size = max(10, int(self.base_time_font_size * scale))
+        self.date_font_size = max(8, int(self.base_date_font_size * scale))
+        self.weather_font_size = max(8, int(self.base_weather_font_size * scale))
         
         logging.info(f"Font sizes: time={self.time_font_size}, date={self.date_font_size}, weather={self.weather_font_size}, status={self.status_font_size}")
         
@@ -156,6 +162,27 @@ class FramebufferClock:
                 return bpp
         except Exception:
             return 16
+
+    def get_display_scale(self) -> float:
+        """Compute scale factor based on DISPLAY_RESOLUTION env var.
+        If not set or invalid, return 1.0. Scale is capped at 1.0 (no upscaling).
+        """
+        env_res = os.environ.get('DISPLAY_RESOLUTION', '').lower().strip()
+        if not env_res or 'x' not in env_res:
+            return 1.0
+        try:
+            parts = env_res.split('x')
+            lw = int(parts[0])
+            lh = int(parts[1])
+            if lw <= 0 or lh <= 0:
+                return 1.0
+            sw = min(1.0, lw / float(self.fb_width))
+            sh = min(1.0, lh / float(self.fb_height))
+            scale = min(sw, sh)
+            logging.info(f"DISPLAY_RESOLUTION={lw}x{lh} -> scale={scale:.3f}")
+            return scale if scale > 0 else 1.0
+        except Exception:
+            return 1.0
     
     def init_fonts(self):
         """Initialize TrueType fonts."""
@@ -199,9 +226,18 @@ class FramebufferClock:
         """Format time string."""
         if self.format_12h:
             if self.show_seconds:
-                return now.strftime("%I:%M:%S %p")
+                # Prefer Linux-specific %-I to suppress leading zero; fallback if unsupported
+                try:
+                    return now.strftime("%-I:%M:%S %p")
+                except Exception:
+                    s = now.strftime("%I:%M:%S %p")
+                    return s.lstrip('0') if s.startswith('0') else s
             else:
-                return now.strftime("%I:%M %p")
+                try:
+                    return now.strftime("%-I:%M %p")
+                except Exception:
+                    s = now.strftime("%I:%M %p")
+                    return s.lstrip('0') if s.startswith('0') else s
         else:
             if self.show_seconds:
                 return now.strftime("%H:%M:%S")
@@ -348,12 +384,19 @@ class FramebufferClock:
         center_x = self.fb_width // 2 + self.pixel_shift_x
         center_y = self.fb_height // 2 + self.pixel_shift_y
         
+        # Dynamic margins and offsets scaled to DISPLAY_RESOLUTION if provided
+        scale = self.get_display_scale()
+        margin = int(10 * scale)
+        time_offset_y = int(60 * scale)
+        date_offset_y = int(100 * scale)
+        
         # Render time to its own surface (RGB888), then blit
         time_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), time_str, font=self.time_font)
         time_w = time_bbox[2] - time_bbox[0]
         time_h = time_bbox[3] - time_bbox[1]
-        time_x = max(0, center_x - time_w // 2)
-        time_y = max(0, center_y - time_h // 2 - 60)
+        # Clamp to avoid cropping
+        time_x = max(margin, min(self.fb_width - margin - time_w, center_x - time_w // 2))
+        time_y = max(margin, min(self.fb_height - margin - time_h, center_y - time_h // 2 - time_offset_y))
         time_img = Image.new('RGB', (time_w, time_h), (0,0,0))
         ImageDraw.Draw(time_img).text((0,0), time_str, font=self.time_font, fill=display_color)
         self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect')
@@ -362,8 +405,8 @@ class FramebufferClock:
         date_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), date_str, font=self.date_font)
         date_w = date_bbox[2] - date_bbox[0]
         date_h = date_bbox[3] - date_bbox[1]
-        date_x = max(0, center_x - date_w // 2)
-        date_y = max(0, center_y + 100)
+        date_x = max(margin, min(self.fb_width - margin - date_w, center_x - date_w // 2))
+        date_y = max(margin, min(self.fb_height - margin - date_h, center_y + date_offset_y))
         date_img = Image.new('RGB', (date_w, date_h), (0,0,0))
         ImageDraw.Draw(date_img).text((0,0), date_str, font=self.date_font, fill=display_color)
         self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect')
@@ -402,8 +445,8 @@ class FramebufferClock:
             status_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), status_text, font=self.status_font)
             status_w = status_bbox[2] - status_bbox[0]
             status_h = status_bbox[3] - status_bbox[1]
-            status_x = max(0, self.fb_width // 2 - status_w // 2)
-            status_y = max(0, self.fb_height - status_h - 10)
+            status_x = max(margin, min(self.fb_width - margin - status_w, self.fb_width // 2 - status_w // 2))
+            status_y = max(margin, self.fb_height - status_h - margin)
             status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
             ImageDraw.Draw(status_img).text((0,0), status_text, font=self.status_font, fill=status_color)
             self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
