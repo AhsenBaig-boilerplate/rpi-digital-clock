@@ -57,6 +57,18 @@ jobs:
           echo "Deploying version: ${VERSION}"
           echo "Base version for balena.yml: ${BASE_VERSION}"
 
+      - name: Compute release title
+        id: release_title
+        run: |
+          # Get commit subject line
+          SUBJECT=$(git log -1 --pretty=%s)
+          # Strip leading 'v' from version for display prefix
+          DV="${{ steps.version.outputs.version }}"
+          DV_NO_V="${DV#v}"
+          TITLE="${DV_NO_V}: ${SUBJECT}"
+          echo "Computed release title: $TITLE"
+          echo "title=${TITLE}" >> $GITHUB_OUTPUT
+
       - name: Generate build-info.json (embedded in image)
         run: |
           mkdir -p app
@@ -138,3 +150,14 @@ jobs:
         with:
           name: build-metadata
           path: build-metadata.json
+
+      - name: Create GitHub Release with prefixed title
+        uses: actions/create-release@v1
+        if: ${{ always() }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          release_name: ${{ steps.release_title.outputs.title }}
+          draft: false
+          prerelease: false
