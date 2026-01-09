@@ -8,16 +8,19 @@ ENV PYTHONUNBUFFERED=1
 # Install system dependencies - Alpine uses apk instead of apt
 # All packages are pre-built for ARMv6
 RUN apk add --no-cache \
+    python3-dev \
     py3-pip \
     py3-pillow \
     py3-yaml \
     py3-flask \
     py3-requests \
+    py3-pytz \
     freetype \
     ttf-dejavu \
     ttf-liberation \
     tzdata \
-    bash
+    bash \
+    && ln -sf /usr/bin/python3 /usr/bin/python
 
 # Create app directory
 WORKDIR /app
