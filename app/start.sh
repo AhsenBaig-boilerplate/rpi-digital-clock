@@ -11,6 +11,11 @@ if [ -n "$TIMEZONE" ]; then
     echo "$TIMEZONE" > /etc/timezone 2>/dev/null || true
 fi
 
+# Start web UI in background
+echo "Starting web UI on port 8080..."
+python3 web_ui.py &
+WEB_UI_PID=$!
+
 # Launch framebuffer clock application (no X11 required)
 echo "Launching framebuffer clock application..."
 cd /app
@@ -18,5 +23,28 @@ if [ "${PRINT_BUILD_INFO}" = "true" ]; then
   echo "Printing build info before launch..."
   python3 build_info.py || true
 fi
-exec python3 framebuffer_clock.py
+
+# Monitor for restart flag and reload clock when settings change
+while true; do
+    python3 framebuffer_clock.py &
+    CLOCK_PID=$!
+    
+    # Wait for either clock to exit or restart flag
+    while kill -0 $CLOCK_PID 2>/dev/null; do
+        if [ -f /tmp/restart_clock ]; then
+            echo "Restart requested, reloading configuration..."
+            rm /tmp/restart_clock
+            kill $CLOCK_PID 2>/dev/null
+            sleep 2
+            break
+        fi
+        sleep 1
+    done
+    
+    # If clock exited on its own (error), wait before restarting
+    if [ ! -f /tmp/restart_clock ]; then
+        echo "Clock exited unexpectedly, restarting in 5 seconds..."
+        sleep 5
+    fi
+done
 

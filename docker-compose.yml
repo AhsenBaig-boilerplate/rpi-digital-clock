@@ -7,12 +7,12 @@ services:
     restart: always
     network_mode: host
     
+    # Web UI port for settings
+    ports:
+      - "8080:8080"
+    
     # Environment variables for configuration
     environment:
-      # Display settings
-      - DISPLAY=:0
-      - XAUTHORITY=/root/.Xauthority
-      
       # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
       - LOG_LEVEL=INFO
       

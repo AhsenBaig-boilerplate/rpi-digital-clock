@@ -1,33 +1,23 @@
-# Use balenalib base image for Raspberry Pi Zero
-# Bullseye provides stable, pre-compiled packages for ARMv6
-FROM balenalib/raspberry-pi-debian-python:3.9-bullseye
+# Use Alpine Linux for minimal footprint and modern Python
+# Alpine provides Python 3.11 (maintained until 2027) with all packages pre-built
+FROM balenalib/raspberry-pi-alpine-python:3.11
 
 # Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies for framebuffer access, fonts, and NTP
-# No X11 or pygame needed - direct framebuffer rendering
-RUN install_packages \
-    gcc \
-    python3-dev \
-    python3-pip \
-    python3-yaml \
-    python3-pil \
-    zlib1g-dev \
-    libjpeg-dev \
-    libtiff-dev \
-    libfreetype-dev \
-    libwebp-dev \
-    libopenjp2-7-dev \
-    systemd-timesyncd \
-    ntpdate \
-    fonts-liberation \
-    fonts-dejavu-core \
-    fonts-freefont-ttf \
-    i2c-tools \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Install system dependencies - Alpine uses apk instead of apt
+# All packages are pre-built for ARMv6
+RUN apk add --no-cache \
+    py3-pip \
+    py3-pillow \
+    py3-yaml \
+    py3-flask \
+    py3-requests \
+    freetype \
+    ttf-dejavu \
+    ttf-liberation \
+    tzdata \
+    bash
 
 # Create app directory
 WORKDIR /app
@@ -35,15 +25,16 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies using python3 -m pip for reliability
-RUN python3 -m pip install --no-cache-dir -r requirements.txt
+# Install any additional Python dependencies
+# Most are already provided by Alpine packages above
+RUN pip3 install --no-cache-dir -r requirements.txt || true
 
 # Sanity check: verify critical imports to catch missing deps early
 RUN python3 - <<'PY'
 import sys
 print('Python:', sys.version)
 try:
-    import PIL, yaml, requests
+    import yaml, requests, flask
     from PIL import Image, ImageDraw, ImageFont
     print('Import check: OK')
 except Exception as e:
@@ -56,6 +47,9 @@ COPY app/ .
 
 # Set permissions
 RUN chmod +x framebuffer_clock.py start.sh
+
+# Expose web UI port
+EXPOSE 8080
 
 # Start application
 CMD ["./start.sh"]

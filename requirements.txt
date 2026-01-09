@@ -1,22 +1,14 @@
 # Python Dependencies for Raspberry Pi Digital Clock
-# Compatible with Python 3.9+
+# Most dependencies provided by Alpine system packages
+# This file only lists packages not available as apk packages
 
-# Image processing for direct framebuffer rendering
-# Pillow provided by system package python3-pil to avoid ARMv6 builds
-
-# HTTP requests for weather API
-requests==2.31.0
-
-# YAML configuration parsing
-PyYAML==6.0.1
-# to avoid compilation issues on ARMv6
+# Image processing - provided by py3-pillow (Alpine)
+# Flask web framework - provided by py3-flask (Alpine)
+# YAML parsing - provided by py3-yaml (Alpine)
+# HTTP requests - provided by py3-requests (Alpine)
 
 # Timezone handling
 pytz==2023.3
 
-# Type hints runtime support
+# Type hints runtime support (if needed)
 typing-extensions==4.8.0
-
-# Note: Emoji icons use PNG sprites (app/assets/emojis/) instead of fonts
-# for optimal performance on Raspberry Pi Zero W (ARMv6)
-# See app/assets/emojis/README.md for icon setup instructions
