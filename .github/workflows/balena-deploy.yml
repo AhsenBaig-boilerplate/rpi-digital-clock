@@ -1,5 +1,7 @@
 name: Deploy to balena
 
+run-name: "${{ github.event.head_commit.message }}"
+
 on:
   push:
     branches:
@@ -56,15 +58,35 @@ jobs:
           echo "base_version=${BASE_VERSION}" >> $GITHUB_OUTPUT
           echo "Deploying version: ${VERSION}"
           echo "Base version for balena.yml: ${BASE_VERSION}"
+          
+          # Also compute and output display version immediately
+          DV_NO_V="${VERSION#v}"
+          echo "display_version=${DV_NO_V}" >> $GITHUB_OUTPUT
+
+      - name: Annotate workflow with version
+        run: |
+          # Get commit subject line
+          SUBJECT=$(git log -1 --pretty=%s)
+          DV_NO_V="${{ steps.version.outputs.display_version }}"
+          TITLE="${DV_NO_V}: ${SUBJECT}"
+          
+          # Display prominently at top of workflow summary
+          echo "# 🚀 ${TITLE}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** ${DV_NO_V}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Message:** ${SUBJECT}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Create workflow annotation
+          echo "::notice title=${DV_NO_V}::${SUBJECT}"
 
       - name: Compute release title
         id: release_title
         run: |
           # Get commit subject line
           SUBJECT=$(git log -1 --pretty=%s)
-          # Strip leading 'v' from version for display prefix
-          DV="${{ steps.version.outputs.version }}"
-          DV_NO_V="${DV#v}"
+          DV_NO_V="${{ steps.version.outputs.display_version }}"
           TITLE="${DV_NO_V}: ${SUBJECT}"
           echo "Computed release title: $TITLE"
           echo "title=${TITLE}" >> $GITHUB_OUTPUT
