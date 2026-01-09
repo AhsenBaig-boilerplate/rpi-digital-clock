@@ -134,6 +134,15 @@ class FramebufferClock:
             # Fallback to common size
             return 1920, 1200
     
+    def get_bits_per_pixel(self) -> int:
+        """Read framebuffer bits-per-pixel from sysfs, default to 16 if unknown."""
+        try:
+            with open('/sys/class/graphics/fb0/bits_per_pixel', 'r') as f:
+                bpp = int(f.read().strip())
+                return bpp
+        except Exception:
+            return 16
+    
     def init_fonts(self):
         """Initialize TrueType fonts."""
         try:
@@ -396,8 +405,29 @@ class FramebufferClock:
     def write_to_framebuffer(self, image):
         """Write image directly to framebuffer device."""
         try:
+            # Convert image to match framebuffer pixel format
+            if self.fb_bpp == 32:
+                # BGRA is commonly used; alpha ignored by framebuffer
+                buf = image.convert('BGRA').tobytes()
+            elif self.fb_bpp == 24:
+                # 24-bit BGR
+                buf = image.convert('BGR').tobytes()
+            elif self.fb_bpp == 16:
+                # 16-bit RGB565; Pillow raw encoder supports 'BGR;16'
+                # Try BGR;16 first (little-endian). If colors look off, switch to 'RGB;16'
+                try:
+                    buf = image.convert('RGB').tobytes('raw', 'BGR;16')
+                except Exception:
+                    buf = image.convert('RGB').tobytes('raw', 'RGB;16')
+            else:
+                # Fallback: write 24-bit BGR
+                buf = image.convert('BGR').tobytes()
+            
+            expected_size = self.fb_width * self.fb_height * max(1, self.fb_bpp // 8)
+            if len(buf) != expected_size:
+                logging.warning(f"Framebuffer write size mismatch: expected={expected_size}, got={len(buf)} (bpp={self.fb_bpp})")
             with open(self.fb_device, 'wb') as fb:
-                fb.write(image.tobytes())
+                fb.write(buf)
         except Exception as e:
             logging.error(f"Failed to write to framebuffer: {e}")
     
