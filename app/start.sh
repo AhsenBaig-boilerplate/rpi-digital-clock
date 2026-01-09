@@ -2,7 +2,7 @@
 # Startup script for Raspberry Pi Digital Clock (Pygame SDL FBDEV mode)
 # SDL framebuffer rendering - no X server needed
 
-echo "Starting Raspberry Pi Digital Clock (Pygame SDL FBDEV mode)..."
+echo "Starting Raspberry Pi Digital Clock (Framebuffer mode)..."
 
 # Set timezone if provided via environment variable
 if [ -n "$TIMEZONE" ]; then
@@ -11,8 +11,8 @@ if [ -n "$TIMEZONE" ]; then
     echo "$TIMEZONE" > /etc/timezone 2>/dev/null || true
 fi
 
-# Launch pygame clock application (SDL FBDEV mode - no X11 required)
-echo "Launching pygame clock application (SDL framebuffer mode)..."
+# Launch framebuffer clock application (no X11/SDL required)
+echo "Launching framebuffer clock application..."
 cd /app
 if [ "${PRINT_BUILD_INFO}" = "true" ]; then
   echo "Printing build info before launch..."
@@ -21,7 +21,7 @@ fi
 
 # Monitor for restart flag and reload clock when settings change
 while true; do
-    python3 clock_display.py &
+    python3 framebuffer_clock.py &
     CLOCK_PID=$!
     
     # Wait for either clock to exit or restart flag

@@ -8,17 +8,10 @@ ENV PYTHONUNBUFFERED=1
 # Install build dependencies and system packages
 # Install system dependencies
 RUN install_packages \
-    python3-pygame \
+    python3-pil \
+    python3-numpy \
     python3-yaml \
     python3-requests \
-    libsdl2-2.0-0 \
-    libsdl2-mixer-2.0-0 \
-    libsdl2-image-2.0-0 \
-    libsdl2-ttf-2.0-0 \
-    libdrm2 \
-    libgbm1 \
-    libegl1 \
-    libgles2 \
     systemd-timesyncd \
     ntpdate \
     fonts-liberation \
@@ -38,13 +31,13 @@ COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
 # Sanity check: verify critical imports
-RUN python3 -c "import yaml, requests, pygame; print('Import check: OK')"
+RUN python3 -c "import yaml, requests, numpy; from PIL import Image, ImageDraw, ImageFont; print('Import check: OK')"
 
 # Copy application files
 COPY app/ .
 
 # Set permissions
-RUN chmod +x clock_display.py start.sh
+RUN chmod +x framebuffer_clock.py start.sh
 
 # Expose web UI port
 EXPOSE 8080

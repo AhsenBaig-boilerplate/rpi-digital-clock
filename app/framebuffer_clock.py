@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 import yaml
 from PIL import Image, ImageDraw, ImageFont
+import numpy as np
 from typing import Optional
 
 # Import weather service
@@ -41,11 +42,14 @@ class FramebufferClock:
         self.fb_width, self.fb_height = self.get_framebuffer_size()
         logging.info(f"Framebuffer resolution: {self.fb_width}x{self.fb_height}")
         
-        # Render at lower resolution for performance (Pi Zero can't handle 1920x1200)
-        # Scale factor: render at 1/2 resolution, then scale up
-        self.render_width = self.fb_width // 2
-        self.render_height = self.fb_height // 2
-        logging.info(f"Render resolution: {self.render_width}x{self.render_height} (scaled to {self.fb_width}x{self.fb_height})")
+        # Shadow framebuffer buffer (RGB565) for partial updates
+        if self.get_bits_per_pixel() != 16:
+            logging.warning("Optimized blitter assumes 16bpp RGB565; other bpp will fallback to full-frame writes")
+        self.fb_shadow = np.zeros((self.fb_height, self.fb_width), dtype='<u2')
+        # Track last drawn rects for clearing
+        self._last_time_rect = None
+        self._last_date_rect = None
+        self._last_status_rect = None
         
         
         # Detect framebuffer pixel format
@@ -312,20 +316,15 @@ class FramebufferClock:
             self.last_status_check = now
     
     def render(self):
-        """Render the clock display to framebuffer."""
+        """Render the clock display using partial updates into shadow buffer."""
         t_start = time.time()
         
         try:
-            # Create image at render resolution (lower res for performance)
-            image = Image.new('RGB', (self.render_width, self.render_height), self.bg_color)
-            draw = ImageDraw.Draw(image)
-            
-            # Check screensaver
+            # If screensaver, blank shadow and write
             if not self.should_show_display():
                 logging.debug("Screensaver active - blanking display")
-                # Scale up blank image
-                image = image.resize((self.fb_width, self.fb_height), Image.NEAREST)
-                self.write_to_framebuffer(image)
+                self.fb_shadow.fill(0)
+                self.write_to_framebuffer(None)
                 return
         except Exception as e:
             logging.error(f"Error in render setup: {e}", exc_info=True)
@@ -345,24 +344,29 @@ class FramebufferClock:
         
         t_prep = time.time()
         
-        # Calculate center position with pixel shift (use render dimensions)
-        center_x = self.render_width // 2 + self.pixel_shift_x
-        center_y = self.render_height // 2 + self.pixel_shift_y
+        # Calculate center position with pixel shift (full resolution)
+        center_x = self.fb_width // 2 + self.pixel_shift_x
+        center_y = self.fb_height // 2 + self.pixel_shift_y
         
-        # Draw time (centered)
-        time_bbox = draw.textbbox((0, 0), time_str, font=self.time_font)
+        # Render time to its own surface (RGB888), then blit
+        time_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), time_str, font=self.time_font)
         time_w = time_bbox[2] - time_bbox[0]
         time_h = time_bbox[3] - time_bbox[1]
-        time_x = center_x - time_w // 2
-        time_y = center_y - time_h // 2 - 60
-        draw.text((time_x, time_y), time_str, font=self.time_font, fill=display_color)
+        time_x = max(0, center_x - time_w // 2)
+        time_y = max(0, center_y - time_h // 2 - 60)
+        time_img = Image.new('RGB', (time_w, time_h), (0,0,0))
+        ImageDraw.Draw(time_img).text((0,0), time_str, font=self.time_font, fill=display_color)
+        self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect')
         
-        # Draw date (centered with more spacing)
-        date_bbox = draw.textbbox((0, 0), date_str, font=self.date_font)
+        # Render date
+        date_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), date_str, font=self.date_font)
         date_w = date_bbox[2] - date_bbox[0]
-        date_x = center_x - date_w // 2
-        date_y = center_y + 100  # Increased from 60 to 100
-        draw.text((date_x, date_y), date_str, font=self.date_font, fill=display_color)
+        date_h = date_bbox[3] - date_bbox[1]
+        date_x = max(0, center_x - date_w // 2)
+        date_y = max(0, center_y + 100)
+        date_img = Image.new('RGB', (date_w, date_h), (0,0,0))
+        ImageDraw.Draw(date_img).text((0,0), date_str, font=self.date_font, fill=display_color)
+        self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect')
         
         # Draw weather if available
         if self.weather_text:
@@ -395,22 +399,18 @@ class FramebufferClock:
                     status_items.append(" ".join(parts))
             
             status_text = " | ".join(status_items)
-            status_bbox = draw.textbbox((0, 0), status_text, font=self.status_font)
+            status_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), status_text, font=self.status_font)
             status_w = status_bbox[2] - status_bbox[0]
-            status_x = self.render_width // 2 - status_w // 2
-            status_y = self.render_height - 30
-            draw.text((status_x, status_y), status_text, font=self.status_font, fill=status_color)
+            status_h = status_bbox[3] - status_bbox[1]
+            status_x = max(0, self.fb_width // 2 - status_w // 2)
+            status_y = max(0, self.fb_height - status_h - 10)
+            status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
+            ImageDraw.Draw(status_img).text((0,0), status_text, font=self.status_font, fill=status_color)
+            self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
         
         t_draw = time.time()
-        
-        # Scale up to full framebuffer resolution
-        t_scale_start = time.time()
-        image = image.resize((self.fb_width, self.fb_height), Image.BILINEAR)
-        t_scale = time.time()
-        
-        # Write to framebuffer
-        self.write_to_framebuffer(image)
-        
+        # Write shadow buffer to framebuffer
+        self.write_to_framebuffer(None)
         t_write = time.time()
         
         # Log timing on every render for debugging
@@ -421,49 +421,73 @@ class FramebufferClock:
             total = (t_write - t_start) * 1000
             prep = (t_prep - t_start) * 1000
             draw_time = (t_draw - t_prep) * 1000
-            scale_time = (t_scale - t_scale_start) * 1000
-            write = (t_write - t_scale) * 1000
-            logging.info(f"Render timing: total={total:.1f}ms (prep={prep:.1f}ms, draw={draw_time:.1f}ms, scale={scale_time:.1f}ms, write={write:.1f}ms) @ {self.render_width}x{self.render_height}->{self.fb_width}x{self.fb_height}")
+            write = (t_write - t_draw) * 1000
+            logging.info(f"Render timing: total={total:.1f}ms (prep={prep:.1f}ms, draw={draw_time:.1f}ms, write={write:.1f}ms) @ {self.fb_width}x{self.fb_height}")
     
     def write_to_framebuffer(self, image):
         """Write image directly to framebuffer device."""
         try:
-            # Convert image to match framebuffer pixel format
-            if self.fb_bpp == 32:
-                # BGRA is commonly used; alpha ignored by framebuffer
-                buf = image.convert('BGRA').tobytes()
-            elif self.fb_bpp == 24:
-                # 24-bit BGR
-                buf = image.convert('BGR').tobytes()
-            elif self.fb_bpp == 16:
-                # 16-bit RGB565 - ultra-fast numpy vectorized conversion
-                # RGB565: RRRRRGGGGGGBBBBB (5 bits red, 6 bits green, 5 bits blue)
-                import numpy as np
-                rgb_image = image.convert('RGB')
-                
-                # Convert to numpy array for vectorized operations
-                rgb_array = np.frombuffer(rgb_image.tobytes(), dtype=np.uint8)
-                rgb_array = rgb_array.reshape((self.fb_height, self.fb_width, 3))
-                
-                # Vectorized RGB to RGB565 conversion (MUCH faster than Python loops)
-                r = (rgb_array[:, :, 0] >> 3).astype(np.uint16)
-                g = (rgb_array[:, :, 1] >> 2).astype(np.uint16)
-                b = (rgb_array[:, :, 2] >> 3).astype(np.uint16)
-                rgb565 = (r << 11) | (g << 5) | b
-                
-                # Convert to little-endian bytes
-                buf = rgb565.astype('<u2').tobytes()
+            # For partial-update path we write the shadow buffer
+            if self.fb_bpp == 16 and isinstance(self.fb_shadow, np.ndarray):
+                with open(self.fb_device, 'wb') as fb:
+                    fb.write(self.fb_shadow.tobytes())
             else:
-                # Fallback: write 24-bit BGR
-                buf = image.convert('BGR').tobytes()
-            
-            expected_size = self.fb_width * self.fb_height * max(1, self.fb_bpp // 8)
-            if len(buf) != expected_size:
-                logging.warning(f"Framebuffer write size mismatch: expected={expected_size}, got={len(buf)} (bpp={self.fb_bpp})")
-            with open(self.fb_device, 'wb') as fb:
-                fb.write(buf)
+                # Fallback: full-frame conversion from provided image
+                if self.fb_bpp == 32:
+                    buf = image.convert('BGRA').tobytes()
+                elif self.fb_bpp == 24:
+                    buf = image.convert('BGR').tobytes()
+                elif self.fb_bpp == 16:
+                    rgb_image = image.convert('RGB')
+                    arr = np.frombuffer(rgb_image.tobytes(), dtype=np.uint8).reshape((self.fb_height, self.fb_width, 3))
+                    r = (arr[:, :, 0] >> 3).astype(np.uint16)
+                    g = (arr[:, :, 1] >> 2).astype(np.uint16)
+                    b = (arr[:, :, 2] >> 3).astype(np.uint16)
+                    buf = ((r << 11) | (g << 5) | b).astype('<u2').tobytes()
+                else:
+                    buf = image.convert('BGR').tobytes()
+                with open(self.fb_device, 'wb') as fb:
+                    fb.write(buf)
         except Exception as e:
             logging.error(f"Failed to write to framebuffer: {e}")
+
+    def blit_rgb_image(self, img: Image.Image, x: int, y: int, clear_last_rect_attr: str):
+        """Convert a small RGB888 PIL image to RGB565 and blit into shadow buffer at (x,y).
+        Clears previous rect stored in the attribute to avoid trails.
+        """
+        if self.fb_bpp != 16 or not isinstance(self.fb_shadow, np.ndarray):
+            # Fallback: draw onto a full-size image (rare path)
+            full = Image.new('RGB', (self.fb_width, self.fb_height), self.bg_color)
+            full.paste(img, (x, y))
+            self.write_to_framebuffer(full)
+            return
+        # Clear previous rect if any
+        last_rect = getattr(self, clear_last_rect_attr, None)
+        if last_rect:
+            lx, ly, lw, lh = last_rect
+            lx2 = max(0, min(self.fb_width, lx + lw))
+            ly2 = max(0, min(self.fb_height, ly + lh))
+            self.fb_shadow[ly:ly2, lx:lx2].fill(0)
+        w, h = img.size
+        if w <= 0 or h <= 0:
+            return
+        # Bounds clamp
+        x2 = min(self.fb_width, x + w)
+        y2 = min(self.fb_height, y + h)
+        w = max(0, x2 - x)
+        h = max(0, y2 - y)
+        if w == 0 or h == 0:
+            return
+        # Convert to RGB565
+        arr = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((img.height, img.width, 3))[:h, :w]
+        r = (arr[:, :, 0] >> 3).astype(np.uint16)
+        g = (arr[:, :, 1] >> 2).astype(np.uint16)
+        b = (arr[:, :, 2] >> 3).astype(np.uint16)
+        rgb565 = ((r << 11) | (g << 5) | b)
+        # Blit into shadow
+        self.fb_shadow[y:y2, x:x2] = rgb565
+        # Store rect
+        setattr(self, clear_last_rect_attr, (x, y, w, h))
     
     def run(self):
         """Main loop."""
