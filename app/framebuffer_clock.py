@@ -761,11 +761,12 @@ class FramebufferClock:
         # Use full bbox dimensions (accounts for negative left bearing and descenders)
         time_w = time_bbox[2] - time_bbox[0]
         time_h = time_bbox[3] - time_bbox[1]
-        # Extra padding to ensure no clipping at edges
-        pad_left = max(20, -time_bbox[0] + 5)  # Account for left bearing
-        pad_right = 80  # Generous right padding for wide glyphs like 'M'
-        pad_top = max(8, -time_bbox[1] + 5)  # Account for ascenders
-        pad_bottom = 8
+        # AGGRESSIVE padding to eliminate any possibility of right-edge clipping
+        # Especially for double-digit hours like "10:00:00 PM"
+        pad_left = max(30, -time_bbox[0] + 15)  # Extra generous left padding
+        pad_right = max(120, int(time_w * 0.08))  # Scale with text width, minimum 120px
+        pad_top = max(10, -time_bbox[1] + 8)  # Account for ascenders
+        pad_bottom = 10
         # Total image dimensions
         img_w = time_w + pad_left + pad_right
         img_h = time_h + pad_top + pad_bottom
