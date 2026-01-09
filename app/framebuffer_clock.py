@@ -398,7 +398,8 @@ class FramebufferClock:
         time_x = max(margin, min(self.fb_width - margin - time_w, center_x - time_w // 2))
         time_y = max(margin, min(self.fb_height - margin - time_h, center_y - time_h // 2 - time_offset_y))
         time_img = Image.new('RGB', (time_w, time_h), (0,0,0))
-        ImageDraw.Draw(time_img).text((0,0), time_str, font=self.time_font, fill=display_color)
+        # Draw at negative bbox origin to include full glyph bounds
+        ImageDraw.Draw(time_img).text((-time_bbox[0], -time_bbox[1]), time_str, font=self.time_font, fill=display_color)
         self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect')
         
         # Render date
@@ -408,7 +409,8 @@ class FramebufferClock:
         date_x = max(margin, min(self.fb_width - margin - date_w, center_x - date_w // 2))
         date_y = max(margin, min(self.fb_height - margin - date_h, center_y + date_offset_y))
         date_img = Image.new('RGB', (date_w, date_h), (0,0,0))
-        ImageDraw.Draw(date_img).text((0,0), date_str, font=self.date_font, fill=display_color)
+        # Draw at negative bbox origin to include full glyph bounds
+        ImageDraw.Draw(date_img).text((-date_bbox[0], -date_bbox[1]), date_str, font=self.date_font, fill=display_color)
         self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect')
         
         # Draw weather if available
@@ -448,7 +450,8 @@ class FramebufferClock:
             status_x = max(margin, min(self.fb_width - margin - status_w, self.fb_width // 2 - status_w // 2))
             status_y = max(margin, self.fb_height - status_h - margin)
             status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
-            ImageDraw.Draw(status_img).text((0,0), status_text, font=self.status_font, fill=status_color)
+            # Draw at negative bbox origin to include full glyph bounds
+            ImageDraw.Draw(status_img).text((-status_bbox[0], -status_bbox[1]), status_text, font=self.status_font, fill=status_color)
             self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
         
         t_draw = time.time()
