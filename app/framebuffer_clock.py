@@ -731,8 +731,8 @@ class FramebufferClock:
         time_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), time_str, font=self.time_font)
         time_w = time_bbox[2] - time_bbox[0]
         time_h = time_bbox[3] - time_bbox[1]
-        pad_w = 6
-        pad_h = 2
+        pad_w = 14
+        pad_h = 4
         # Clamp to avoid cropping
         time_x = max(margin, min(self.fb_width - margin - (time_w+pad_w), center_x - (time_w+pad_w) // 2))
         time_y = max(margin, min(self.fb_height - margin - (time_h+pad_h), center_y - (time_h+pad_h) // 2 - time_offset_y))
@@ -745,8 +745,8 @@ class FramebufferClock:
         date_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), date_str, font=self.date_font)
         date_w = date_bbox[2] - date_bbox[0]
         date_h = date_bbox[3] - date_bbox[1]
-        d_pad_w = 4
-        d_pad_h = 2
+        d_pad_w = 10
+        d_pad_h = 4
         date_x = max(margin, min(self.fb_width - margin - (date_w+d_pad_w), center_x - (date_w+d_pad_w) // 2))
         date_y = max(margin, min(self.fb_height - margin - (date_h+d_pad_h), center_y + date_offset_y))
         date_img = Image.new('RGB', (date_w+d_pad_w, date_h+d_pad_h), (0,0,0))
