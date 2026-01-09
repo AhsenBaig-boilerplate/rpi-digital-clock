@@ -93,7 +93,13 @@ class FramebufferClock:
         
         # Status bar configuration
         self.show_status_bar = True
-        self.status_color = tuple(int(c * 0.6) for c in self.color)
+        self.status_color = tuple(int(c * 0.25) for c in self.color)  # Much dimmer for informational display
+        
+        # Status bar position rotation for burn-in protection
+        self.status_bar_positions = ['bottom-left', 'bottom-right', 'top-left', 'top-right']
+        self.current_status_position = 0
+        self.last_status_position_change = time.time()
+        self.status_position_interval = 120  # Change position every 2 minutes
         
         # Network and sync tracking
         self.last_ntp_sync = None
@@ -115,7 +121,7 @@ class FramebufferClock:
         
         # Pixel shift configuration
         self.pixel_shift_enabled = display_config.get('pixel_shift_enabled', True)
-        self.pixel_shift_interval = display_config.get('pixel_shift_interval_seconds', 30)
+        self.pixel_shift_interval = display_config.get('pixel_shift_interval_seconds', 60)  # Less frequent updates
         self.pixel_shift_disable_start = display_config.get('pixel_shift_disable_start_hour', 12)
         self.pixel_shift_disable_end = display_config.get('pixel_shift_disable_end_hour', 14)
         self.last_pixel_shift = 0
@@ -269,10 +275,9 @@ class FramebufferClock:
             draw.text(position, text, font=font, fill=fill)
             return
         
-        # Simple approach: try to use emoji font for known emoji characters
-        # For production, would need proper Unicode analysis
+        # Use simpler Unicode characters that work better with available fonts
         x, y = position
-        emoji_chars = set('🌐📍✓⏰⚙✗')
+        emoji_chars = set('🌐✓⏰✗')  # Removed problematic emoji
         
         for char in text:
             if char in emoji_chars:
@@ -296,7 +301,7 @@ class FramebufferClock:
         # Calculate width with emoji support
         x = 0
         max_height = 0
-        emoji_chars = set('🌐📍✓⏰⚙✗')
+        emoji_chars = set('🌐✓⏰✗')
         temp_draw = ImageDraw.Draw(Image.new('RGB', (1, 1)))
         
         for char in text:
@@ -557,7 +562,7 @@ class FramebufferClock:
                     status_items.append(f"✗ {self.network_status}")
             # Timezone with emoji
             if self.timezone_name:
-                status_items.append(f"📍 {self.timezone_name}")
+                status_items.append(f"TZ:{self.timezone_name}")  # Use text prefix instead of problematic emoji
             # Sync status
             sync_time = self.get_time_since_sync()
             if sync_time == "Just now" or "m ago" in sync_time:
@@ -579,6 +584,14 @@ class FramebufferClock:
                     status_items.append(" ".join(parts))
             
             status_text = " | ".join(status_items)
+                        # Rotate status bar position for burn-in protection
+                        if time.time() - self.last_status_position_change > self.status_position_interval:
+                            self.current_status_position = (self.current_status_position + 1) % len(self.status_bar_positions)
+                            self.last_status_position_change = time.time()
+                            logging.debug(f"Status bar position changed to: {self.status_bar_positions[self.current_status_position]}")
+            
+                        position_name = self.status_bar_positions[self.current_status_position]
+            
             
             # Use emoji-aware rendering if emoji font is available
             if self.emoji_font:
@@ -588,9 +601,21 @@ class FramebufferClock:
                 status_bbox = self.get_text_bbox_with_emoji(status_text, self.status_font, self.emoji_font)
                 status_w = status_bbox[2] - status_bbox[0]
                 status_h = status_bbox[3] - status_bbox[1]
-                # Apply pixel shift to status bar for burn-in protection
-                status_x = max(margin, min(self.fb_width - margin - status_w, self.fb_width // 2 - status_w // 2 + self.pixel_shift_x))
-                status_y = max(margin, self.fb_height - status_h - margin + self.pixel_shift_y)
+                
+                # Position based on rotation
+                if position_name == 'bottom-left':
+                    status_x = margin
+                    status_y = self.fb_height - status_h - margin
+                elif position_name == 'bottom-right':
+                    status_x = self.fb_width - status_w - margin
+                    status_y = self.fb_height - status_h - margin
+                elif position_name == 'top-left':
+                    status_x = margin
+                    status_y = margin
+                else:  # top-right
+                    status_x = self.fb_width - status_w - margin
+                    status_y = margin
+                
                 status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
                 status_draw = ImageDraw.Draw(status_img)
                 # Draw with emoji support
@@ -601,9 +626,21 @@ class FramebufferClock:
                 status_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), status_text, font=self.status_font)
                 status_w = status_bbox[2] - status_bbox[0]
                 status_h = status_bbox[3] - status_bbox[1]
-                # Apply pixel shift to status bar for burn-in protection
-                status_x = max(margin, min(self.fb_width - margin - status_w, self.fb_width // 2 - status_w // 2 + self.pixel_shift_x))
-                status_y = max(margin, self.fb_height - status_h - margin + self.pixel_shift_y)
+                
+                # Position based on rotation
+                if position_name == 'bottom-left':
+                    status_x = margin
+                    status_y = self.fb_height - status_h - margin
+                elif position_name == 'bottom-right':
+                    status_x = self.fb_width - status_w - margin
+                    status_y = self.fb_height - status_h - margin
+                elif position_name == 'top-left':
+                    status_x = margin
+                    status_y = margin
+                else:  # top-right
+                    status_x = self.fb_width - status_w - margin
+                    status_y = margin
+                
                 status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
                 # Draw at negative bbox origin to include full glyph bounds
                 ImageDraw.Draw(status_img).text((-status_bbox[0], -status_bbox[1]), status_text, font=self.status_font, fill=status_color)
@@ -849,7 +886,7 @@ class FramebufferClock:
                     break
                 
                 # Sleep to avoid busy-waiting (longer when no change needed)
-                time.sleep(0.1)
+                time.sleep(0.25)  # Increased sleep to reduce CPU usage
         
         except KeyboardInterrupt:
             logging.info("Clock interrupted by user")
