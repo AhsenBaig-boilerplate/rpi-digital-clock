@@ -21,6 +21,13 @@ from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 from typing import Optional
 
+# Optional evdev input (touch/mouse)
+try:
+    from evdev import InputDevice, ecodes, list_devices
+except Exception:
+    InputDevice = None
+    ecodes = None
+    list_devices = lambda: []
 # Import weather service
 try:
     from weather import WeatherService
@@ -100,6 +107,7 @@ class FramebufferClock:
         self.current_status_position = 0
         self.last_status_position_change = time.time()
         self.status_position_interval = 120  # Change position every 2 minutes
+        self.status_item_regions = []  # [(name, (x,y,w,h))]
         
         # Network and sync tracking
         self.last_ntp_sync = None
@@ -161,8 +169,15 @@ class FramebufferClock:
         # Get initial NTP sync time
         self.check_last_ntp_sync()
         
-        # Settings menu state
-        self.show_settings_menu = False
+        # Settings state
+        self.show_settings_menu = False  # legacy flag (unused)
+        self.show_settings_overlay = False
+        self.active_settings_tab = 'Display'
+        self.overlay_buttons = []  # [(name, (x,y,w,h), callback)]
+        self.pointer_x = self.fb_width // 2
+        self.pointer_y = self.fb_height // 2
+        self.pointer_down = False
+        self._init_input_devices()
         
         # Log build info
         try:
@@ -314,6 +329,194 @@ class FramebufferClock:
             max_height = max(max_height, bbox[3] - bbox[1])
         
         return (0, 0, x, max_height)
+
+    # ------------------------
+    # Input handling
+    # ------------------------
+    def _init_input_devices(self):
+        self.input_devices = []
+        try:
+            if InputDevice is None:
+                logging.info("evdev not available; input disabled")
+                return
+            for path in list_devices():
+                try:
+                    dev = InputDevice(path)
+                    caps = dev.capabilities(verbose=True)
+                    if 'EV_ABS' in dict(caps) or 'EV_REL' in dict(caps):
+                        self.input_devices.append(dev)
+                        logging.info(f"Input device added: {dev.name} ({path})")
+                except Exception as e:
+                    logging.debug(f"Skip input device {path}: {e}")
+        except Exception as e:
+            logging.warning(f"Failed to init input devices: {e}")
+
+    def _poll_input(self):
+        if not self.input_devices or ecodes is None:
+            return
+        for dev in list(self.input_devices):
+            try:
+                for event in dev.read_many():
+                    if event.type == ecodes.EV_ABS:
+                        if event.code == ecodes.ABS_X:
+                            ai = dev.absinfo(ecodes.ABS_X)
+                            rng = max(1, ai.max - ai.min)
+                            self.pointer_x = int((event.value - ai.min) * (self.fb_width - 1) / rng)
+                        elif event.code == ecodes.ABS_Y:
+                            ai = dev.absinfo(ecodes.ABS_Y)
+                            rng = max(1, ai.max - ai.min)
+                            self.pointer_y = int((event.value - ai.min) * (self.fb_height - 1) / rng)
+                        elif event.code in (getattr(ecodes, 'ABS_MT_POSITION_X', 0), getattr(ecodes, 'ABS_MT_POSITION_Y', 1)):
+                            try:
+                                ai = dev.absinfo(event.code)
+                                rng = max(1, ai.max - ai.min)
+                                if event.code == getattr(ecodes, 'ABS_MT_POSITION_X', 0):
+                                    self.pointer_x = int((event.value - ai.min) * (self.fb_width - 1) / rng)
+                                else:
+                                    self.pointer_y = int((event.value - ai.min) * (self.fb_height - 1) / rng)
+                            except Exception:
+                                pass
+                    elif event.type == ecodes.EV_REL:
+                        if event.code == ecodes.REL_X:
+                            self.pointer_x = max(0, min(self.fb_width - 1, self.pointer_x + event.value))
+                        elif event.code == ecodes.REL_Y:
+                            self.pointer_y = max(0, min(self.fb_height - 1, self.pointer_y + event.value))
+                    elif event.type == ecodes.EV_KEY:
+                        if event.code in (getattr(ecodes, 'BTN_TOUCH', 0x14a), getattr(ecodes, 'BTN_LEFT', 0x110)):
+                            if event.value == 1:
+                                self.pointer_down = True
+                            elif event.value == 0 and self.pointer_down:
+                                self.pointer_down = False
+                                self._handle_tap(self.pointer_x, self.pointer_y)
+            except BlockingIOError:
+                continue
+            except Exception as e:
+                logging.debug(f"Input read error: {e}")
+
+    def _handle_tap(self, x, y):
+        if self.show_settings_overlay:
+            for name, rect, cb in list(self.overlay_buttons):
+                rx, ry, rw, rh = rect
+                if rx <= x <= rx + rw and ry <= y <= ry + rh:
+                    try:
+                        cb()
+                    except Exception as e:
+                        logging.warning(f"Button '{name}' action failed: {e}")
+                    return
+            return
+        for name, rect in list(self.status_item_regions):
+            rx, ry, rw, rh = rect
+            if rx <= x <= rx + rw and ry <= y <= ry + rh:
+                tab_map = { 'network': 'System', 'timezone': 'Time', 'sync': 'System', 'version': 'About' }
+                self.active_settings_tab = tab_map.get(name, 'Display')
+                self.show_settings_overlay = True
+                logging.info(f"Open settings overlay: {self.active_settings_tab}")
+                return
+
+    # ------------------------
+    # Settings overlay
+    # ------------------------
+    def _add_button(self, name, rect, callback):
+        self.overlay_buttons.append((name, rect, callback))
+
+    def _render_button(self, draw, x, y, w, h, label, active=False):
+        border = (80, 80, 80)
+        fill = (30, 30, 30) if not active else (50, 50, 50)
+        draw.rectangle([x, y, x+w, y+h], fill=fill, outline=border)
+        tw, th = draw.textbbox((0,0), label, font=self.status_font)[2:4]
+        tx = x + (w - tw) // 2
+        ty = y + (h - th) // 2
+        draw.text((tx, ty), label, font=self.status_font, fill=(200,200,200))
+
+    def _render_settings_overlay(self):
+        overlay = Image.new('RGB', (self.fb_width, self.fb_height), (0,0,0))
+        d = ImageDraw.Draw(overlay)
+        panel_margin = 40
+        d.rectangle([panel_margin, panel_margin, self.fb_width - panel_margin, self.fb_height - panel_margin], fill=(10,10,10), outline=(60,60,60))
+        tabs = ['Display', 'Time', 'Status', 'System', 'About']
+        tab_w = 180
+        tab_h = 60
+        self.overlay_buttons = []
+        x = panel_margin + 20
+        y = panel_margin + 20
+        for t in tabs:
+            self._render_button(d, x, y, tab_w, tab_h, t, active=(t==self.active_settings_tab))
+            self._add_button(f"tab:{t}", (x, y, tab_w, tab_h), lambda t=t: self._set_active_tab(t))
+            x += tab_w + 12
+        close_w = 100
+        self._render_button(d, self.fb_width - panel_margin - close_w - 20, panel_margin + 20, close_w, tab_h, 'Close')
+        self._add_button('close', (self.fb_width - panel_margin - close_w - 20, panel_margin + 20, close_w, tab_h), self._close_overlay)
+        cx0 = panel_margin + 20
+        cy0 = panel_margin + tab_h + 40
+        cx1 = self.fb_width - panel_margin - 20
+        cy1 = self.fb_height - panel_margin - 20
+        d.rectangle([cx0, cy0, cx1, cy1], outline=(60,60,60))
+        self._render_tab_content(d, cx0+20, cy0+20, cx1-20, cy1-20)
+        self.blit_rgb_image(overlay, 0, 0)
+
+    def _set_active_tab(self, t):
+        self.active_settings_tab = t
+
+    def _close_overlay(self):
+        self.show_settings_overlay = False
+
+    def _render_tab_content(self, d, x0, y0, x1, y1):
+        y = y0
+        gap = 12
+        btn_w = 240
+        btn_h = 50
+        def add_toggle(label, value_getter, setter):
+            nonlocal y
+            d.text((x0, y), label, font=self.status_font, fill=(200,200,200))
+            bx = x0 + 320
+            self._render_button(d, bx, y-8, btn_w, btn_h, 'On' if value_getter() else 'Off', active=value_getter())
+            self._add_button(f"toggle:{label}", (bx, y-8, btn_w, btn_h), lambda: setter(not value_getter()))
+            y += btn_h + gap
+        def add_selector(label, options, get_idx, set_idx):
+            nonlocal y
+            d.text((x0, y), label, font=self.status_font, fill=(200,200,200))
+            bx = x0 + 320
+            self._render_button(d, bx, y-8, 60, btn_h, '<')
+            self._add_button(f"sel_prev:{label}", (bx, y-8, 60, btn_h), lambda: set_idx((get_idx()-1) % len(options)))
+            val = str(options[get_idx()])
+            d.text((bx+80, y), val, font=self.status_font, fill=(200,200,200))
+            self._render_button(d, bx+200, y-8, 60, btn_h, '>')
+            self._add_button(f"sel_next:{label}", (bx+200, y-8, 60, btn_h), lambda: set_idx((get_idx()+1) % len(options)))
+            y += btn_h + gap
+        if self.active_settings_tab == 'Display':
+            add_toggle('Show seconds', lambda: self.show_seconds, lambda v: setattr(self, 'show_seconds', v))
+            add_toggle('Night dimming', lambda: self.dim_at_night, lambda v: setattr(self, 'dim_at_night', v))
+            add_toggle('Pixel shift', lambda: self.pixel_shift_enabled, lambda v: setattr(self, 'pixel_shift_enabled', v))
+            levels = [0.15, 0.25, 0.35, 0.5]
+            def get_idx():
+                base = self.color[0] or self.color[1] or self.color[2] or 1
+                cur = self.status_color[0]/base
+                return min(range(len(levels)), key=lambda i: abs(levels[i]-cur))
+            def set_idx(i):
+                f = levels[i]
+                self.status_color = tuple(int(c * f) for c in self.color)
+            add_selector('Status brightness', levels, get_idx, set_idx)
+        elif self.active_settings_tab == 'Time':
+            add_toggle('12-hour format', lambda: self.format_12h, lambda v: setattr(self, 'format_12h', v))
+            d.text((x0, y), f"Timezone (display only): {self.timezone_name}", font=self.status_font, fill=(160,160,160))
+            y += btn_h + gap
+        elif self.active_settings_tab == 'Status':
+            options = [30, 60, 120, 300]
+            def get_idx():
+                return min(range(len(options)), key=lambda i: abs(options[i]-self.status_position_interval))
+            def set_idx(i):
+                self.status_position_interval = options[i]
+            add_selector('Status position interval (s)', options, get_idx, set_idx)
+        elif self.active_settings_tab == 'System':
+            d.text((x0, y), f"Network: {self.network_status}", font=self.status_font, fill=(160,160,160))
+            y += btn_h
+            d.text((x0, y), f"Sync: {self.get_time_since_sync()}", font=self.status_font, fill=(160,160,160))
+        else:
+            try:
+                from utils import format_build_info
+                d.text((x0, y), format_build_info(self.build_info), font=self.status_font, fill=(160,160,160))
+            except Exception:
+                d.text((x0, y), "Version info unavailable", font=self.status_font, fill=(160,160,160))
     
     def format_time(self, now):
         """Format time string."""
@@ -553,22 +756,22 @@ class FramebufferClock:
         
         # Draw status bar
         if self.show_status_bar:
-            status_items = []
+            status_items = []  # list of (name, label)
             # Network with emoji
             if self.network_status:
                 if "Connected" in self.network_status:
-                    status_items.append(f"🌐 {self.network_status}")
+                    status_items.append(("network", f"🌐 {self.network_status}"))
                 else:
-                    status_items.append(f"✗ {self.network_status}")
-            # Timezone with emoji
+                    status_items.append(("network", f"✗ {self.network_status}"))
+            # Timezone (text prefix instead of emoji)
             if self.timezone_name:
-                status_items.append(f"TZ:{self.timezone_name}")  # Use text prefix instead of problematic emoji
+                status_items.append(("timezone", f"TZ:{self.timezone_name}"))
             # Sync status
             sync_time = self.get_time_since_sync()
             if sync_time == "Just now" or "m ago" in sync_time:
-                status_items.append(f"✓ Sync: {sync_time}")
+                status_items.append(("sync", f"✓ Sync: {sync_time}"))
             else:
-                status_items.append(f"⏰ Sync: {sync_time}")
+                status_items.append(("sync", f"⏰ Sync: {sync_time}"))
             
             # Add version info
             if self.build_info:
@@ -581,16 +784,17 @@ class FramebufferClock:
                 if short_sha:
                     parts.append(short_sha)
                 if parts:
-                    status_items.append(" ".join(parts))
+                    status_items.append(("version", " ".join(parts)))
             
-            status_text = " | ".join(status_items)
-                        # Rotate status bar position for burn-in protection
-                        if time.time() - self.last_status_position_change > self.status_position_interval:
-                            self.current_status_position = (self.current_status_position + 1) % len(self.status_bar_positions)
-                            self.last_status_position_change = time.time()
-                            logging.debug(f"Status bar position changed to: {self.status_bar_positions[self.current_status_position]}")
+            status_text = " | ".join([label for _, label in status_items])
             
-                        position_name = self.status_bar_positions[self.current_status_position]
+            # Rotate status bar position for burn-in protection
+            if time.time() - self.last_status_position_change > self.status_position_interval:
+                self.current_status_position = (self.current_status_position + 1) % len(self.status_bar_positions)
+                self.last_status_position_change = time.time()
+                logging.debug(f"Status bar position changed to: {self.status_bar_positions[self.current_status_position]}")
+            
+            position_name = self.status_bar_positions[self.current_status_position]
             
             
             # Use emoji-aware rendering if emoji font is available
@@ -620,6 +824,18 @@ class FramebufferClock:
                 status_draw = ImageDraw.Draw(status_img)
                 # Draw with emoji support
                 self.draw_text_with_emoji(status_draw, status_text, (0, 0), self.status_font, self.emoji_font, status_color)
+                # Build clickable regions
+                self.status_item_regions = []
+                cursor_rel_x = 0
+                for idx, (name, label) in enumerate(status_items):
+                    lb = self.get_text_bbox_with_emoji(label, self.status_font, self.emoji_font)
+                    iw = lb[2] - lb[0]
+                    ih = lb[3] - lb[1]
+                    self.status_item_regions.append((name, (status_x + cursor_rel_x, status_y, iw, ih)))
+                    cursor_rel_x += iw
+                    if idx < len(status_items) - 1:
+                        sep = self.get_text_bbox_with_emoji(" | ", self.status_font, self.emoji_font)
+                        cursor_rel_x += sep[2] - sep[0]
                 self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
             else:
                 # Fallback to regular rendering
@@ -644,9 +860,24 @@ class FramebufferClock:
                 status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
                 # Draw at negative bbox origin to include full glyph bounds
                 ImageDraw.Draw(status_img).text((-status_bbox[0], -status_bbox[1]), status_text, font=self.status_font, fill=status_color)
+                # Build clickable regions (approximate without emoji)
+                self.status_item_regions = []
+                cursor_rel_x = 0
+                for idx, (name, label) in enumerate(status_items):
+                    lb = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), label, font=self.status_font)
+                    iw = lb[2] - lb[0]
+                    ih = lb[3] - lb[1]
+                    self.status_item_regions.append((name, (status_x + cursor_rel_x, status_y, iw, ih)))
+                    cursor_rel_x += iw
+                    if idx < len(status_items) - 1:
+                        sep = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), " | ", font=self.status_font)
+                        cursor_rel_x += sep[2] - sep[0]
                 self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
         
         t_draw = time.time()
+        # Render settings overlay if active
+        if self.show_settings_overlay:
+            self._render_settings_overlay()
         # Write shadow buffer to framebuffer
         self.write_to_framebuffer(None)
         t_write = time.time()
@@ -854,6 +1085,8 @@ class FramebufferClock:
         try:
             while self.running:
                 loop_count += 1
+                # Poll input (non-blocking)
+                self._poll_input()
                 
                 # Check if second has changed
                 current_second = datetime.now().second

@@ -12,6 +12,7 @@ RUN install_packages \
     python3-numpy \
     python3-yaml \
     python3-requests \
+    python3-evdev \
     systemd-timesyncd \
     ntpdate \
     fonts-liberation \

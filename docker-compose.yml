@@ -67,6 +67,7 @@ services:
       - "/dev/vchiq:/dev/vchiq"
       - "/dev/i2c-1:/dev/i2c-1"  # I2C for DS3231 RTC module
       - "/dev/rtc0:/dev/rtc0"     # RTC device
+      - "/dev/input:/dev/input"   # Input devices for touch/mouse
 
 volumes:
   clock-config:
