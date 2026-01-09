@@ -41,6 +41,12 @@ class FramebufferClock:
         self.fb_width, self.fb_height = self.get_framebuffer_size()
         logging.info(f"Framebuffer resolution: {self.fb_width}x{self.fb_height}")
         
+        # Render at lower resolution for performance (Pi Zero can't handle 1920x1200)
+        # Scale factor: render at 1/2 resolution, then scale up
+        self.render_width = self.fb_width // 2
+        self.render_height = self.fb_height // 2
+        logging.info(f"Render resolution: {self.render_width}x{self.render_height} (scaled to {self.fb_width}x{self.fb_height})")
+        
         
         # Detect framebuffer pixel format
         self.fb_bpp = self.get_bits_per_pixel()
@@ -310,13 +316,15 @@ class FramebufferClock:
         t_start = time.time()
         
         try:
-            # Create image
-            image = Image.new('RGB', (self.fb_width, self.fb_height), self.bg_color)
+            # Create image at render resolution (lower res for performance)
+            image = Image.new('RGB', (self.render_width, self.render_height), self.bg_color)
             draw = ImageDraw.Draw(image)
             
             # Check screensaver
             if not self.should_show_display():
                 logging.debug("Screensaver active - blanking display")
+                # Scale up blank image
+                image = image.resize((self.fb_width, self.fb_height), Image.NEAREST)
                 self.write_to_framebuffer(image)
                 return
         except Exception as e:
@@ -337,9 +345,9 @@ class FramebufferClock:
         
         t_prep = time.time()
         
-        # Calculate center position with pixel shift
-        center_x = self.fb_width // 2 + self.pixel_shift_x
-        center_y = self.fb_height // 2 + self.pixel_shift_y
+        # Calculate center position with pixel shift (use render dimensions)
+        center_x = self.render_width // 2 + self.pixel_shift_x
+        center_y = self.render_height // 2 + self.pixel_shift_y
         
         # Draw time (centered)
         time_bbox = draw.textbbox((0, 0), time_str, font=self.time_font)
@@ -389,11 +397,16 @@ class FramebufferClock:
             status_text = " | ".join(status_items)
             status_bbox = draw.textbbox((0, 0), status_text, font=self.status_font)
             status_w = status_bbox[2] - status_bbox[0]
-            status_x = self.fb_width // 2 - status_w // 2
-            status_y = self.fb_height - 30
+            status_x = self.render_width // 2 - status_w // 2
+            status_y = self.render_height - 30
             draw.text((status_x, status_y), status_text, font=self.status_font, fill=status_color)
         
         t_draw = time.time()
+        
+        # Scale up to full framebuffer resolution
+        t_scale_start = time.time()
+        image = image.resize((self.fb_width, self.fb_height), Image.BILINEAR)
+        t_scale = time.time()
         
         # Write to framebuffer
         self.write_to_framebuffer(image)
@@ -408,8 +421,9 @@ class FramebufferClock:
             total = (t_write - t_start) * 1000
             prep = (t_prep - t_start) * 1000
             draw_time = (t_draw - t_prep) * 1000
-            write = (t_write - t_draw) * 1000
-            logging.info(f"Render timing: total={total:.1f}ms (prep={prep:.1f}ms, draw={draw_time:.1f}ms, write={write:.1f}ms) @ {self.fb_width}x{self.fb_height}")
+            scale_time = (t_scale - t_scale_start) * 1000
+            write = (t_write - t_scale) * 1000
+            logging.info(f"Render timing: total={total:.1f}ms (prep={prep:.1f}ms, draw={draw_time:.1f}ms, scale={scale_time:.1f}ms, write={write:.1f}ms) @ {self.render_width}x{self.render_height}->{self.fb_width}x{self.fb_height}")
     
     def write_to_framebuffer(self, image):
         """Write image directly to framebuffer device."""
