@@ -2,7 +2,7 @@
 # Compatible with Python 3.9+
 
 # Image processing for direct framebuffer rendering
-Pillow==10.0.0
+# Pillow provided by system package python3-pil to avoid ARMv6 builds
 
 # HTTP requests for weather API
 requests==2.31.0

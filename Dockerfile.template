@@ -12,6 +12,7 @@ RUN install_packages \
     python3-dev \
     python3-pip \
     python3-yaml \
+    python3-pil \
     zlib1g-dev \
     libjpeg-dev \
     libtiff-dev \
@@ -35,6 +36,19 @@ COPY requirements.txt .
 
 # Install Python dependencies using python3 -m pip for reliability
 RUN python3 -m pip install --no-cache-dir -r requirements.txt
+
+# Sanity check: verify critical imports to catch missing deps early
+RUN python3 - <<'PY'
+import sys
+print('Python:', sys.version)
+try:
+    import PIL, yaml, requests
+    from PIL import Image, ImageDraw, ImageFont
+    print('Import check: OK')
+except Exception as e:
+    print('Import check failed:', e)
+    raise
+PY
 
 # Copy application files
 COPY app/ .
