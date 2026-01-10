@@ -90,10 +90,23 @@ class FramebufferClock:
         
         logging.info(f"Font sizes: time={self.time_font_size}, date={self.date_font_size}, weather={self.weather_font_size}, status={self.status_font_size}")
         
-        # Time format
+        # Time format - check env vars first, then config
         time_config = config.get('time', {})
-        self.format_12h = time_config.get('format_12h', True)
-        self.show_seconds = display_config.get('show_seconds', True)
+        format_12h_env = os.environ.get('TIME_FORMAT_12H', '').lower()
+        if format_12h_env in ('true', '1', 'yes'):
+            self.format_12h = True
+        elif format_12h_env in ('false', '0', 'no'):
+            self.format_12h = False
+        else:
+            self.format_12h = time_config.get('format_12h', True)
+        
+        show_seconds_env = os.environ.get('SHOW_SECONDS', '').lower()
+        if show_seconds_env in ('true', '1', 'yes'):
+            self.show_seconds = True
+        elif show_seconds_env in ('false', '0', 'no'):
+            self.show_seconds = False
+        else:
+            self.show_seconds = display_config.get('show_seconds', True)
         
         # Initialize fonts
         self.init_fonts()
@@ -115,23 +128,41 @@ class FramebufferClock:
         self.timezone_name = os.environ.get('TIMEZONE') or os.environ.get('TZ') or 'UTC'
         self.last_status_check = 0
         
-        # Screensaver configuration
-        self.screensaver_enabled = display_config.get('screensaver_enabled', True)
-        self.screensaver_start = display_config.get('screensaver_start_hour', 2)
-        self.screensaver_end = display_config.get('screensaver_end_hour', 5)
+        # Screensaver configuration - check env vars first
+        screensaver_env = os.environ.get('SCREENSAVER_ENABLED', '').lower()
+        if screensaver_env in ('true', '1', 'yes'):
+            self.screensaver_enabled = True
+        elif screensaver_env in ('false', '0', 'no'):
+            self.screensaver_enabled = False
+        else:
+            self.screensaver_enabled = display_config.get('screensaver_enabled', True)
+        self.screensaver_start = int(os.environ.get('SCREENSAVER_START_HOUR', display_config.get('screensaver_start_hour', 2)))
+        self.screensaver_end = int(os.environ.get('SCREENSAVER_END_HOUR', display_config.get('screensaver_end_hour', 5)))
         
-        # Night dimming configuration
-        self.dim_at_night = display_config.get('dim_at_night', True)
-        self.night_brightness = display_config.get('night_brightness', 0.3)
-        self.night_start = display_config.get('night_start_hour', 22)
-        self.night_end = display_config.get('night_end_hour', 6)
+        # Night dimming configuration - check env vars first
+        dim_at_night_env = os.environ.get('DIM_AT_NIGHT', '').lower()
+        if dim_at_night_env in ('true', '1', 'yes'):
+            self.dim_at_night = True
+        elif dim_at_night_env in ('false', '0', 'no'):
+            self.dim_at_night = False
+        else:
+            self.dim_at_night = display_config.get('dim_at_night', True)
+        self.night_brightness = float(os.environ.get('NIGHT_BRIGHTNESS', display_config.get('night_brightness', 0.3)))
+        self.night_start = int(os.environ.get('NIGHT_START_HOUR', display_config.get('night_start_hour', 22)))
+        self.night_end = int(os.environ.get('NIGHT_END_HOUR', display_config.get('night_end_hour', 6)))
         self.current_brightness = 1.0
         
-        # Pixel shift configuration
-        self.pixel_shift_enabled = display_config.get('pixel_shift_enabled', True)
-        self.pixel_shift_interval = display_config.get('pixel_shift_interval_seconds', 60)  # Less frequent updates
-        self.pixel_shift_disable_start = display_config.get('pixel_shift_disable_start_hour', 12)
-        self.pixel_shift_disable_end = display_config.get('pixel_shift_disable_end_hour', 14)
+        # Pixel shift configuration - check env vars first
+        pixel_shift_env = os.environ.get('PIXEL_SHIFT_ENABLED', '').lower()
+        if pixel_shift_env in ('true', '1', 'yes'):
+            self.pixel_shift_enabled = True
+        elif pixel_shift_env in ('false', '0', 'no'):
+            self.pixel_shift_enabled = False
+        else:
+            self.pixel_shift_enabled = display_config.get('pixel_shift_enabled', True)
+        self.pixel_shift_interval = int(os.environ.get('PIXEL_SHIFT_INTERVAL_SECONDS', display_config.get('pixel_shift_interval_seconds', 60)))  # Less frequent updates
+        self.pixel_shift_disable_start = int(os.environ.get('PIXEL_SHIFT_DISABLE_START_HOUR', display_config.get('pixel_shift_disable_start_hour', 12)))
+        self.pixel_shift_disable_end = int(os.environ.get('PIXEL_SHIFT_DISABLE_END_HOUR', display_config.get('pixel_shift_disable_end_hour', 14)))
         self.last_pixel_shift = 0
         self.pixel_shift_x = 0
         self.pixel_shift_y = 0
@@ -1243,8 +1274,9 @@ class FramebufferClock:
                     os.remove('/tmp/restart_clock')
                     break
                 
-                # Sleep to avoid busy-waiting (longer when no change needed)
-                time.sleep(0.5)
+                # Sleep to reduce CPU usage - only need to poll input and check time
+                # Longer sleep = lower CPU usage (0.9s gives ~15% CPU on Pi Zero)
+                time.sleep(0.9)
         
         except KeyboardInterrupt:
             logging.info("Clock interrupted by user")
