@@ -111,6 +111,10 @@ class FramebufferClock:
         # Initialize fonts
         self.init_fonts()
         
+        # Cache for performance
+        self._bbox_cache = {}  # Cache text bboxes
+        self._temp_draw = None  # Reuse temp draw object
+        
         # Status bar configuration
         self.show_status_bar = True
         self.status_color = tuple(int(c * 0.25) for c in self.color)  # Much dimmer for informational display
@@ -742,7 +746,7 @@ class FramebufferClock:
     def update_status(self):
         """Update status information periodically."""
         now = time.time()
-        if now - self.last_status_check > 30:  # Update every 30 seconds
+        if now - self.last_status_check > 120:  # Update every 2 minutes (reduce subprocess overhead)
             self.check_network_status()
             self.check_last_ntp_sync()
             self.last_status_check = now
@@ -788,7 +792,10 @@ class FramebufferClock:
         date_offset_y = int(100 * scale)
         
         # Render time to its own surface (RGB888), then blit
-        time_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), time_str, font=self.time_font)
+        # Reuse temp draw object for bbox calculations
+        if not self._temp_draw:
+            self._temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
+        time_bbox = self._temp_draw.textbbox((0,0), time_str, font=self.time_font)
         # Use full bbox dimensions (accounts for negative left bearing and descenders)
         time_w = time_bbox[2] - time_bbox[0]
         time_h = time_bbox[3] - time_bbox[1]
@@ -812,7 +819,7 @@ class FramebufferClock:
         self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect')
         
         # Render date
-        date_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), date_str, font=self.date_font)
+        date_bbox = self._temp_draw.textbbox((0,0), date_str, font=self.date_font)
         date_w = date_bbox[2] - date_bbox[0]
         date_h = date_bbox[3] - date_bbox[1]
         d_pad_left = 10
@@ -1247,16 +1254,18 @@ class FramebufferClock:
                 # Check if second has changed
                 current_second = datetime.now().second
                 
-                # Only render when time changes
+                # Only render when time changes (skip if overlay is open)
                 if current_second != last_second:
-                    # Update weather periodically
-                    self.update_weather()
-                    
-                    # Update status information
-                    self.update_status()
-                    
-                    # Update pixel shift
-                    self.update_pixel_shift()
+                    # Skip expensive updates if overlay is showing
+                    if not self.show_settings_overlay:
+                        # Update weather periodically
+                        self.update_weather()
+                        
+                        # Update status information
+                        self.update_status()
+                        
+                        # Update pixel shift
+                        self.update_pixel_shift()
                     
                     # Render
                     self.render()
@@ -1264,7 +1273,7 @@ class FramebufferClock:
                     last_second = current_second
                     frame_count += 1
                     
-                    if frame_count % 60 == 0:  # Log every minute
+                    if frame_count % 300 == 0:  # Log every 5 minutes (reduce I/O)
                         avg_loops = loop_count / frame_count if frame_count > 0 else 0
                         logging.info(f"Clock stats: {frame_count} renders, {loop_count} loops, {avg_loops:.1f} loops/render")
                 
