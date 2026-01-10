@@ -797,28 +797,30 @@ class FramebufferClock:
         date_offset_y = int(100 * self.display_scale)
         
         # Render time to its own surface (RGB888), then blit
-        # Reuse temp draw object for bbox calculations
+        # SIMPLIFIED APPROACH: Make image oversized and draw text centered - no complex bbox math
+        # For font size 280, allocate 2000x400px canvas (way more than needed)
+        time_canvas_w = int(self.time_font_size * 7.5)  # ~2100px for size 280
+        time_canvas_h = int(self.time_font_size * 1.5)  # ~420px for size 280
+        time_img = Image.new('RGB', (time_canvas_w, time_canvas_h), (0,0,0))
+        
+        # Get text size using textbbox to center it
         if not self._temp_draw:
             self._temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
         time_bbox = self._temp_draw.textbbox((0,0), time_str, font=self.time_font)
-        # Use full bbox dimensions (accounts for negative left bearing and descenders)
-        time_w = time_bbox[2] - time_bbox[0]
-        time_h = time_bbox[3] - time_bbox[1]
-        # MASSIVE fixed padding to eliminate any possibility of right-edge clipping
-        # Tested with longest strings like "10:00:00 PM" and "12:59:59 AM"
-        pad_left = max(40, -time_bbox[0] + 20)  # Extra generous left padding
-        pad_right = 200  # Fixed massive right padding - no more cropping!
-        pad_top = max(15, -time_bbox[1] + 10)  # Account for ascenders
-        pad_bottom = 15
-        # Total image dimensions
-        img_w = time_w + pad_left + pad_right
-        img_h = time_h + pad_top + pad_bottom
-        # Simple centering with margin - the 200px padding handles all edge cases
-        time_x = max(margin, min(self.fb_width - margin - img_w, (self.fb_width - img_w) // 2 + self.pixel_shift_x))
-        time_y = max(margin, min(self.fb_height - margin - img_h, (self.fb_height - img_h) // 2 - time_offset_y + self.pixel_shift_y))
-        time_img = Image.new('RGB', (img_w, img_h), (0,0,0))
-        # Draw with proper offset to include full glyph bounds
-        ImageDraw.Draw(time_img).text((pad_left - time_bbox[0], pad_top - time_bbox[1]), time_str, font=self.time_font, fill=display_color)
+        text_actual_w = time_bbox[2] - time_bbox[0]
+        text_actual_h = time_bbox[3] - time_bbox[1]
+        
+        # Center text in the oversized canvas
+        text_x = (time_canvas_w - text_actual_w) // 2 - time_bbox[0]
+        text_y = (time_canvas_h - text_actual_h) // 2 - time_bbox[1]
+        
+        # Draw text
+        ImageDraw.Draw(time_img).text((text_x, text_y), time_str, font=self.time_font, fill=display_color)
+        
+        # Position the entire canvas centered on screen
+        time_x = max(margin, min(self.fb_width - margin - time_canvas_w, (self.fb_width - time_canvas_w) // 2 + self.pixel_shift_x))
+        time_y = max(margin, min(self.fb_height - margin - time_canvas_h, (self.fb_height - time_canvas_h) // 2 - time_offset_y + self.pixel_shift_y))
+        
         self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect')
         
         # Render date
