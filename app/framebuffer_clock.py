@@ -770,8 +770,10 @@ class FramebufferClock:
         # Total image dimensions
         img_w = time_w + pad_left + pad_right
         img_h = time_h + pad_top + pad_bottom
-        # Clamp position to keep entire image on screen
-        time_x = max(margin, min(self.fb_width - margin - img_w, center_x - img_w // 2))
+        # Reserve extra safe space at the right edge to avoid any chance of clipping
+        safe_right_space = max(int(self.time_font_size * 0.2), 60)
+        # Clamp position to keep entire image on screen with extra right safety margin
+        time_x = max(margin, min(self.fb_width - margin - safe_right_space - img_w, center_x - img_w // 2))
         time_y = max(margin, min(self.fb_height - margin - img_h, center_y - img_h // 2 - time_offset_y))
         time_img = Image.new('RGB', (img_w, img_h), (0,0,0))
         # Draw with proper offset to include full glyph bounds
