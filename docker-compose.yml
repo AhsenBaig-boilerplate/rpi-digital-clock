@@ -57,10 +57,12 @@ services:
       - 'clock-config:/app/config'
     
     # Device access for display and optional hardware
-    # RTC and input devices only mounted if they exist (no error if missing)
+    # All devices mounted so features can be enabled via env vars without redeployment
     devices:
       - "/dev/fb0:/dev/fb0"       # Framebuffer (required)
-      - "/dev/input:/dev/input"   # Input devices (optional, for touch/mouse)
+      - "/dev/input:/dev/input"   # Input devices (touch/mouse support)
+      - "/dev/i2c-1:/dev/i2c-1"  # I2C for RTC module (only used if RTC_ENABLED=true)
+      - "/dev/rtc0:/dev/rtc0"     # RTC device (only used if RTC_ENABLED=true)
 
 volumes:
   clock-config:

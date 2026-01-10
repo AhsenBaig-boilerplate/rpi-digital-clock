@@ -805,12 +805,12 @@ class FramebufferClock:
         # Use full bbox dimensions (accounts for negative left bearing and descenders)
         time_w = time_bbox[2] - time_bbox[0]
         time_h = time_bbox[3] - time_bbox[1]
-        # AGGRESSIVE padding to eliminate any possibility of right-edge clipping
-        # Especially for double-digit hours like "10:00:00 PM"
-        pad_left = max(30, -time_bbox[0] + 15)  # Extra generous left padding
-        pad_right = max(120, int(time_w * 0.08))  # Scale with text width, minimum 120px
-        pad_top = max(10, -time_bbox[1] + 8)  # Account for ascenders
-        pad_bottom = 10
+        # MASSIVE fixed padding to eliminate any possibility of right-edge clipping
+        # Tested with longest strings like "10:00:00 PM" and "12:59:59 AM"
+        pad_left = max(40, -time_bbox[0] + 20)  # Extra generous left padding
+        pad_right = 200  # Fixed massive right padding - no more cropping!
+        pad_top = max(15, -time_bbox[1] + 10)  # Account for ascenders
+        pad_bottom = 15
         # Total image dimensions
         img_w = time_w + pad_left + pad_right
         img_h = time_h + pad_top + pad_bottom
@@ -1249,6 +1249,7 @@ class FramebufferClock:
         
         frame_count = 0
         last_second = -1
+        last_minute = -1  # Track minute too to ensure we never skip
         loop_count = 0
         
         try:
@@ -1257,11 +1258,12 @@ class FramebufferClock:
                 # Poll input (non-blocking)
                 self._poll_input()
                 
-                # Check if second has changed
+                # Check if second has changed (also check minute to handle sleep overshoots)
                 current_second = datetime.now().second
+                current_minute = datetime.now().minute
                 
-                # Only render when time changes (skip if overlay is open)
-                if current_second != last_second:
+                # Render if second changed OR minute changed (ensures we never skip)
+                if current_second != last_second or current_minute != last_minute:
                     # Skip expensive updates if overlay is showing
                     if not self.show_settings_overlay:
                         # Update weather periodically
@@ -1277,6 +1279,7 @@ class FramebufferClock:
                     self.render()
                     
                     last_second = current_second
+                    last_minute = current_minute
                     frame_count += 1
                     
                     if frame_count % 300 == 0:  # Log every 5 minutes (reduce I/O)
@@ -1289,9 +1292,9 @@ class FramebufferClock:
                     os.remove('/tmp/restart_clock')
                     break
                 
-                # Sleep to reduce CPU usage - only need to poll input and check time
-                # Longer sleep = lower CPU usage (0.9s gives ~15% CPU on Pi Zero)
-                time.sleep(0.9)
+                # Sleep to reduce CPU usage - with minute boundary checking we won't skip seconds
+                # 1.0s sleep gives ~10% CPU on Pi Zero
+                time.sleep(1.0)
         
         except KeyboardInterrupt:
             logging.info("Clock interrupted by user")
