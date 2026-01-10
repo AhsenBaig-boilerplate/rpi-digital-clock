@@ -75,10 +75,11 @@ class FramebufferClock:
         self.status_font_size = 28
         
         # Optional logical resolution scaling from env DISPLAY_RESOLUTION (e.g. "1280x720")
-        scale = self.get_display_scale()
-        self.time_font_size = max(10, int(self.base_time_font_size * scale))
-        self.date_font_size = max(8, int(self.base_date_font_size * scale))
-        self.weather_font_size = max(8, int(self.base_weather_font_size * scale))
+        # Cache this once - don't recalculate every render!
+        self.display_scale = self.get_display_scale()
+        self.time_font_size = max(10, int(self.base_time_font_size * self.display_scale))
+        self.date_font_size = max(8, int(self.base_date_font_size * self.display_scale))
+        self.weather_font_size = max(8, int(self.base_weather_font_size * self.display_scale))
         
         logging.info(f"Font sizes: time={self.time_font_size}, date={self.date_font_size}, weather={self.weather_font_size}, status={self.status_font_size}")
         
@@ -349,14 +350,14 @@ class FramebufferClock:
         """Get bounding box for text with emoji support."""
         if not emoji_font:
             # No emoji font, use regular bbox
-            temp_draw = ImageDraw.Draw(Image.new('RGB', (1, 1)))
+            # REMOVED - use self._temp_draw instead)))
             return temp_draw.textbbox((0, 0), text, font=font)
         
         # Calculate width with emoji support
         x = 0
         max_height = 0
         emoji_chars = set('🌐✓⏰✗')
-        temp_draw = ImageDraw.Draw(Image.new('RGB', (1, 1)))
+        # REMOVED - use self._temp_draw instead)))
         
         for char in text:
             if char in emoji_chars:
@@ -790,17 +791,15 @@ class FramebufferClock:
         center_x = self.fb_width // 2 + self.pixel_shift_x
         center_y = self.fb_height // 2 + self.pixel_shift_y
         
-        # Dynamic margins and offsets scaled to DISPLAY_RESOLUTION if provided
-        scale = self.get_display_scale()
-        # Increase margin to keep time text away from framebuffer edges
-        margin = int(30 * scale)
-        time_offset_y = int(60 * scale)
-        date_offset_y = int(100 * scale)
+        # Dynamic margins and offsets (use cached scale)
+        margin = int(30 * self.display_scale)
+        time_offset_y = int(60 * self.display_scale)
+        date_offset_y = int(100 * self.display_scale)
         
         # Render time to its own surface (RGB888), then blit
         # Reuse temp draw object for bbox calculations
         if not self._temp_draw:
-            self._temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
+            self._# REMOVED - use self._temp_draw instead)))
         time_bbox = self._temp_draw.textbbox((0,0), time_str, font=self.time_font)
         # Use full bbox dimensions (accounts for negative left bearing and descenders)
         time_w = time_bbox[2] - time_bbox[0]
@@ -814,11 +813,9 @@ class FramebufferClock:
         # Total image dimensions
         img_w = time_w + pad_left + pad_right
         img_h = time_h + pad_top + pad_bottom
-        # Reserve extra safe space at the right edge to avoid any chance of clipping
-        safe_right_space = max(int(self.time_font_size * 0.2), 60)
-        # Clamp position to keep entire image on screen with extra right safety margin
-        time_x = max(margin, min(self.fb_width - margin - safe_right_space - img_w, center_x - img_w // 2))
-        time_y = max(margin, min(self.fb_height - margin - img_h, center_y - img_h // 2 - time_offset_y))
+        # Simple centering with margin - the 200px padding handles all edge cases
+        time_x = max(margin, min(self.fb_width - margin - img_w, (self.fb_width - img_w) // 2 + self.pixel_shift_x))
+        time_y = max(margin, min(self.fb_height - margin - img_h, (self.fb_height - img_h) // 2 - time_offset_y + self.pixel_shift_y))
         time_img = Image.new('RGB', (img_w, img_h), (0,0,0))
         # Draw with proper offset to include full glyph bounds
         ImageDraw.Draw(time_img).text((pad_left - time_bbox[0], pad_top - time_bbox[1]), time_str, font=self.time_font, fill=display_color)
@@ -894,8 +891,7 @@ class FramebufferClock:
             
             # Use emoji-aware rendering if emoji font is available
             if self.emoji_font:
-                # Calculate size including icons
-                temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
+                # Calculate size including icons - REUSE temp_draw to avoid creating new images
                 status_w = 0
                 status_h = 0
                 min_y_offset = 0  # Track negative y offset for descenders
@@ -904,13 +900,13 @@ class FramebufferClock:
                     if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
                         status_w += 12
                     # Add label width and track full height including descenders
-                    lb = temp_draw.textbbox((0,0), label, font=self.status_font)
+                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
                     status_w += lb[2] - lb[0]
                     status_h = max(status_h, lb[3] - lb[1])
                     min_y_offset = min(min_y_offset, lb[1])  # Track descenders
                     # Add separator width
                     if idx < len(status_items) - 1:
-                        sep = temp_draw.textbbox((0,0), " | ", font=self.status_font)
+                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
                         status_w += sep[2] - sep[0]
                 
                 # Add vertical padding for descenders
@@ -943,29 +939,28 @@ class FramebufferClock:
                         cursor_x += 12  # icon width + spacing
                     # Draw label text
                     status_draw.text((cursor_x, text_y), label, font=self.status_font, fill=status_color)
-                    lb = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), label, font=self.status_font)
+                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
                     cursor_x += lb[2] - lb[0]
                     if idx < len(status_items) - 1:
                         status_draw.text((cursor_x, 0), " | ", font=self.status_font, fill=status_color)
-                        sep = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), " | ", font=self.status_font)
+                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
                         cursor_x += sep[2] - sep[0]
                 # Build clickable regions
                 self.status_item_regions = []
                 cursor_rel_x = 0
                 for idx, (name, label) in enumerate(status_items):
                     icon_w = 12 if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings'] else 0
-                    lb = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), label, font=self.status_font)
+                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
                     iw = icon_w + (lb[2] - lb[0])
                     ih = lb[3] - lb[1]
                     self.status_item_regions.append((name, (status_x + cursor_rel_x, status_y, iw, ih)))
                     cursor_rel_x += iw
                     if idx < len(status_items) - 1:
-                        sep = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), " | ", font=self.status_font)
+                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
                         cursor_rel_x += sep[2] - sep[0]
                 self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
             else:
-                # Fallback to regular rendering
-                temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
+                # Fallback to regular rendering - REUSE temp_draw
                 status_w = 0
                 status_h = 0
                 min_y_offset = 0  # Track negative y offset for descenders
@@ -974,13 +969,13 @@ class FramebufferClock:
                     if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
                         status_w += 12
                     # Add label width and track full height including descenders
-                    lb = temp_draw.textbbox((0,0), label, font=self.status_font)
+                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
                     status_w += lb[2] - lb[0]
                     status_h = max(status_h, lb[3] - lb[1])
                     min_y_offset = min(min_y_offset, lb[1])  # Track descenders
                     # Add separator width
                     if idx < len(status_items) - 1:
-                        sep = temp_draw.textbbox((0,0), " | ", font=self.status_font)
+                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
                         status_w += sep[2] - sep[0]
                 
                 # Add vertical padding for descenders
@@ -1013,24 +1008,24 @@ class FramebufferClock:
                         cursor_x += 12  # icon width + spacing
                     # Draw label text
                     status_draw.text((cursor_x, text_y), label, font=self.status_font, fill=status_color)
-                    lb = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), label, font=self.status_font)
+                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
                     cursor_x += lb[2] - lb[0]
                     if idx < len(status_items) - 1:
                         status_draw.text((cursor_x, 0), " | ", font=self.status_font, fill=status_color)
-                        sep = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), " | ", font=self.status_font)
+                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
                         cursor_x += sep[2] - sep[0]
                 # Build clickable regions (approximate without emoji)
                 self.status_item_regions = []
                 cursor_rel_x = 0
                 for idx, (name, label) in enumerate(status_items):
                     icon_w = 12 if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings'] else 0
-                    lb = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), label, font=self.status_font)
+                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
                     iw = icon_w + (lb[2] - lb[0])
                     ih = lb[3] - lb[1]
                     self.status_item_regions.append((name, (status_x + cursor_rel_x, status_y, iw, ih)))
                     cursor_rel_x += iw
                     if idx < len(status_items) - 1:
-                        sep = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0,0), " | ", font=self.status_font)
+                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
                         cursor_rel_x += sep[2] - sep[0]
                 self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
         
