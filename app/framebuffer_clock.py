@@ -350,14 +350,14 @@ class FramebufferClock:
         """Get bounding box for text with emoji support."""
         if not emoji_font:
             # No emoji font, use regular bbox
-            # REMOVED - use self._temp_draw instead)))
+            temp_draw = ImageDraw.Draw(Image.new('RGB', (1, 1)))
             return temp_draw.textbbox((0, 0), text, font=font)
         
         # Calculate width with emoji support
         x = 0
         max_height = 0
         emoji_chars = set('🌐✓⏰✗')
-        # REMOVED - use self._temp_draw instead)))
+        temp_draw = ImageDraw.Draw(Image.new('RGB', (1, 1)))
         
         for char in text:
             if char in emoji_chars:
@@ -799,7 +799,7 @@ class FramebufferClock:
         # Render time to its own surface (RGB888), then blit
         # Reuse temp draw object for bbox calculations
         if not self._temp_draw:
-            self._# REMOVED - use self._temp_draw instead)))
+            self._temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
         time_bbox = self._temp_draw.textbbox((0,0), time_str, font=self.time_font)
         # Use full bbox dimensions (accounts for negative left bearing and descenders)
         time_w = time_bbox[2] - time_bbox[0]
