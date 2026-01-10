@@ -9,7 +9,6 @@ import sys
 import logging
 import socket
 import subprocess
-import random
 import time
 import select
 import termios
@@ -28,17 +27,10 @@ except Exception:
     InputDevice = None
     ecodes = None
     list_devices = lambda: []
-# Import weather service
-try:
-    from weather import WeatherService
-except ImportError:
-    WeatherService = None
 
-# Import RTC manager
-try:
-    from rtc import RTCManager
-except ImportError:
-    RTCManager = None
+# Lazy imports for optional features (loaded only when enabled)
+WeatherService = None
+RTCManager = None
 
 
 class FramebufferClock:
@@ -172,34 +164,54 @@ class FramebufferClock:
         self.pixel_shift_y = 0
         self.pixel_shift_max = 10
         
-        # Weather service
+        # Weather service - lazy load only if enabled
         self.weather_service = None
         weather_enabled = os.environ.get('WEATHER_ENABLED', '').lower() in ('true', '1', 'yes') or config.get('weather', {}).get('enabled', False)
         if weather_enabled:
-            api_key = os.environ.get('WEATHER_API_KEY') or config.get('weather', {}).get('api_key', '')
-            location = os.environ.get('WEATHER_LOCATION') or config.get('weather', {}).get('location', '')
-            if api_key and location and WeatherService:
-                self.weather_service = WeatherService(config.get('weather', {}))
-                logging.info(f"Weather service enabled for location: {location}")
-            elif not api_key:
-                logging.warning("Weather service disabled: WEATHER_API_KEY not set")
-            elif not location:
-                logging.warning("Weather service disabled: WEATHER_LOCATION not set")
+            # Lazy import
+            global WeatherService
+            if WeatherService is None:
+                try:
+                    from weather import WeatherService
+                except ImportError:
+                    logging.warning("Weather enabled but weather.py not found")
+                    WeatherService = None
+            
+            if WeatherService:
+                api_key = os.environ.get('WEATHER_API_KEY') or config.get('weather', {}).get('api_key', '')
+                location = os.environ.get('WEATHER_LOCATION') or config.get('weather', {}).get('location', '')
+                if api_key and location:
+                    self.weather_service = WeatherService(config.get('weather', {}))
+                    logging.info(f"Weather service enabled for location: {location}")
+                elif not api_key:
+                    logging.warning("Weather service disabled: WEATHER_API_KEY not set")
+                elif not location:
+                    logging.warning("Weather service disabled: WEATHER_LOCATION not set")
         
         # Weather update tracking
         self.last_weather_update = 0
         self.weather_text = ""
         
-        # Initialize RTC manager if available
+        # Initialize RTC manager only if enabled - lazy load
         rtc_enabled = os.environ.get('RTC_ENABLED', '').lower() in ('true', '1', 'yes') or config.get('time', {}).get('rtc_enabled', False)
         self.rtc_manager = None
-        if RTCManager and rtc_enabled:
-            try:
-                self.rtc_manager = RTCManager(enabled=True)
-                if self.rtc_manager.available:
-                    logging.info("RTC manager initialized and hardware detected")
-            except Exception as e:
-                logging.warning(f"RTC initialization failed: {e}")
+        if rtc_enabled:
+            # Lazy import
+            global RTCManager
+            if RTCManager is None:
+                try:
+                    from rtc import RTCManager
+                except ImportError:
+                    logging.info("RTC enabled but rtc.py not found")
+                    RTCManager = None
+            
+            if RTCManager:
+                try:
+                    self.rtc_manager = RTCManager(enabled=True)
+                    if self.rtc_manager.available:
+                        logging.info("RTC manager initialized and hardware detected")
+                except Exception as e:
+                    logging.warning(f"RTC initialization failed: {e}")
         
         # Get initial NTP sync time
         self.check_last_ntp_sync()
@@ -288,16 +300,8 @@ class FramebufferClock:
             if not font_file:
                 raise Exception("No suitable font found")
             
-            # Load emoji font if available
+            # Skip emoji font - we use bitmap icons instead (saves memory and load time)
             self.emoji_font = None
-            for emoji_path in emoji_font_paths:
-                if os.path.exists(emoji_path):
-                    try:
-                        self.emoji_font = ImageFont.truetype(emoji_path, self.status_font_size)
-                        logging.info(f"Emoji font loaded: {emoji_path}")
-                        break
-                    except Exception as e:
-                        logging.debug(f"Failed to load emoji font {emoji_path}: {e}")
             
             self.time_font = ImageFont.truetype(font_file, self.time_font_size)
             self.date_font = ImageFont.truetype(font_file, self.date_font_size)
@@ -724,6 +728,8 @@ class FramebufferClock:
         
         now = time.time()
         if now - self.last_pixel_shift > self.pixel_shift_interval:
+            # Lazy import random only when needed
+            import random
             self.pixel_shift_x = random.randint(-self.pixel_shift_max, self.pixel_shift_max)
             self.pixel_shift_y = random.randint(-self.pixel_shift_max, self.pixel_shift_max)
             self.last_pixel_shift = now

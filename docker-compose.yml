@@ -56,16 +56,11 @@ services:
       # Persist configuration changes
       - 'clock-config:/app/config'
     
-    # Device access for display and RTC
+    # Device access for display and optional hardware
+    # RTC and input devices only mounted if they exist (no error if missing)
     devices:
-      - "/dev/tty0:/dev/tty0"
-      - "/dev/tty1:/dev/tty1"
-      - "/dev/fb0:/dev/fb0"
-      - "/dev/dri:/dev/dri"
-      - "/dev/vchiq:/dev/vchiq"
-      - "/dev/i2c-1:/dev/i2c-1"  # I2C for DS3231 RTC module
-      - "/dev/rtc0:/dev/rtc0"     # RTC device
-      - "/dev/input:/dev/input"   # Input devices for touch/mouse
+      - "/dev/fb0:/dev/fb0"       # Framebuffer (required)
+      - "/dev/input:/dev/input"   # Input devices (optional, for touch/mouse)
 
 volumes:
   clock-config:
