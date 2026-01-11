@@ -270,6 +270,17 @@ class FramebufferClock:
         except Exception:
             pass
         
+        # Native time renderer (Rust daemon) integration
+        self.native_renderer_enabled = os.environ.get('NATIVE_TIME_RENDERER', '').lower() in ('true', '1', 'yes')
+        self.native_proc = None
+        if self.native_renderer_enabled:
+            try:
+                bin_path = os.environ.get('NATIVE_TIME_BIN', str(Path(__file__).parent / 'native' / 'clock_fb_rust' / 'target' / 'release' / 'clock_fb_rust'))
+                logging.info(f"Starting native time renderer: {bin_path}")
+                self.native_proc = subprocess.Popen([bin_path], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception as e:
+                logging.error(f"Failed to start native renderer: {e}")
+                self.native_renderer_enabled = False
         logging.info("Framebuffer clock initialized")
     
     def get_framebuffer_size(self):
@@ -693,6 +704,14 @@ class FramebufferClock:
     def apply_brightness(self, color):
         """Apply current brightness to a color tuple."""
         return tuple(int(c * self.current_brightness) for c in color)
+
+    def _send_native(self, line: str):
+        try:
+            if self.native_renderer_enabled and self.native_proc and self.native_proc.stdin:
+                self.native_proc.stdin.write((line + "\n").encode('utf-8'))
+                self.native_proc.stdin.flush()
+        except Exception as e:
+            logging.error(f"Native send failed: {e}")
     
     def check_network_status(self):
         """Check network connectivity."""
@@ -832,6 +851,16 @@ class FramebufferClock:
         # Apply brightness
         display_color = self.apply_brightness(self.color)
         status_color = self.apply_brightness(self.status_color)
+
+        # If native renderer is enabled, send commands and skip PIL time/date drawing
+        if self.native_renderer_enabled:
+            hex_color = f"#{display_color[0]:02X}{display_color[1]:02X}{display_color[2]:02X}"
+            self._send_native(f"COLOR {hex_color}")
+            self._send_native(f"BRIGHT {self.current_brightness:.3f}")
+            self._send_native(f"SHIFT {self.pixel_shift_x} {self.pixel_shift_y}")
+            self._send_native(f"TIME {time_str}")
+            self._send_native(f"DATE {date_str}")
+            return
         
         t_prep = time.time()
         
