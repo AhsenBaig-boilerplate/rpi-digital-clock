@@ -100,6 +100,15 @@ class FramebufferClock:
             self.show_seconds = False
         else:
             self.show_seconds = display_config.get('show_seconds', True)
+
+        # Auto-shrink time when too wide (env or config; default enabled)
+        auto_shrink_env = os.environ.get('AUTO_SHRINK_TIME', '').lower()
+        if auto_shrink_env in ('true', '1', 'yes'):
+            self.auto_shrink_time = True
+        elif auto_shrink_env in ('false', '0', 'no'):
+            self.auto_shrink_time = False
+        else:
+            self.auto_shrink_time = display_config.get('auto_shrink_time', True)
         
         # Initialize fonts
         self.init_fonts()
@@ -304,7 +313,10 @@ class FramebufferClock:
             # Skip emoji font - we use bitmap icons instead (saves memory and load time)
             self.emoji_font = None
             
-            self.time_font = ImageFont.truetype(font_file, self.time_font_size)
+            # Keep the chosen font file for dynamic sizing later
+            self.font_file = font_file
+            
+            self.time_font = ImageFont.truetype(self.font_file, self.time_font_size)
             self.date_font = ImageFont.truetype(font_file, self.date_font_size)
             self.weather_font = ImageFont.truetype(font_file, self.weather_font_size)
             self.status_font = ImageFont.truetype(font_file, self.status_font_size)
@@ -317,6 +329,14 @@ class FramebufferClock:
             self.weather_font = ImageFont.load_default()
             self.status_font = ImageFont.load_default()
             logging.warning("Using default PIL font")
+        
+        # Simple font cache for dynamic sizing (size -> ImageFont)
+        try:
+            self._font_cache = {}
+            if hasattr(self, 'time_font_size') and getattr(self, 'font_file', None):
+                self._font_cache[self.time_font_size] = self.time_font
+        except Exception:
+            self._font_cache = {}
     
     def hex_to_rgb(self, hex_color):
         """Convert hex color to RGB tuple."""
@@ -796,30 +816,47 @@ class FramebufferClock:
         time_offset_y = int(60 * self.display_scale)
         date_offset_y = int(100 * self.display_scale)
         
-        # Render time to its own surface (RGB888), then blit
-        # SIMPLIFIED APPROACH: Make image oversized and draw text centered - no complex bbox math
-        # For font size 280, allocate 2000x400px canvas (way more than needed)
-        time_canvas_w = int(self.time_font_size * 7.5)  # ~2100px for size 280
-        time_canvas_h = int(self.time_font_size * 1.5)  # ~420px for size 280
-        time_img = Image.new('RGB', (time_canvas_w, time_canvas_h), (0,0,0))
-        
-        # Get text size using textbbox to center it
+        # Render time with dynamic width fitting and padding
+        # Measure text and auto-shrink if it would exceed available width
         if not self._temp_draw:
             self._temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
         time_bbox = self._temp_draw.textbbox((0,0), time_str, font=self.time_font)
-        text_actual_w = time_bbox[2] - time_bbox[0]
-        text_actual_h = time_bbox[3] - time_bbox[1]
+        text_w = time_bbox[2] - time_bbox[0]
+        text_h = time_bbox[3] - time_bbox[1]
+        available_w = self.fb_width - 2 * margin
+        time_font_to_use = self.time_font
+        if self.auto_shrink_time and text_w > available_w and getattr(self, 'font_file', None):
+            shrink_scale = available_w / float(text_w)
+            target_size = max(8, int(self.time_font_size * shrink_scale))
+            cached = self._font_cache.get(target_size)
+            if cached:
+                time_font_to_use = cached
+            else:
+                try:
+                    time_font_to_use = ImageFont.truetype(self.font_file, target_size)
+                    self._font_cache[target_size] = time_font_to_use
+                except Exception:
+                    time_font_to_use = self.time_font
+            # Recompute bbox with the chosen font
+            time_bbox = self._temp_draw.textbbox((0,0), time_str, font=time_font_to_use)
+            text_w = time_bbox[2] - time_bbox[0]
+            text_h = time_bbox[3] - time_bbox[1]
         
-        # Center text in the oversized canvas
-        text_x = (time_canvas_w - text_actual_w) // 2 - time_bbox[0]
-        text_y = (time_canvas_h - text_actual_h) // 2 - time_bbox[1]
+        # Build a tight canvas around text with small padding to keep glyph bounds
+        t_pad_left = 12
+        t_pad_right = 20
+        t_pad_top = 6
+        t_pad_bottom = 6
+        time_canvas_w = text_w + t_pad_left + t_pad_right
+        time_canvas_h = text_h + t_pad_top + t_pad_bottom
+        time_img = Image.new('RGB', (time_canvas_w, time_canvas_h), (0,0,0))
+        ImageDraw.Draw(time_img).text((t_pad_left - time_bbox[0], t_pad_top - time_bbox[1]), time_str, font=time_font_to_use, fill=display_color)
         
-        # Draw text
-        ImageDraw.Draw(time_img).text((text_x, text_y), time_str, font=self.time_font, fill=display_color)
-        
-        # Position the entire canvas centered on screen
-        time_x = max(margin, min(self.fb_width - margin - time_canvas_w, (self.fb_width - time_canvas_w) // 2 + self.pixel_shift_x))
-        time_y = max(margin, min(self.fb_height - margin - time_canvas_h, (self.fb_height - time_canvas_h) // 2 - time_offset_y + self.pixel_shift_y))
+        # Center the canvas and clamp within margins (respect pixel shift)
+        desired_x = center_x - (time_canvas_w // 2)
+        desired_y = center_y - time_offset_y - (time_canvas_h // 2)
+        time_x = max(margin, min(self.fb_width - margin - time_canvas_w, desired_x))
+        time_y = max(margin, min(self.fb_height - margin - time_canvas_h, desired_y))
         
         self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect')
         
