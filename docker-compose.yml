@@ -9,7 +9,9 @@ services:
     
     # Environment variables for configuration
     environment:
-      # (SDL not used)
+      # Native renderer (Rust) enabled by default for performance
+      - NATIVE_TIME_RENDERER=true
+      - NATIVE_TIME_BIN=/app/native/clock_fb_rust/clock_fb_rust
       
       # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
       - LOG_LEVEL=INFO
@@ -30,18 +32,28 @@ services:
       # - SHOW_SECONDS=true
       # - DATE_FORMAT=%A, %B %d, %Y
       
-      # Display customization
+      # Display customization (for native renderer)
+      - COLOR=#00FF00
+      - TIME_SIZE=280
+      - DATE_SIZE=90
+      - FONT_PATH=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
       # - DISPLAY_ORIENTATION=landscape  # landscape or portrait
-      # - DISPLAY_COLOR=#00FF00
       # - FONT_FAMILY=Helvetica
-      # - TIME_FONT_SIZE=120
+      
+      # Auto-shrink time to fit width (prevents cropping)
+      - AUTO_SHRINK_TIME=true
       
       # Screen burn-in prevention
+      - PIXEL_SHIFT_ENABLED=true
+      - PIXEL_SHIFT_TIME_ENABLED=false
+      - PIXEL_SHIFT_INTERVAL_SECONDS=60
       # - SCREENSAVER_ENABLED=true
-      # - SCREENSAVER_DELAY_MINUTES=60
-      # - PIXEL_SHIFT_ENABLED=true
+      # - SCREENSAVER_START_HOUR=2
+      # - SCREENSAVER_END_HOUR=5
       # - DIM_AT_NIGHT=true
       # - NIGHT_BRIGHTNESS=0.3
+      # - NIGHT_START_HOUR=22
+      # - NIGHT_END_HOUR=6
     
     # Labels for balena cloud
     labels:

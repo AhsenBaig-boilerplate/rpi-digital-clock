@@ -3,8 +3,6 @@ use fontdue::Font;
 use memmap2::MmapMut;
 use std::fs::File;
 use std::io::{self, BufRead};
-use std::os::fd::AsRawFd;
-use std::path::Path;
 use std::str::FromStr;
 
 #[derive(Clone, Copy)]
@@ -63,7 +61,6 @@ impl Renderer {
         let fb_path = std::env::var("FB_DEVICE").unwrap_or("/dev/fb0".to_string());
         let (fb_w, fb_h) = read_fb_size();
         let file = File::options().read(true).write(true).open(&fb_path)?;
-        let fb_len = fb_w * fb_h * 2; // RGB565
         // SAFETY: map framebuffer size
         let fb = unsafe { MmapMut::map_mut(&file)? };
         let font_path = std::env::var("FONT_PATH").unwrap_or("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf".to_string());
@@ -100,17 +97,37 @@ impl Renderer {
         }
     }
 
-    fn draw_text_centered(&mut self, text: &str, size: f32, y_center_offset: isize, last_rect_slot: &mut Option<(usize, usize, usize, usize)>) {
-        if let Some((x, y, w, h)) = *last_rect_slot {
-            self.clear_rect(x, y, w, h);
-        }
+    fn draw_text_centered(&mut self, text: &str, size: f32, y_center_offset: isize) -> (usize, usize, usize, usize) {
         // Layout text
         let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
         layout.reset(&LayoutSettings { ..LayoutSettings::default() });
         layout.append(&[&self.font], &TextStyle::new(text, size, 0));
-        let bounds = layout.bounds();
-        let text_w = bounds.width.ceil() as usize;
-        let text_h = bounds.height.ceil() as usize;
+        
+        // Calculate bounding box from glyphs
+        let glyphs = layout.glyphs();
+        if glyphs.is_empty() {
+            return (0, 0, 0, 0);
+        }
+        
+        let mut min_x = f32::MAX;
+        let mut min_y = f32::MAX;
+        let mut max_x = f32::MIN;
+        let mut max_y = f32::MIN;
+        
+        for glyph in glyphs {
+            let (metrics, _) = self.font.rasterize_config(glyph.key);
+            let gx = glyph.x + metrics.xmin as f32;
+            let gy = glyph.y + metrics.ymin as f32;
+            let gx2 = gx + metrics.width as f32;
+            let gy2 = gy + metrics.height as f32;
+            min_x = min_x.min(gx);
+            min_y = min_y.min(gy);
+            max_x = max_x.max(gx2);
+            max_y = max_y.max(gy2);
+        }
+        
+        let text_w = (max_x - min_x).ceil() as usize;
+        let text_h = (max_y - min_y).ceil() as usize;
         let pad_lr = 16usize;
         let pad_tb = 6usize;
         let canvas_w = text_w + pad_lr * 2;
@@ -145,7 +162,7 @@ impl Renderer {
                     if dest_x < 0 || dest_x >= self.fb_w as isize { continue; }
                     let cov = bitmap[(row * gw + col) as usize];
                     // Simple threshold blend (monochrome)
-                    if cov > 0 {
+                    if cov > 128 {
                         let idx = off + (col as usize) * 2;
                         self.fb[idx] = (color565 & 0xFF) as u8;
                         self.fb[idx + 1] = (color565 >> 8) as u8;
@@ -153,7 +170,7 @@ impl Renderer {
                 }
             }
         }
-        *last_rect_slot = Some((x, y, canvas_w, canvas_h));
+        (x, y, canvas_w, canvas_h)
     }
 
     fn handle_line(&mut self, line: &str) {
@@ -162,11 +179,19 @@ impl Renderer {
             match cmd {
                 "TIME" => {
                     let rest = line.trim()[4..].trim();
-                    self.draw_text_centered(rest, self.time_size, -60, &mut self.last_time_rect);
+                    if let Some((x, y, w, h)) = self.last_time_rect {
+                        self.clear_rect(x, y, w, h);
+                    }
+                    let rect = self.draw_text_centered(rest, self.time_size, -60);
+                    self.last_time_rect = Some(rect);
                 }
                 "DATE" => {
                     let rest = line.trim()[4..].trim();
-                    self.draw_text_centered(rest, self.date_size, 100, &mut self.last_date_rect);
+                    if let Some((x, y, w, h)) = self.last_date_rect {
+                        self.clear_rect(x, y, w, h);
+                    }
+                    let rect = self.draw_text_centered(rest, self.date_size, 100);
+                    self.last_date_rect = Some(rect);
                 }
                 "BRIGHT" => {
                     if let Some(val) = parts.next() { self.bright = f32::from_str(val).unwrap_or(1.0).clamp(0.0, 1.0); }
