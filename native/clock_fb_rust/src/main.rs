@@ -98,7 +98,7 @@ impl Renderer {
         }
     }
 
-    fn draw_text_centered(&mut self, text: &str, size: f32, y_center_offset: isize) -> (usize, usize, usize, usize) {
+    fn draw_text_centered(&mut self, text: &str, size: f32, y_center_offset: isize, min_top_y: Option<usize>) -> (usize, usize, usize, usize) {
         // Layout text
         let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
         layout.reset(&LayoutSettings { ..LayoutSettings::default() });
@@ -136,7 +136,11 @@ impl Renderer {
         let center_x = (self.fb_w as isize / 2) + self.shift_x;
         let center_y = (self.fb_h as isize / 2) + self.shift_y + y_center_offset;
         let desired_x = center_x - (canvas_w as isize / 2);
-        let desired_y = center_y - (canvas_h as isize / 2);
+        let mut desired_y = center_y - (canvas_h as isize / 2);
+        if let Some(min_y) = min_top_y {
+            let min_y_isize = min_y as isize;
+            if desired_y < min_y_isize { desired_y = min_y_isize; }
+        }
         let mut x = desired_x.max(self.margin as isize) as usize;
         let mut y = desired_y.max(self.margin as isize) as usize;
         if x + canvas_w + self.margin > self.fb_w { x = self.fb_w.saturating_sub(canvas_w + self.margin); }
@@ -147,7 +151,7 @@ impl Renderer {
         let g = (cg as f32 * self.bright).min(255.0) as u8;
         let b = (cb as f32 * self.bright).min(255.0) as u8;
         let color565 = rgb_to_rgb565(r, g, b).0;
-        // Rasterize each glyph at layout positions
+        // Rasterize each glyph at layout positions with simple alpha blend on black
         for glyph in layout.glyphs() {
             let (metrics, bitmap) = self.font.rasterize_config(glyph.key);
             let gx = x as isize + pad_lr as isize + glyph.x as isize + metrics.xmin as isize;
@@ -162,11 +166,16 @@ impl Renderer {
                     let dest_x = gx + col;
                     if dest_x < 0 || dest_x >= self.fb_w as isize { continue; }
                     let cov = bitmap[(row * gw + col) as usize];
-                    // Simple threshold blend (monochrome)
-                    if cov > 128 {
+                    if cov > 0 {
+                        // Scale color by coverage (background assumed black)
+                        let covf = cov as f32 / 255.0;
+                        let sr = (r as f32 * covf) as u8;
+                        let sg = (g as f32 * covf) as u8;
+                        let sb = (b as f32 * covf) as u8;
+                        let c565 = rgb_to_rgb565(sr, sg, sb).0;
                         let idx = off + (col as usize) * 2;
-                        self.fb[idx] = (color565 & 0xFF) as u8;
-                        self.fb[idx + 1] = (color565 >> 8) as u8;
+                        self.fb[idx] = (c565 & 0xFF) as u8;
+                        self.fb[idx + 1] = (c565 >> 8) as u8;
                     }
                 }
             }
@@ -183,7 +192,7 @@ impl Renderer {
                     if let Some((x, y, w, h)) = self.last_time_rect {
                         self.clear_rect(x, y, w, h);
                     }
-                    let rect = self.draw_text_centered(rest, self.time_size, -60);
+                    let rect = self.draw_text_centered(rest, self.time_size, -100, None);
                     self.last_time_rect = Some(rect);
                 }
                 "DATE" => {
@@ -191,7 +200,9 @@ impl Renderer {
                     if let Some((x, y, w, h)) = self.last_date_rect {
                         self.clear_rect(x, y, w, h);
                     }
-                    let rect = self.draw_text_centered(rest, self.date_size, 100);
+                    // Ensure date is below time rect with a small gap to avoid overlap
+                    let min_top = self.last_time_rect.map(|(_, ty, _, th)| ty + th + 8);
+                    let rect = self.draw_text_centered(rest, self.date_size, 140, min_top);
                     self.last_date_rect = Some(rect);
                 }
                 "BRIGHT" => {

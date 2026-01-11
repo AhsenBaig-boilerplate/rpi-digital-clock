@@ -275,6 +275,7 @@ class FramebufferClock:
         self.native_proc = None
         self._native_restart_attempts = 0
         self._last_native_restart = 0
+        self._last_date_sent = None
         if self.native_renderer_enabled:
             try:
                 bin_path = os.environ.get('NATIVE_TIME_BIN', str(Path(__file__).parent / 'native' / 'clock_fb_rust' / 'target' / 'release' / 'clock_fb_rust'))
@@ -900,7 +901,11 @@ class FramebufferClock:
             ok &= self._send_native(f"BRIGHT {self.current_brightness:.3f}")
             ok &= self._send_native(f"SHIFT {self.pixel_shift_x} {self.pixel_shift_y}")
             ok &= self._send_native(f"TIME {time_str}")
-            ok &= self._send_native(f"DATE {date_str}")
+            # Send DATE only when it changes (reduce flicker and overlap clears)
+            if self._last_date_sent != date_str:
+                ok &= self._send_native(f"DATE {date_str}")
+                if ok:
+                    self._last_date_sent = date_str
             if ok:
                 return
             else:
