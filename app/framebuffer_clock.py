@@ -1458,6 +1458,16 @@ class FramebufferClock:
     def cleanup(self):
         """Cleanup resources."""
         logging.info("Framebuffer clock stopped")
+        # Terminate native renderer if running
+        try:
+            if getattr(self, 'native_renderer_enabled', False) and self.native_proc and self.native_proc.stdin:
+                # Ask daemon to exit gracefully
+                self._send_native("QUIT")
+                time.sleep(0.2)
+            if getattr(self, 'native_proc', None):
+                self.native_proc.terminate()
+        except Exception:
+            pass
         try:
             if getattr(self, 'fb_mmap', None):
                 self.fb_mmap.close()
