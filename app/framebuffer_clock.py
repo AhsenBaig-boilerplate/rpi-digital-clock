@@ -175,6 +175,15 @@ class FramebufferClock:
         self.pixel_shift_x = 0
         self.pixel_shift_y = 0
         self.pixel_shift_max = 10
+        # Allow disabling horizontal pixel shift for strict centering of time
+        ps_time_env = os.environ.get('PIXEL_SHIFT_TIME_ENABLED', '').lower()
+        if ps_time_env in ('true', '1', 'yes'):
+            self.pixel_shift_time_enabled = True
+        elif ps_time_env in ('false', '0', 'no'):
+            self.pixel_shift_time_enabled = False
+        else:
+            # Default: keep time horizontally centered (no X shift)
+            self.pixel_shift_time_enabled = False
         
         # Weather service - lazy load only if enabled
         self.weather_service = None
@@ -811,6 +820,8 @@ class FramebufferClock:
         
         # Calculate center position with pixel shift (full resolution)
         center_x = self.fb_width // 2 + self.pixel_shift_x
+        # Time should stay strictly centered horizontally unless explicitly enabled
+        center_x_time = self.fb_width // 2 + (self.pixel_shift_x if self.pixel_shift_time_enabled else 0)
         center_y = self.fb_height // 2 + self.pixel_shift_y
         
         # Dynamic margins and offsets (use cached scale)
@@ -827,8 +838,16 @@ class FramebufferClock:
         text_h = time_bbox[3] - time_bbox[1]
         available_w = self.fb_width - 2 * margin
         time_font_to_use = self.time_font
-        if self.auto_shrink_time and text_w > available_w and getattr(self, 'font_file', None):
-            shrink_scale = available_w / float(text_w)
+        
+        # Symmetric padding for clean centering
+        t_pad_left = 16
+        t_pad_right = 16
+        t_pad_top = 6
+        t_pad_bottom = 6
+        required_w = text_w + t_pad_left + t_pad_right
+        
+        if self.auto_shrink_time and required_w > available_w and getattr(self, 'font_file', None):
+            shrink_scale = available_w / float(required_w)
             target_size = max(8, int(self.time_font_size * shrink_scale))
             cached = self._font_cache.get(target_size)
             if cached:
@@ -843,19 +862,16 @@ class FramebufferClock:
             time_bbox = self._temp_draw.textbbox((0,0), time_str, font=time_font_to_use)
             text_w = time_bbox[2] - time_bbox[0]
             text_h = time_bbox[3] - time_bbox[1]
+            required_w = text_w + t_pad_left + t_pad_right
         
-        # Build a tight canvas around text with small padding to keep glyph bounds
-        t_pad_left = 12
-        t_pad_right = 20
-        t_pad_top = 6
-        t_pad_bottom = 6
-        time_canvas_w = text_w + t_pad_left + t_pad_right
+        # Build a tight canvas around text with symmetric padding to keep glyph bounds
+        time_canvas_w = required_w
         time_canvas_h = text_h + t_pad_top + t_pad_bottom
         time_img = Image.new('RGB', (time_canvas_w, time_canvas_h), (0,0,0))
         ImageDraw.Draw(time_img).text((t_pad_left - time_bbox[0], t_pad_top - time_bbox[1]), time_str, font=time_font_to_use, fill=display_color)
         
-        # Center the canvas and clamp within margins (respect pixel shift)
-        desired_x = center_x - (time_canvas_w // 2)
+        # Center the canvas and clamp within margins
+        desired_x = center_x_time - (time_canvas_w // 2)
         desired_y = center_y - time_offset_y - (time_canvas_h // 2)
         time_x = max(margin, min(self.fb_width - margin - time_canvas_w, desired_x))
         time_y = max(margin, min(self.fb_height - margin - time_canvas_h, desired_y))
