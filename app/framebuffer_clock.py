@@ -58,6 +58,8 @@ class FramebufferClock:
         self._last_time_rect = None
         self._last_date_rect = None
         self._last_status_rect = None
+        # Track dirty rectangles for partial framebuffer writes
+        self._dirty_rects = []
         
         
         # Detect framebuffer pixel format
@@ -1097,12 +1099,37 @@ class FramebufferClock:
             logging.info(f"Render timing: total={total:.1f}ms (prep={prep:.1f}ms, draw={draw_time:.1f}ms, write={write:.1f}ms) @ {self.fb_width}x{self.fb_height}")
     
     def write_to_framebuffer(self, image):
-        """Write image directly to framebuffer device."""
+        """Write image directly to framebuffer device.
+        If using 16bpp shadow buffer, write only dirty rectangles.
+        """
         try:
-            # For partial-update path we write the shadow buffer
+            # For partial-update path, write only dirty rects if present
             if self.fb_bpp == 16 and isinstance(self.fb_shadow, np.ndarray):
-                with open(self.fb_device, 'wb') as fb:
-                    fb.write(self.fb_shadow.tobytes())
+                if getattr(self, '_dirty_rects', None):
+                    with open(self.fb_device, 'r+b') as fb:
+                        stride_bytes = self.fb_width * 2
+                        for (rx, ry, rw, rh) in self._dirty_rects:
+                            if rw <= 0 or rh <= 0:
+                                continue
+                            # Clamp to bounds
+                            rx = max(0, min(self.fb_width - 1, rx))
+                            ry = max(0, min(self.fb_height - 1, ry))
+                            rw = max(0, min(self.fb_width - rx, rw))
+                            rh = max(0, min(self.fb_height - ry, rh))
+                            if rw == 0 or rh == 0:
+                                continue
+                            # Write row by row to avoid large allocations
+                            for row in range(rh):
+                                offset = ((ry + row) * stride_bytes) + (rx * 2)
+                                fb.seek(offset)
+                                slice_row = self.fb_shadow[ry + row, rx:rx+rw]
+                                fb.write(slice_row.astype('<u2').tobytes())
+                        # Clear after write
+                        self._dirty_rects.clear()
+                else:
+                    # No dirty rects tracked; fallback to full shadow write
+                    with open(self.fb_device, 'wb') as fb:
+                        fb.write(self.fb_shadow.astype('<u2').tobytes())
             else:
                 # Fallback: full-frame conversion from provided image
                 if self.fb_bpp == 32:
@@ -1159,7 +1186,11 @@ class FramebufferClock:
         # Blit into shadow
         self.fb_shadow[y:y2, x:x2] = rgb565
         # Store rect
-        setattr(self, clear_last_rect_attr, (x, y, w, h))
+        rect = (x, y, w, h)
+        setattr(self, clear_last_rect_attr, rect)
+        # Track dirty rect for partial writes
+        if hasattr(self, '_dirty_rects'):
+            self._dirty_rects.append(rect)
     
     def render_settings_menu(self):
         """Render on-screen settings menu overlay."""
