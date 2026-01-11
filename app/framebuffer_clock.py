@@ -13,6 +13,8 @@ import time
 import select
 import termios
 import tty
+import mmap
+import math
 from datetime import datetime
 from pathlib import Path
 import yaml
@@ -60,6 +62,20 @@ class FramebufferClock:
         self._last_status_rect = None
         # Track dirty rectangles for partial framebuffer writes
         self._dirty_rects = []
+        # Try to memory-map framebuffer for fast partial writes
+        self.fb_mmap = None
+        try:
+            if self.fb_bpp == 16:
+                fb_size = self.fb_width * self.fb_height * 2
+                fb = open(self.fb_device, 'r+b', buffering=0)
+                self.fb_mmap = mmap.mmap(fb.fileno(), fb_size, access=mmap.ACCESS_WRITE)
+                self._fb_stride_bytes = self.fb_width * 2
+                self._fb_file = fb  # keep file open for mapping lifetime
+                logging.info("/dev/fb0 memory-mapped for fast partial updates")
+        except Exception as e:
+            self.fb_mmap = None
+            self._fb_file = None
+            logging.warning(f"Framebuffer mmap not available, falling back to writes: {e}")
         
         
         # Detect framebuffer pixel format
@@ -759,7 +775,8 @@ class FramebufferClock:
             return
         
         now = time.time()
-        if now - self.last_pixel_shift > self.pixel_shift_interval:
+        # Apply pixel shift only at minute boundary to avoid visible tearing
+        if now - self.last_pixel_shift > self.pixel_shift_interval and datetime.now().second == 0:
             # Lazy import random only when needed
             import random
             self.pixel_shift_x = random.randint(-self.pixel_shift_max, self.pixel_shift_max)
@@ -1122,30 +1139,52 @@ class FramebufferClock:
             # For partial-update path, write only dirty rects if present
             if self.fb_bpp == 16 and isinstance(self.fb_shadow, np.ndarray):
                 if getattr(self, '_dirty_rects', None):
-                    with open(self.fb_device, 'r+b') as fb:
-                        stride_bytes = self.fb_width * 2
+                    if self.fb_mmap:
+                        # Use memory map for fast row copies
                         for (rx, ry, rw, rh) in self._dirty_rects:
                             if rw <= 0 or rh <= 0:
                                 continue
-                            # Clamp to bounds
                             rx = max(0, min(self.fb_width - 1, rx))
                             ry = max(0, min(self.fb_height - 1, ry))
                             rw = max(0, min(self.fb_width - rx, rw))
                             rh = max(0, min(self.fb_height - ry, rh))
                             if rw == 0 or rh == 0:
                                 continue
-                            # Write row by row to avoid large allocations
                             for row in range(rh):
-                                offset = ((ry + row) * stride_bytes) + (rx * 2)
-                                fb.seek(offset)
+                                offset = ((ry + row) * self._fb_stride_bytes) + (rx * 2)
                                 slice_row = self.fb_shadow[ry + row, rx:rx+rw]
-                                fb.write(slice_row.astype('<u2').tobytes())
-                        # Clear after write
+                                self.fb_mmap[offset:offset + (rw * 2)] = slice_row.astype('<u2').tobytes()
                         self._dirty_rects.clear()
+                    else:
+                        # Fallback to file writes with seek
+                        with open(self.fb_device, 'r+b') as fb:
+                            stride_bytes = self.fb_width * 2
+                            for (rx, ry, rw, rh) in self._dirty_rects:
+                                if rw <= 0 or rh <= 0:
+                                    continue
+                                rx = max(0, min(self.fb_width - 1, rx))
+                                ry = max(0, min(self.fb_height - 1, ry))
+                                rw = max(0, min(self.fb_width - rx, rw))
+                                rh = max(0, min(self.fb_height - ry, rh))
+                                if rw == 0 or rh == 0:
+                                    continue
+                                for row in range(rh):
+                                    offset = ((ry + row) * stride_bytes) + (rx * 2)
+                                    fb.seek(offset)
+                                    slice_row = self.fb_shadow[ry + row, rx:rx+rw]
+                                    fb.write(slice_row.astype('<u2').tobytes())
+                            self._dirty_rects.clear()
                 else:
                     # No dirty rects tracked; fallback to full shadow write
-                    with open(self.fb_device, 'wb') as fb:
-                        fb.write(self.fb_shadow.astype('<u2').tobytes())
+                    if self.fb_mmap:
+                        # Copy entire shadow into mmap in chunks to avoid huge temporary buffers
+                        for row in range(self.fb_height):
+                            offset = (row * self._fb_stride_bytes)
+                            slice_row = self.fb_shadow[row, :]
+                            self.fb_mmap[offset:offset + self._fb_stride_bytes] = slice_row.astype('<u2').tobytes()
+                    else:
+                        with open(self.fb_device, 'wb') as fb:
+                            fb.write(self.fb_shadow.astype('<u2').tobytes())
             else:
                 # Fallback: full-frame conversion from provided image
                 if self.fb_bpp == 32:
@@ -1373,9 +1412,12 @@ class FramebufferClock:
                     os.remove('/tmp/restart_clock')
                     break
                 
-                # Sleep to reduce CPU usage - with minute boundary checking we won't skip seconds
-                # 1.0s sleep gives ~10% CPU on Pi Zero
-                time.sleep(1.0)
+                # Align sleep to the next whole second to avoid skipped seconds
+                now_ts = time.time()
+                next_second = math.floor(now_ts) + 1.0
+                delay = max(0.0, next_second - now_ts)
+                # Minimum delay guard (avoid zero which can spin)
+                time.sleep(delay)
         
         except KeyboardInterrupt:
             logging.info("Clock interrupted by user")
@@ -1387,6 +1429,13 @@ class FramebufferClock:
     def cleanup(self):
         """Cleanup resources."""
         logging.info("Framebuffer clock stopped")
+        try:
+            if getattr(self, 'fb_mmap', None):
+                self.fb_mmap.close()
+            if getattr(self, '_fb_file', None):
+                self._fb_file.close()
+        except Exception:
+            pass
 
 
 def main():
