@@ -1,6 +1,6 @@
 use fontdue::layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle};
 use fontdue::Font;
-use memmap2::MmapMut;
+use memmap2::{MmapMut, MmapOptions};
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::str::FromStr;
@@ -61,8 +61,9 @@ impl Renderer {
         let fb_path = std::env::var("FB_DEVICE").unwrap_or("/dev/fb0".to_string());
         let (fb_w, fb_h) = read_fb_size();
         let file = File::options().read(true).write(true).open(&fb_path)?;
-        // SAFETY: map framebuffer size
-        let fb = unsafe { MmapMut::map_mut(&file)? };
+        // SAFETY: map framebuffer with explicit length
+        let fb_len = fb_w * fb_h * 2; // RGB565
+        let fb = unsafe { MmapOptions::new().len(fb_len).map_mut(&file)? };
         let font_path = std::env::var("FONT_PATH").unwrap_or("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf".to_string());
         let font_bytes = std::fs::read(&font_path).expect("Font file not found");
         let font = Font::from_bytes(font_bytes, fontdue::FontSettings::default()).expect("Invalid font");

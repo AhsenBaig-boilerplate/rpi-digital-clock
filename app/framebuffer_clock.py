@@ -273,6 +273,8 @@ class FramebufferClock:
         # Native time renderer (Rust daemon) integration
         self.native_renderer_enabled = os.environ.get('NATIVE_TIME_RENDERER', '').lower() in ('true', '1', 'yes')
         self.native_proc = None
+        self._native_restart_attempts = 0
+        self._last_native_restart = 0
         if self.native_renderer_enabled:
             try:
                 bin_path = os.environ.get('NATIVE_TIME_BIN', str(Path(__file__).parent / 'native' / 'clock_fb_rust' / 'target' / 'release' / 'clock_fb_rust'))
@@ -706,12 +708,50 @@ class FramebufferClock:
         return tuple(int(c * self.current_brightness) for c in color)
 
     def _send_native(self, line: str):
+        # Return True on success, False on failure
         try:
-            if self.native_renderer_enabled and self.native_proc and self.native_proc.stdin:
-                self.native_proc.stdin.write((line + "\n").encode('utf-8'))
-                self.native_proc.stdin.flush()
+            if self.native_renderer_enabled and self.native_proc:
+                # If process died, attempt restart
+                if self.native_proc.poll() is not None:
+                    return self._restart_native_renderer()
+                if self.native_proc.stdin:
+                    self.native_proc.stdin.write((line + "\n").encode('utf-8'))
+                    self.native_proc.stdin.flush()
+                    return True
+        except BrokenPipeError:
+            # Attempt one restart, then disable
+            return self._restart_native_renderer()
         except Exception as e:
-            logging.error(f"Native send failed: {e}")
+            # Throttle error logging
+            if not hasattr(self, '_last_native_error') or time.time() - getattr(self, '_last_native_error', 0) > 2:
+                logging.error(f"Native send failed: {e}")
+                self._last_native_error = time.time()
+        return False
+
+    def _restart_native_renderer(self) -> bool:
+        now = time.time()
+        if now - self._last_native_restart < 2:
+            return False
+        self._last_native_restart = now
+        self._native_restart_attempts += 1
+        try:
+            if self.native_proc:
+                try:
+                    self.native_proc.terminate()
+                except Exception:
+                    pass
+            bin_path = os.environ.get('NATIVE_TIME_BIN', str(Path(__file__).parent / 'native' / 'clock_fb_rust' / 'target' / 'release' / 'clock_fb_rust'))
+            logging.warning(f"Restarting native renderer (attempt {self._native_restart_attempts}): {bin_path}")
+            self.native_proc = subprocess.Popen([bin_path], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # Reset attempts after successful start
+            self._native_restart_attempts = 0
+            return True
+        except Exception as e:
+            logging.error(f"Native renderer restart failed: {e}")
+            if self._native_restart_attempts >= 3:
+                logging.error("Disabling native renderer after repeated failures; falling back to PIL rendering")
+                self.native_renderer_enabled = False
+            return False
     
     def check_network_status(self):
         """Check network connectivity."""
@@ -852,15 +892,19 @@ class FramebufferClock:
         display_color = self.apply_brightness(self.color)
         status_color = self.apply_brightness(self.status_color)
 
-        # If native renderer is enabled, send commands and skip PIL time/date drawing
+        # If native renderer is enabled, send commands; fallback to PIL if any fail
         if self.native_renderer_enabled:
             hex_color = f"#{display_color[0]:02X}{display_color[1]:02X}{display_color[2]:02X}"
-            self._send_native(f"COLOR {hex_color}")
-            self._send_native(f"BRIGHT {self.current_brightness:.3f}")
-            self._send_native(f"SHIFT {self.pixel_shift_x} {self.pixel_shift_y}")
-            self._send_native(f"TIME {time_str}")
-            self._send_native(f"DATE {date_str}")
-            return
+            ok = True
+            ok &= self._send_native(f"COLOR {hex_color}")
+            ok &= self._send_native(f"BRIGHT {self.current_brightness:.3f}")
+            ok &= self._send_native(f"SHIFT {self.pixel_shift_x} {self.pixel_shift_y}")
+            ok &= self._send_native(f"TIME {time_str}")
+            ok &= self._send_native(f"DATE {date_str}")
+            if ok:
+                return
+            else:
+                logging.warning("Native renderer send failed; rendering with PIL fallback")
         
         t_prep = time.time()
         
