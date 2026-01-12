@@ -1623,11 +1623,17 @@ class FramebufferClock:
         if w_clamp == 0 or h_clamp == 0:
             return
         
-        # Clear region - either full union or just previous rect with padding
+        # Clear region - only if position or size changed
         last_rect = getattr(self, clear_last_rect_attr, None)
+        needs_clear = False
+        
         if last_rect:
             lx, ly, lw, lh = last_rect
-            
+            # Check if anything changed (position or size)
+            if lx != x or ly != y or lw != w_clamp or lh != h_clamp:
+                needs_clear = True
+        
+        if needs_clear:
             if clear_full_region:
                 # Clear union of previous and current rects (eliminates artifacts from varying widths)
                 clear_x1 = min(lx, x)
