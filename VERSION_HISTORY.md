@@ -9,7 +9,27 @@ Quick reference for identifying stable versions.
 
 ---
 
-## ⚠️ 1.4.76 (Latest - 2026-01-11)
+## ❌ 1.4.79 (Latest - 2026-01-11)
+
+**Status: NOT RECOMMENDED - CPU still at 100%**
+
+### Known Good
+- ✅ Background is black - balena logo gone
+- ✅ Time change looks good and centered
+- ✅ Date "Sunday" - no "y" alignment issues
+- ✅ Time flickering reduced/acceptable
+- ✅ 10:00:00 AM - M not cut off
+
+### Critical Issues
+- ❌ CPU usage: 100% (still not fixed)
+
+### Root Cause
+- Smart dirty-rect clearing restored but CPU still high
+- Need deeper optimization: reduce write frequency or optimize font rendering
+
+---
+
+## ⚠️ 1.4.76 (2026-01-11)
 
 **Status: MOSTLY WORKING - CPU spike issue**
 

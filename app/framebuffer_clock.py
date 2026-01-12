@@ -927,9 +927,25 @@ class FramebufferClock:
         time_str = self.format_time(now)
         date_str = self.format_date(now)
         
+        # Skip render if nothing changed (huge CPU savings)
+        if not hasattr(self, '_last_time_str'):
+            self._last_time_str = ''
+            self._last_date_str = ''
+            self._last_brightness = -1
+        
         # Apply brightness
         display_color = self.apply_brightness(self.color)
         status_color = self.apply_brightness(self.status_color)
+        
+        # Check if anything actually changed
+        if (time_str == self._last_time_str and 
+            date_str == self._last_date_str and 
+            self.current_brightness == self._last_brightness):
+            return  # Nothing to update, save CPU
+        
+        self._last_time_str = time_str
+        self._last_date_str = date_str
+        self._last_brightness = self.current_brightness
 
         # If native renderer is enabled, send commands; fallback to PIL if any fail
         native_ok = False
@@ -1033,8 +1049,8 @@ class FramebufferClock:
                         status_draw.text((cursor_x, 0), " | ", font=self.status_font, fill=s_color)
                         sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
                         cursor_x += sep[2] - sep[0]
-                self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
-                self.write_to_framebuffer(None)
+                self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect', skip_write=True)
+                self.write_to_framebuffer(None)  # Write once for native path
             return
 
         # Calculate center position with pixel shift (full resolution)
@@ -1095,7 +1111,7 @@ class FramebufferClock:
         time_x = max(margin, min(self.fb_width - margin - time_canvas_w, desired_x))
         time_y = max(margin, min(self.fb_height - margin - time_canvas_h, desired_y))
         
-        self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect')
+        self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect', skip_write=True)
         
         # Render date with generous padding
         date_bbox = self._temp_draw.textbbox((0,0), date_str, font=self.date_font)
@@ -1110,7 +1126,7 @@ class FramebufferClock:
         date_img = Image.new('RGB', (date_w+d_pad_left+d_pad_right, date_h+d_pad_top+d_pad_bottom), (0,0,0))
         # Draw with padding to include full glyph bounds
         ImageDraw.Draw(date_img).text((d_pad_left - date_bbox[0], d_pad_top - date_bbox[1]), date_str, font=self.date_font, fill=display_color)
-        self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect')
+        self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True)
         
         # Draw weather if available
         if self.weather_text:
@@ -1234,7 +1250,7 @@ class FramebufferClock:
                     if idx < len(status_items) - 1:
                         sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
                         cursor_rel_x += sep[2] - sep[0]
-                self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
+                self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect', skip_write=True)
             else:
                 # Fallback to regular rendering - REUSE temp_draw
                 status_w = 0
@@ -1303,7 +1319,7 @@ class FramebufferClock:
                     if idx < len(status_items) - 1:
                         sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
                         cursor_rel_x += sep[2] - sep[0]
-                self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
+                self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect', skip_write=True)
         
         t_draw = time.time()
         # Render settings overlay if active
@@ -1317,8 +1333,8 @@ class FramebufferClock:
             cd.ellipse((1,1,cur_size-2,cur_size-2), outline=(255,255,255))
             px = max(0, min(self.fb_width - cur_size, self.pointer_x))
             py = max(0, min(self.fb_height - cur_size, self.pointer_y))
-            self.blit_rgb_image(cur_img, px, py)
-        # Write shadow buffer to framebuffer
+            self.blit_rgb_image(cur_img, px, py, clear_last_rect_attr='_last_cursor_rect', skip_write=True)
+        # Write shadow buffer to framebuffer ONCE at the end
         self.write_to_framebuffer(None)
         t_write = time.time()
         
@@ -1407,15 +1423,17 @@ class FramebufferClock:
         except Exception as e:
             logging.error(f"Failed to write to framebuffer: {e}")
 
-    def blit_rgb_image(self, img: Image.Image, x: int, y: int, clear_last_rect_attr: str):
+    def blit_rgb_image(self, img: Image.Image, x: int, y: int, clear_last_rect_attr: str, skip_write: bool = False):
         """Convert a small RGB888 PIL image to RGB565 and blit into shadow buffer at (x,y).
         Clears previous rect stored in the attribute to avoid trails.
+        If skip_write=True, don't write to framebuffer yet (batch writes).
         """
         if self.fb_bpp != 16 or not isinstance(self.fb_shadow, np.ndarray):
             # Fallback: draw onto a full-size image (rare path)
             full = Image.new('RGB', (self.fb_width, self.fb_height), self.bg_color)
             full.paste(img, (x, y))
-            self.write_to_framebuffer(full)
+            if not skip_write:
+                self.write_to_framebuffer(full)
             return
         # Clear previous rect if any to avoid trails
         last_rect = getattr(self, clear_last_rect_attr, None)
