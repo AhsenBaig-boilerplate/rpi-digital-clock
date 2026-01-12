@@ -350,7 +350,7 @@ class FramebufferClock:
             
             if not font_file:
                 raise Exception("No suitable font found")
-            \n            # Keep the chosen font file for dynamic sizing later
+            # Keep the chosen font file for dynamic sizing later
             self.font_file = font_file
             
             self.time_font = ImageFont.truetype(self.font_file, self.time_font_size)
@@ -948,25 +948,9 @@ class FramebufferClock:
         time_str = self.format_time(now)
         date_str = self.format_date(now)
         
-        # Skip render if nothing changed (huge CPU savings)
-        if not hasattr(self, '_last_time_str'):
-            self._last_time_str = ''
-            self._last_date_str = ''
-            self._last_brightness = -1
-        
         # Apply brightness
         display_color = self.apply_brightness(self.color)
         status_color = self.apply_brightness(self.status_color)
-        
-        # Check if anything actually changed
-        if (time_str == self._last_time_str and 
-            date_str == self._last_date_str and 
-            self.current_brightness == self._last_brightness):
-            return  # Nothing to update, save CPU
-        
-        self._last_time_str = time_str
-        self._last_date_str = date_str
-        self._last_brightness = self.current_brightness
 
         # If native renderer is enabled, send commands; fallback to PIL if any fail
         native_ok = False
@@ -1149,13 +1133,22 @@ class FramebufferClock:
         ImageDraw.Draw(date_img).text((d_pad_left - date_bbox[0], d_pad_top - date_bbox[1]), date_str, font=self.date_font, fill=display_color)
         self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True)
         
-        # Draw weather if available
+        # Draw weather if available (measure, pad, and blit like time/date)
         if self.weather_text:
-            weather_bbox = draw.textbbox((0, 0), self.weather_text, font=self.weather_font)
-            weather_w = weather_bbox[2] - weather_bbox[0]
-            weather_x = center_x - weather_w // 2
-            weather_y = center_y + 120
-            draw.text((weather_x, weather_y), self.weather_text, font=self.weather_font, fill=display_color)
+            if not self._temp_draw:
+                self._temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
+            wb = self._temp_draw.textbbox((0, 0), self.weather_text, font=self.weather_font)
+            ww = wb[2] - wb[0]
+            wh = wb[3] - wb[1]
+            w_pad_left = max(12, int(self.weather_font_size * 0.2))
+            w_pad_right = max(12, int(self.weather_font_size * 0.2))
+            w_pad_top = max(6, int(self.weather_font_size * 0.12))
+            w_pad_bottom = max(6, int(self.weather_font_size * 0.12))
+            weather_img = Image.new('RGB', (ww + w_pad_left + w_pad_right, wh + w_pad_top + w_pad_bottom), (0,0,0))
+            ImageDraw.Draw(weather_img).text((w_pad_left - wb[0], w_pad_top - wb[1]), self.weather_text, font=self.weather_font, fill=display_color)
+            weather_x = center_x - (weather_img.width // 2)
+            weather_y = center_y + int(120 * self.display_scale)
+            self.blit_rgb_image(weather_img, weather_x, weather_y, clear_last_rect_attr='_last_weather_rect', skip_write=True)
         
         # Draw status bar
         if self.show_status_bar:
@@ -1482,8 +1475,14 @@ class FramebufferClock:
                 current_second = datetime.now().second
                 current_minute = datetime.now().minute
                 
-                # Render if second changed OR minute changed (ensures we never skip)
-                if current_second != last_second or current_minute != last_minute:
+                # Decide whether to render this loop
+                if self.show_seconds:
+                    render_due = (current_second != last_second) or (current_minute != last_minute)
+                else:
+                    # Throttle: when seconds are hidden, redraw on minute change (reduces CPU)
+                    render_due = (current_minute != last_minute)
+
+                if render_due:
                     # Skip expensive updates if overlay is showing
                     if not self.show_settings_overlay:
                         # Update weather periodically
@@ -1515,12 +1514,25 @@ class FramebufferClock:
                     os.remove('/tmp/restart_clock')
                     break
                 
-                # Align sleep to the next whole second to avoid skipped seconds
-                now_ts = time.time()
-                next_second = math.floor(now_ts) + 1.0
-                delay = max(0.0, next_second - now_ts)
-                # Minimum delay guard (avoid zero which can spin)
-                time.sleep(delay)
+                # Align sleep based on mode:
+                # - With overlay shown: sleep a short interval for snappy UI
+                # - With seconds shown: align to next second to avoid skips
+                # - With seconds hidden and no overlay: align to next minute for lower CPU
+                if self.show_settings_overlay:
+                    hz = getattr(self, 'overlay_refresh_hz', 10.0)
+                    interval = 1.0 / max(1.0, float(hz))
+                    time.sleep(interval)
+                elif not self.show_seconds and not self.show_settings_overlay:
+                    now_ts = time.time()
+                    next_minute = (math.floor(now_ts / 60.0) * 60.0) + 60.0
+                    delay = max(0.0, next_minute - now_ts)
+                else:
+                    now_ts = time.time()
+                    next_second = math.floor(now_ts) + 1.0
+                    delay = max(0.0, next_second - now_ts)
+                # Sleep until next boundary (if not already slept for overlay cadence)
+                if not self.show_settings_overlay:
+                    time.sleep(delay)
         
         except KeyboardInterrupt:
             logging.info("Clock interrupted by user")
