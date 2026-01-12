@@ -30,3 +30,4 @@ data:
     - PIXEL_SHIFT_ENABLED: "true"
     - DIM_AT_NIGHT: "true"
     - NIGHT_BRIGHTNESS: "0.3"
+    - USE_PYGAME: "false"

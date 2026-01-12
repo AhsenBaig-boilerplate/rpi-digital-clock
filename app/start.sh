@@ -11,17 +11,26 @@ if [ -n "$TIMEZONE" ]; then
     echo "$TIMEZONE" > /etc/timezone 2>/dev/null || true
 fi
 
-# Launch framebuffer clock application (no X11/SDL required)
-echo "Launching framebuffer clock application..."
+# Launch clock application - pygame or PIL framebuffer
+echo "Launching clock application..."
 cd /app
 if [ "${PRINT_BUILD_INFO}" = "true" ]; then
   echo "Printing build info before launch..."
   python3 build_info.py || true
 fi
 
+# Choose renderer based on environment variable
+if [ "${USE_PYGAME}" = "true" ]; then
+    CLOCK_APP="pygame_clock.py"
+    echo "Using Pygame renderer (hardware-accelerated)"
+else
+    CLOCK_APP="framebuffer_clock.py"
+    echo "Using PIL framebuffer renderer (current)"
+fi
+
 # Monitor for restart flag and reload clock when settings change
 while true; do
-    python3 framebuffer_clock.py &
+    python3 $CLOCK_APP &
     CLOCK_PID=$!
     
     # Wait for either clock to exit or restart flag
