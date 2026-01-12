@@ -22,11 +22,19 @@ fi
 # Choose renderer based on environment variable
 if [ "${USE_PYGAME}" = "true" ]; then
     CLOCK_APP="pygame_clock.py"
+    echo "=========================================="
     echo "Using Pygame renderer (hardware-accelerated)"
+    echo "=========================================="
+    # Verify pygame is available
+    python3 -c "import pygame; print('Pygame version:', pygame.version.ver)" || echo "WARNING: Pygame import failed!"
 else
     CLOCK_APP="framebuffer_clock.py"
+    echo "=========================================="
     echo "Using PIL framebuffer renderer (current)"
+    echo "=========================================="
 fi
+
+echo "Launching: python3 $CLOCK_APP"
 
 # Monitor for restart flag and reload clock when settings change
 while true; do

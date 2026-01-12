@@ -35,8 +35,12 @@ class PygameClock:
         self.build_info = build_info or {}
         self.running = True
         
-        # Initialize pygame
+        # Initialize pygame without audio (no speakers on clock)
+        os.environ['SDL_AUDIODRIVER'] = 'dummy'
         pygame.init()
+        # Disable audio mixer to prevent ALSA errors
+        if pygame.mixer.get_init():
+            pygame.mixer.quit()
         
         # Display configuration
         display_config = config.get('display', {})
@@ -92,18 +96,24 @@ class PygameClock:
         os.environ['SDL_FBDEV'] = '/dev/fb0'
         os.environ['SDL_NOMOUSE'] = '1'
         
+        logging.info("Attempting pygame display initialization...")
+        logging.info(f"SDL_VIDEODRIVER={os.environ.get('SDL_VIDEODRIVER')}")
+        logging.info(f"SDL_FBDEV={os.environ.get('SDL_FBDEV')}")
+        
         try:
             # Initialize with specific framebuffer size
             self.screen = pygame.display.set_mode((1920, 1200), pygame.HWSURFACE | pygame.DOUBLEBUF)
-            logging.info(f"Pygame framebuffer mode initialized")
+            logging.info(f"Pygame framebuffer initialized: {self.screen.get_size()}")
         except Exception as e:
-            logging.error(f"Pygame init failed: {e}")
+            logging.error(f"Pygame init failed: {e}", exc_info=True)
             # Fallback: try without flags
             try:
+                logging.info("Trying pygame without hardware flags...")
                 self.screen = pygame.display.set_mode((1920, 1200))
+                logging.info(f"Pygame fallback succeeded: {self.screen.get_size()}")
             except Exception as e2:
-                logging.error(f"Pygame fallback failed: {e2}")
-                raise
+                logging.error(f"Pygame fallback also failed: {e2}", exc_info=True)
+                raise RuntimeError(f"Could not initialize pygame display: {e2}")
         
         self.width, self.height = self.screen.get_size()
         logging.info(f"Display initialized: {self.width}x{self.height}")
