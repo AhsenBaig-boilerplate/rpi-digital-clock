@@ -844,6 +844,37 @@ class FramebufferClock:
             self.last_pixel_shift = now
             logging.debug(f"Pixel shift applied: x={self.pixel_shift_x:+d}, y={self.pixel_shift_y:+d}")
     
+    def update_burn_in_protection(self):
+        """Vary font size and characteristics to prevent burn-in."""
+        if not self.pixel_shift_enabled:  # Reuse same enable flag
+            return
+        
+        now = time.time()
+        # Change font characteristics every 5 minutes
+        if not hasattr(self, '_last_font_variation'):
+            self._last_font_variation = 0
+            self._font_size_offset = 0
+        
+        if now - self._last_font_variation > 300 and datetime.now().second == 0:  # 5 min
+            import random
+            # Vary time font size by ±8% (e.g., 280 ± 22px)
+            base_size = self.base_time_font_size
+            variation = int(base_size * 0.08)
+            self._font_size_offset = random.randint(-variation, variation)
+            new_size = max(10, int((base_size + self._font_size_offset) * self.display_scale))
+            
+            try:
+                if getattr(self, 'font_file', None):
+                    self.time_font = ImageFont.truetype(self.font_file, new_size)
+                    self.time_font_size = new_size
+                    # Update cache
+                    self._font_cache[new_size] = self.time_font
+                    logging.debug(f"Font size varied: {new_size}px (offset: {self._font_size_offset:+d}px)")
+            except Exception as e:
+                logging.warning(f"Font variation failed: {e}")
+            
+            self._last_font_variation = now
+    
     def update_weather(self):
         """Update weather information periodically."""
         if not self.weather_service:
@@ -870,14 +901,18 @@ class FramebufferClock:
         """Render the clock display using partial updates into shadow buffer."""
         t_start = time.time()
         
-        # Clear entire shadow buffer to black at start of EVERY render
-        # This removes balena background and prevents artifacts
-        self.fb_shadow.fill(0)
+        # One-time full clear on first render to remove balena background
+        if not hasattr(self, '_initial_clear_done'):
+            logging.info("Initial framebuffer clear to remove boot background")
+            self.fb_shadow.fill(0)
+            self.write_to_framebuffer(None)
+            self._initial_clear_done = True
         
         try:
             # If screensaver, write blank and return
             if not self.should_show_display():
                 logging.debug("Screensaver active - blanking display")
+                self.fb_shadow.fill(0)
                 self.write_to_framebuffer(None)
                 return
         except Exception as e:
@@ -1374,7 +1409,7 @@ class FramebufferClock:
 
     def blit_rgb_image(self, img: Image.Image, x: int, y: int, clear_last_rect_attr: str):
         """Convert a small RGB888 PIL image to RGB565 and blit into shadow buffer at (x,y).
-        Does NOT clear previous rect - that's done at render start for entire buffer.
+        Clears previous rect stored in the attribute to avoid trails.
         """
         if self.fb_bpp != 16 or not isinstance(self.fb_shadow, np.ndarray):
             # Fallback: draw onto a full-size image (rare path)
@@ -1382,7 +1417,13 @@ class FramebufferClock:
             full.paste(img, (x, y))
             self.write_to_framebuffer(full)
             return
-        # Don't clear old rect here - we clear entire buffer at render start
+        # Clear previous rect if any to avoid trails
+        last_rect = getattr(self, clear_last_rect_attr, None)
+        if last_rect:
+            lx, ly, lw, lh = last_rect
+            lx2 = max(0, min(self.fb_width, lx + lw))
+            ly2 = max(0, min(self.fb_height, ly + lh))
+            self.fb_shadow[ly:ly2, lx:lx2].fill(0)
         w, h = img.size
         if w <= 0 or h <= 0:
             return
@@ -1555,8 +1596,9 @@ class FramebufferClock:
                         
                         # Update pixel shift
                         self.update_pixel_shift()
-                    
-                    # Render
+        
+        # Update burn-in protection: vary font size and font family
+        self.update_burn_in_protection()
                     self.render()
                     
                     last_second = current_second

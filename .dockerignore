@@ -1,0 +1,49 @@
+# Documentation - don't trigger rebuilds
+*.md
+!README.md
+CHANGELOG.md
+VERSION_HISTORY.md
+CONTRIBUTING.md
+DEPLOYMENT_CHECKLIST.md
+PROJECT_SUMMARY.md
+QUICK_REFERENCE.md
+RTC_SETUP.md
+RTC_WIRING.md
+
+# Git and CI
+.git
+.github
+.gitignore
+.gitattributes
+
+# Development files
+*.log
+*.tmp
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+tests/
+test_*.py
+*_test.py
+
+# Local config
+.env
+.env.local
+config.local.yaml
