@@ -527,11 +527,6 @@ class FramebufferClock:
         max_height = 0
         sprites_to_use = []
         
-        # Debug: log the time string being rendered (once per minute to avoid spam)
-        if not hasattr(self, '_last_time_str_logged') or self._last_time_str_logged != time_str[:5]:
-            logging.info(f"Time string: {repr(time_str)} (len={len(time_str)}, chars={[c for c in time_str]})")
-            self._last_time_str_logged = time_str[:5]
-        
         for char in time_str:
             if char not in self._sprite_cache:
                 # Cache miss - log details and fallback
@@ -690,7 +685,10 @@ class FramebufferClock:
                 status_img = self._status_cached_img
                 status_x, status_y = self._status_cached_pos
                 self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect', skip_write=True)
+                logging.debug(f"Status bar: cache HIT (minute={current_minute})")
                 return
+        
+        logging.debug(f"Status bar: cache MISS, re-rendering (minute={current_minute})")
         
         position_name = self.status_bar_position  # Use fixed position
         
@@ -1378,7 +1376,10 @@ class FramebufferClock:
             # Center the composite image
             time_x = max(margin, min(self.fb_width - margin - time_img.width, center_x_time - (time_img.width // 2)))
             time_y = max(margin, min(self.fb_height - margin - time_img.height, center_y - time_offset_y - (time_img.height // 2)))
+            t_blit_start = time.time()
             self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect', skip_write=True, clear_full_region=True)
+            blit_time_ms = (time.time() - t_blit_start) * 1000
+            logging.debug(f"Time: cache={cache_time_ms:.1f}ms, blit={blit_time_ms:.1f}ms")
             if not hasattr(self, '_cache_hit_logged'):
                 logging.info(f"Sprite cache HIT: rendered time in {cache_time_ms:.1f}ms (vs 750ms direct)")
                 self._cache_hit_logged = True
@@ -1407,7 +1408,10 @@ class FramebufferClock:
             date_x = max(margin, min(self.fb_width - margin - date_img.width, center_x - (date_img.width // 2)))
             date_y = max(margin, min(self.fb_height - margin - date_img.height, center_y + date_offset_y))
             # Clear full date region to avoid artifacts
+            t_blit_start = time.time()
             self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True, clear_full_region=True)
+            blit_date_ms = (time.time() - t_blit_start) * 1000
+            logging.debug(f"Date: cache={date_cache_ms:.1f}ms, blit={blit_date_ms:.1f}ms")
             if not hasattr(self, '_date_cache_hit_logged'):
                 logging.info(f"Date sprite cache HIT: rendered '{date_str}' in {date_cache_ms:.1f}ms")
                 self._date_cache_hit_logged = True
@@ -1489,7 +1493,10 @@ class FramebufferClock:
             # Status bar position is now fixed to avoid artifacts
             # Rotation disabled - pixel shift still provides burn-in protection
             # Render status bar using consolidated method
+            t_status_start = time.time()
             self._render_status_bar(status_items, status_color, margin)
+            status_ms = (time.time() - t_status_start) * 1000
+            logging.debug(f"Status bar: render={status_ms:.1f}ms")
         
         t_draw = time.time()
         # Render settings overlay if active
@@ -1508,16 +1515,12 @@ class FramebufferClock:
         self.write_to_framebuffer(None)
         t_write = time.time()
         
-        # Log timing on every render for debugging
-        if not hasattr(self, '_last_timing_log'):
-            self._last_timing_log = 0
-        if time.time() - self._last_timing_log > 5:  # Log every 5 seconds
-            self._last_timing_log = time.time()
-            total = (t_write - t_start) * 1000
-            prep = (t_prep - t_start) * 1000
-            draw_time = (t_draw - t_prep) * 1000
-            write = (t_write - t_draw) * 1000
-            logging.info(f"Render timing: total={total:.1f}ms (prep={prep:.1f}ms, draw={draw_time:.1f}ms, write={write:.1f}ms) @ {self.fb_width}x{self.fb_height}")
+        # Log timing breakdown
+        total = (t_write - t_start) * 1000
+        prep = (t_prep - t_start) * 1000
+        draw_time = (t_draw - t_prep) * 1000
+        write = (t_write - t_draw) * 1000
+        logging.info(f"Render timing: total={total:.1f}ms (prep={prep:.1f}ms, draw={draw_time:.1f}ms, write={write:.1f}ms) @ {self.fb_width}x{self.fb_height}")
     
     def write_to_framebuffer(self, image):
         """Write image directly to framebuffer device.
@@ -1593,18 +1596,7 @@ class FramebufferClock:
         except Exception as e:
             logging.error(f"Failed to write to framebuffer: {e}")
 
-    def blit_rgb_image(self, img: Image.Image, x: int, y: int, clear_last_rect_attr: str, skip_write: bool = False):
-        """Convert a small RGB888 PIL image to RGB565 and blit into shadow buffer at (x,y).
-        Clears previous rect stored in the attribute to avoid trails.
-        If skip_write=True, don't write to framebuffer yet (batch writes).
-        """
-        if self.fb_bpp != 16 or not isinstance(self.fb_shadow, np.ndarray):
-            # Fallback: draw onto a full-size image (rare path)
-            full = Image.new('RGB', (self.fb_width, self.fb_height), self.bg_color)
-            full.paste(img, (x, y))
-            if not skip_write:
-                self.write_to_framebuffer(full)
-            return
+
     def blit_rgb_image(self, img: Image.Image, x: int, y: int, clear_last_rect_attr: str, skip_write: bool = False, clear_full_region: bool = False):
         """Convert a small RGB888 PIL image to RGB565 and blit into shadow buffer at (x,y).
         Clears previous rect stored in the attribute to avoid trails.
