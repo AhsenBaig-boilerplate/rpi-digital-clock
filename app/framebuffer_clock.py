@@ -350,11 +350,7 @@ class FramebufferClock:
             
             if not font_file:
                 raise Exception("No suitable font found")
-            
-            # Skip emoji font - we use bitmap icons instead (saves memory and load time)
-            self.emoji_font = None
-            
-            # Keep the chosen font file for dynamic sizing later
+            \n            # Keep the chosen font file for dynamic sizing later
             self.font_file = font_file
             
             self.time_font = ImageFont.truetype(self.font_file, self.time_font_size)
@@ -383,53 +379,6 @@ class FramebufferClock:
         """Convert hex color to RGB tuple."""
         hex_color = hex_color.lstrip('#')
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-    
-    def draw_text_with_emoji(self, draw, text, position, font, emoji_font, fill):
-        """Draw text with emoji support using font fallback."""
-        if not emoji_font:
-            # No emoji font available, draw normally
-            draw.text(position, text, font=font, fill=fill)
-            return
-        
-        # Use simpler Unicode characters that work better with available fonts
-        x, y = position
-        emoji_chars = set('🌐✓⏰✗')  # Removed problematic emoji
-        
-        for char in text:
-            if char in emoji_chars:
-                # Use emoji font
-                draw.text((x, y), char, font=emoji_font, fill=fill)
-                bbox = draw.textbbox((x, y), char, font=emoji_font)
-            else:
-                # Use regular font
-                draw.text((x, y), char, font=font, fill=fill)
-                bbox = draw.textbbox((x, y), char, font=font)
-            
-            x += bbox[2] - bbox[0]
-    
-    def get_text_bbox_with_emoji(self, text, font, emoji_font):
-        """Get bounding box for text with emoji support."""
-        if not emoji_font:
-            # No emoji font, use regular bbox
-            temp_draw = ImageDraw.Draw(Image.new('RGB', (1, 1)))
-            return temp_draw.textbbox((0, 0), text, font=font)
-        
-        # Calculate width with emoji support
-        x = 0
-        max_height = 0
-        emoji_chars = set('🌐✓⏰✗')
-        temp_draw = ImageDraw.Draw(Image.new('RGB', (1, 1)))
-        
-        for char in text:
-            if char in emoji_chars:
-                bbox = temp_draw.textbbox((0, 0), char, font=emoji_font)
-            else:
-                bbox = temp_draw.textbbox((0, 0), char, font=font)
-            
-            x += bbox[2] - bbox[0]
-            max_height = max(max_height, bbox[3] - bbox[1])
-        
-        return (0, 0, x, max_height)
 
     def _draw_icon(self, draw, x, y, icon_type, color):
         """Draw a tiny bitmap icon (10x10) for status items."""
@@ -458,6 +407,78 @@ class FramebufferClock:
             draw.line([x+5, y+7, x+5, y+9], fill=color)
             draw.line([x+1, y+5, x+3, y+5], fill=color)
             draw.line([x+7, y+5, x+9, y+5], fill=color)
+
+    def _render_status_bar(self, status_items, status_color, margin):
+        """Render status bar with icons and text. Returns None to skip rendering."""
+        if not status_items:
+            return
+        
+        position_name = self.status_bar_positions[self.current_status_position]
+        
+        # Calculate dimensions
+        status_w = 0
+        status_h = 0
+        min_y_offset = 0
+        for idx, (name, label) in enumerate(status_items):
+            if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
+                status_w += 12
+            lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
+            status_w += lb[2] - lb[0]
+            status_h = max(status_h, lb[3] - lb[1])
+            min_y_offset = min(min_y_offset, lb[1])
+            if idx < len(status_items) - 1:
+                sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
+                status_w += sep[2] - sep[0]
+        
+        v_pad = max(5, -min_y_offset + 3)
+        status_h += v_pad
+        
+        # Position based on rotation
+        if position_name == 'bottom-left':
+            status_x = margin
+            status_y = self.fb_height - status_h - margin
+        elif position_name == 'bottom-right':
+            status_x = self.fb_width - status_w - margin
+            status_y = self.fb_height - status_h - margin
+        elif position_name == 'top-left':
+            status_x = margin
+            status_y = margin
+        else:  # top-right
+            status_x = self.fb_width - status_w - margin
+            status_y = margin
+        
+        # Render status bar
+        status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
+        status_draw = ImageDraw.Draw(status_img)
+        cursor_x = 0
+        text_y = -min_y_offset if min_y_offset < 0 else 0
+        for idx, (name, label) in enumerate(status_items):
+            if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
+                self._draw_icon(status_draw, cursor_x, text_y, name, status_color)
+                cursor_x += 12
+            status_draw.text((cursor_x, text_y), label, font=self.status_font, fill=status_color)
+            lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
+            cursor_x += lb[2] - lb[0]
+            if idx < len(status_items) - 1:
+                status_draw.text((cursor_x, 0), " | ", font=self.status_font, fill=status_color)
+                sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
+                cursor_x += sep[2] - sep[0]
+        
+        # Build clickable regions
+        self.status_item_regions = []
+        cursor_rel_x = 0
+        for idx, (name, label) in enumerate(status_items):
+            icon_w = 12 if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings'] else 0
+            lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
+            iw = icon_w + (lb[2] - lb[0])
+            ih = lb[3] - lb[1]
+            self.status_item_regions.append((name, (status_x + cursor_rel_x, status_y, iw, ih)))
+            cursor_rel_x += iw
+            if idx < len(status_items) - 1:
+                sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
+                cursor_rel_x += sep[2] - sep[0]
+        
+        self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect', skip_write=True)
 
     # ------------------------
     # Input handling
@@ -1177,149 +1198,8 @@ class FramebufferClock:
                 self.current_status_position = (self.current_status_position + 1) % len(self.status_bar_positions)
                 self.last_status_position_change = time.time()
                 logging.debug(f"Status bar position changed to: {self.status_bar_positions[self.current_status_position]}")
-            
-            position_name = self.status_bar_positions[self.current_status_position]
-            
-            
-            # Use emoji-aware rendering if emoji font is available
-            if self.emoji_font:
-                # Calculate size including icons - REUSE temp_draw to avoid creating new images
-                status_w = 0
-                status_h = 0
-                min_y_offset = 0  # Track negative y offset for descenders
-                for idx, (name, label) in enumerate(status_items):
-                    # Add icon width
-                    if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
-                        status_w += 12
-                    # Add label width and track full height including descenders
-                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
-                    status_w += lb[2] - lb[0]
-                    status_h = max(status_h, lb[3] - lb[1])
-                    min_y_offset = min(min_y_offset, lb[1])  # Track descenders
-                    # Add separator width
-                    if idx < len(status_items) - 1:
-                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
-                        status_w += sep[2] - sep[0]
-                
-                # Add vertical padding for descenders
-                v_pad = max(5, -min_y_offset + 3)
-                status_h += v_pad
-                
-                # Position based on rotation
-                if position_name == 'bottom-left':
-                    status_x = margin
-                    status_y = self.fb_height - status_h - margin
-                elif position_name == 'bottom-right':
-                    status_x = self.fb_width - status_w - margin
-                    status_y = self.fb_height - status_h - margin
-                elif position_name == 'top-left':
-                    status_x = margin
-                    status_y = margin
-                else:  # top-right
-                    status_x = self.fb_width - status_w - margin
-                    status_y = margin
-                
-                status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
-                status_draw = ImageDraw.Draw(status_img)
-                # Draw icons and text with proper y offset for descenders
-                cursor_x = 0
-                text_y = -min_y_offset if min_y_offset < 0 else 0
-                for idx, (name, label) in enumerate(status_items):
-                    # Draw icon if applicable
-                    if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
-                        self._draw_icon(status_draw, cursor_x, text_y, name, status_color)
-                        cursor_x += 12  # icon width + spacing
-                    # Draw label text
-                    status_draw.text((cursor_x, text_y), label, font=self.status_font, fill=status_color)
-                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
-                    cursor_x += lb[2] - lb[0]
-                    if idx < len(status_items) - 1:
-                        status_draw.text((cursor_x, 0), " | ", font=self.status_font, fill=status_color)
-                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
-                        cursor_x += sep[2] - sep[0]
-                # Build clickable regions
-                self.status_item_regions = []
-                cursor_rel_x = 0
-                for idx, (name, label) in enumerate(status_items):
-                    icon_w = 12 if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings'] else 0
-                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
-                    iw = icon_w + (lb[2] - lb[0])
-                    ih = lb[3] - lb[1]
-                    self.status_item_regions.append((name, (status_x + cursor_rel_x, status_y, iw, ih)))
-                    cursor_rel_x += iw
-                    if idx < len(status_items) - 1:
-                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
-                        cursor_rel_x += sep[2] - sep[0]
-                self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect', skip_write=True)
-            else:
-                # Fallback to regular rendering - REUSE temp_draw
-                status_w = 0
-                status_h = 0
-                min_y_offset = 0  # Track negative y offset for descenders
-                for idx, (name, label) in enumerate(status_items):
-                    # Add icon width
-                    if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
-                        status_w += 12
-                    # Add label width and track full height including descenders
-                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
-                    status_w += lb[2] - lb[0]
-                    status_h = max(status_h, lb[3] - lb[1])
-                    min_y_offset = min(min_y_offset, lb[1])  # Track descenders
-                    # Add separator width
-                    if idx < len(status_items) - 1:
-                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
-                        status_w += sep[2] - sep[0]
-                
-                # Add vertical padding for descenders
-                v_pad = max(5, -min_y_offset + 3)
-                status_h += v_pad
-                
-                # Position based on rotation
-                if position_name == 'bottom-left':
-                    status_x = margin
-                    status_y = self.fb_height - status_h - margin
-                elif position_name == 'bottom-right':
-                    status_x = self.fb_width - status_w - margin
-                    status_y = self.fb_height - status_h - margin
-                elif position_name == 'top-left':
-                    status_x = margin
-                    status_y = margin
-                else:  # top-right
-                    status_x = self.fb_width - status_w - margin
-                    status_y = margin
-                
-                status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
-                status_draw = ImageDraw.Draw(status_img)
-                # Draw icons and text with proper y offset for descenders
-                cursor_x = 0
-                text_y = -min_y_offset if min_y_offset < 0 else 0
-                for idx, (name, label) in enumerate(status_items):
-                    # Draw icon if applicable
-                    if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
-                        self._draw_icon(status_draw, cursor_x, text_y, name, status_color)
-                        cursor_x += 12  # icon width + spacing
-                    # Draw label text
-                    status_draw.text((cursor_x, text_y), label, font=self.status_font, fill=status_color)
-                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
-                    cursor_x += lb[2] - lb[0]
-                    if idx < len(status_items) - 1:
-                        status_draw.text((cursor_x, 0), " | ", font=self.status_font, fill=status_color)
-                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
-                        cursor_x += sep[2] - sep[0]
-                # Build clickable regions (approximate without emoji)
-                self.status_item_regions = []
-                cursor_rel_x = 0
-                for idx, (name, label) in enumerate(status_items):
-                    icon_w = 12 if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings'] else 0
-                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
-                    iw = icon_w + (lb[2] - lb[0])
-                    ih = lb[3] - lb[1]
-                    self.status_item_regions.append((name, (status_x + cursor_rel_x, status_y, iw, ih)))
-                    cursor_rel_x += iw
-                    if idx < len(status_items) - 1:
-                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
-                        cursor_rel_x += sep[2] - sep[0]
-                self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect', skip_write=True)
+            # Render status bar using consolidated method
+            self._render_status_bar(status_items, status_color, margin)
         
         t_draw = time.time()
         # Render settings overlay if active
