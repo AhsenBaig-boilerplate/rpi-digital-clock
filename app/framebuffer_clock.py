@@ -681,8 +681,16 @@ class FramebufferClock:
         if not status_items:
             return
         
-        # Create cache key from status items and color
-        cache_key = (tuple(status_items), status_color, self.status_bar_position)
+        # Create simplified cache key (ignore exact sync time to avoid constant re-renders)
+        # Only track item names and network/version status (sync time changes every second)
+        cache_items = []
+        for name, label in status_items:
+            if name in ('sync_ok', 'sync_old'):
+                # Just track sync status, not exact time
+                cache_items.append((name, 'sync'))
+            else:
+                cache_items.append((name, label))
+        cache_key = (tuple(cache_items), status_color, self.status_bar_position)
         
         # Check if we can use cached status bar
         if hasattr(self, '_status_cache_key') and self._status_cache_key == cache_key:
@@ -1609,8 +1617,8 @@ class FramebufferClock:
         last_rect = getattr(self, clear_last_rect_attr, None)
         if last_rect:
             lx, ly, lw, lh = last_rect
-            # Add 15px padding on each side (enough for character width changes)
-            clear_pad = 15
+            # Add 30px padding (needed for 280pt font character width changes)
+            clear_pad = 30
             lx_clear = max(0, lx - clear_pad)
             ly_clear = max(0, ly - clear_pad)
             lx2_clear = min(self.fb_width, lx + lw + clear_pad)
