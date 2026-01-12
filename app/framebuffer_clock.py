@@ -408,8 +408,8 @@ class FramebufferClock:
             char_w = bbox[2] - bbox[0]
             char_h = bbox[3] - bbox[1]
             
-            # Fixed padding for glyph safety (handles antialiasing overflow)
-            pad = 10
+            # Generous padding for full glyph capture (antialiasing, descenders, etc.)
+            pad = 20
             sprite_w = char_w + 2 * pad
             sprite_h = char_h + 2 * pad
             
@@ -433,7 +433,7 @@ class FramebufferClock:
             bbox = temp_draw.textbbox((0, 0), char, font=self.date_font, anchor='lt')
             char_w = bbox[2] - bbox[0]
             char_h = bbox[3] - bbox[1]
-            pad = 5
+            pad = 10
             
             sprite_w = char_w + 2 * pad
             sprite_h = char_h + 2 * pad
