@@ -192,13 +192,13 @@ class FramebufferClock:
             self.pixel_shift_enabled = False
         else:
             self.pixel_shift_enabled = display_config.get('pixel_shift_enabled', True)
-        self.pixel_shift_interval = int(os.environ.get('PIXEL_SHIFT_INTERVAL_SECONDS', display_config.get('pixel_shift_interval_seconds', 60)))  # Less frequent updates
+        self.pixel_shift_interval = int(os.environ.get('PIXEL_SHIFT_INTERVAL_SECONDS', display_config.get('pixel_shift_interval_seconds', 30)))  # Shift every 30s for better burn-in protection
         self.pixel_shift_disable_start = int(os.environ.get('PIXEL_SHIFT_DISABLE_START_HOUR', display_config.get('pixel_shift_disable_start_hour', 12)))
         self.pixel_shift_disable_end = int(os.environ.get('PIXEL_SHIFT_DISABLE_END_HOUR', display_config.get('pixel_shift_disable_end_hour', 14)))
         self.last_pixel_shift = 0
         self.pixel_shift_x = 0
         self.pixel_shift_y = 0
-        self.pixel_shift_max = 30  # Increased from 10 to make burn-in prevention more visible
+        self.pixel_shift_max = 50  # Increased to ±50px (100px total range) for better burn-in protection
         # Track previous shift to detect changes and clear artifacts
         self._prev_pixel_shift_x = 0
         self._prev_pixel_shift_y = 0
@@ -681,34 +681,12 @@ class FramebufferClock:
         if not status_items:
             return
         
-        # Create simplified cache key (ignore exact sync time to avoid constant re-renders)
-        # Only track item names and network/version status (sync time changes every second)
-        cache_items = []
-        for name, label in status_items:
-            if name in ('sync_ok', 'sync_old'):
-                # Just track sync status, not exact time
-                cache_items.append((name, 'sync'))
-            else:
-                cache_items.append((name, label))
-        cache_key = (tuple(cache_items), status_color, self.status_bar_position)
-        
-        # Debug: Log cache key on first few renders
-        if not hasattr(self, '_cache_key_log_count'):
-            self._cache_key_log_count = 0
-        if self._cache_key_log_count < 5:
-            self._cache_key_log_count += 1
-            logging.info(f"Status cache key: {cache_key}")
-            if hasattr(self, '_status_cache_key'):
-                logging.info(f"Previous cache key: {self._status_cache_key}")
-                logging.info(f"Keys match: {self._status_cache_key == cache_key}")
-        
-        # Check if we can use cached status bar
-        if hasattr(self, '_status_cache_key') and self._status_cache_key == cache_key:
-            # Status hasn't changed, use cached image and position
+        # Simple time-based cache: only re-render status bar once per minute
+        # This avoids expensive renders for sync time text that changes every second
+        current_minute = time.time() // 60
+        if hasattr(self, '_status_last_minute') and self._status_last_minute == current_minute:
+            # Use cached status bar from this minute
             if hasattr(self, '_status_cached_img') and hasattr(self, '_status_cached_pos'):
-                if not hasattr(self, '_status_cache_hit_logged'):
-                    logging.info("Status bar cache HIT - using cached render")
-                    self._status_cache_hit_logged = True
                 status_img = self._status_cached_img
                 status_x, status_y = self._status_cached_pos
                 self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect', skip_write=True)
@@ -781,8 +759,8 @@ class FramebufferClock:
         
         self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect', skip_write=True)
         
-        # Cache the rendered status bar
-        self._status_cache_key = cache_key
+        # Cache the rendered status bar with minute timestamp
+        self._status_last_minute = current_minute
         self._status_cached_img = status_img
         self._status_cached_pos = (status_x, status_y)
 
