@@ -1,28 +1,10 @@
-# Multi-stage build: compile Rust native renderer, then run Python orchestrator
-
-# Stage 1: Build Rust native renderer for ARM (Pi Zero)
-FROM balenalib/raspberry-pi-debian:bookworm AS rust-builder
-
-# Need curl and build tools for rustup/cargo
-RUN install_packages curl ca-certificates build-essential pkg-config && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app/native/clock_fb_rust
-# Copy Rust source
-COPY native/clock_fb_rust/ /app/native/clock_fb_rust/
-# Install Rust and build release binary
-# Use direct cargo path to avoid sourcing in non-interactive shell
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-    $HOME/.cargo/bin/cargo build --release
-
-# Stage 2: Python runtime
+# Python runtime for framebuffer clock
 # Use Debian Bookworm for Python 3.11 (security updates until Oct 2027)
 FROM balenalib/raspberry-pi-debian-python:3.11-bookworm
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
-    NATIVE_TIME_RENDERER=true \
-    NATIVE_TIME_BIN=/app/native/clock_fb_rust/clock_fb_rust
+    NATIVE_TIME_RENDERER=false
 
 # Install system dependencies
 RUN install_packages \
@@ -55,11 +37,9 @@ RUN python3 -c "import yaml, requests, numpy; from PIL import Image, ImageDraw, 
 
 # Copy application files
 COPY app/ .
-# Copy the Rust binary from builder
-COPY --from=rust-builder /app/native/clock_fb_rust/target/release/clock_fb_rust /app/native/clock_fb_rust/clock_fb_rust
 
 # Set permissions
-RUN chmod +x framebuffer_clock.py start.sh /app/native/clock_fb_rust/clock_fb_rust
+RUN chmod +x framebuffer_clock.py start.sh
 
 # Expose web UI port
 EXPOSE 8080
