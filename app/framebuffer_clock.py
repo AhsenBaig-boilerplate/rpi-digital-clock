@@ -386,12 +386,15 @@ class FramebufferClock:
     def _prerender_time_sprites(self):
         """Pre-render all time characters as sprites for fast compositing.
         This eliminates expensive per-frame text rendering (750ms -> 50-100ms).
+        Also caches date characters for full optimization.
         """
         logging.info("Pre-rendering time sprite cache...")
         t_start = time.time()
         
         # Characters needed for time display
         chars = '0123456789: AMP'
+        # Also cache common date characters (letters, comma, space) for date rendering
+        date_chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ, '
         
         # Use a temporary draw context for bbox measurement
         temp_draw = self._temp_draw or ImageDraw.Draw(Image.new('RGB', (1,1)))
@@ -421,11 +424,40 @@ class FramebufferClock:
                 'image': sprite,
                 'width': sprite_w,
                 'height': sprite_h,
-                'baseline_offset': pad_t - bbox[1]
+                'baseline_offset': pad_t - bbox[1],
+                'font': 'time'
+            }
+        
+        # Render date character sprites (smaller font)
+        for char in date_chars:
+            bbox = temp_draw.textbbox((0, 0), char, font=self.date_font)
+            char_w = bbox[2] - bbox[0]
+            char_h = bbox[3] - bbox[1]
+            
+            pad_l = max(8, int(self.date_font_size * 0.1))
+            pad_r = max(8, int(self.date_font_size * 0.1))
+            pad_t = max(4, int(self.date_font_size * 0.05))
+            pad_b = max(4, int(self.date_font_size * 0.05))
+            
+            sprite_w = char_w + pad_l + pad_r
+            sprite_h = char_h + pad_t + pad_b
+            
+            sprite = Image.new('RGB', (sprite_w, sprite_h), (0, 0, 0))
+            draw = ImageDraw.Draw(sprite)
+            draw.text((pad_l - bbox[0], pad_t - bbox[1]), char, font=self.date_font, fill=self.color)
+            
+            # Store with 'date_' prefix to distinguish from time sprites
+            cache_key = f'date_{char}'
+            self._sprite_cache[cache_key] = {
+                'image': sprite,
+                'width': sprite_w,
+                'height': sprite_h,
+                'baseline_offset': pad_t - bbox[1],
+                'font': 'date'
             }
         
         elapsed = (time.time() - t_start) * 1000
-        logging.info(f"Cached {len(self._sprite_cache)} time sprites in {elapsed:.1f}ms")
+        logging.info(f"Cached {len(self._sprite_cache)} sprites (time + date chars) in {elapsed:.1f}ms")
     
     def _composite_time_from_cache(self, time_str: str, color: tuple) -> Image.Image:
         """Composite time string from pre-rendered sprite cache.
@@ -433,6 +465,7 @@ class FramebufferClock:
         Applies brightness to sprites if color differs from cached color.
         """
         if not time_str or not self._sprite_cache:
+            logging.debug(f"Cache composite skipped: time_str='{time_str}', cache_size={len(self._sprite_cache)}")
             return None
         
         # Calculate total width and max height
@@ -440,10 +473,15 @@ class FramebufferClock:
         max_height = 0
         sprites_to_use = []
         
+        # Debug: log the time string being rendered (once per minute to avoid spam)
+        if not hasattr(self, '_last_time_str_logged') or self._last_time_str_logged != time_str[:5]:
+            logging.debug(f"Compositing time: '{time_str}' (len={len(time_str)})")
+            self._last_time_str_logged = time_str[:5]
+        
         for char in time_str:
             if char not in self._sprite_cache:
-                # Cache miss - shouldn't happen
-                logging.warning(f"Sprite cache miss for '{char}' (ord={ord(char)})")
+                # Cache miss - log details and fallback
+                logging.warning(f"Sprite cache MISS for char='{char}' (ord={ord(char)}, time_str='{time_str}')")
                 return None
             sprite_info = self._sprite_cache[char]
             sprites_to_use.append(sprite_info)
@@ -476,6 +514,49 @@ class FramebufferClock:
         
         return composite
     
+    def _composite_date_from_cache(self, date_str: str, color: tuple) -> Image.Image:
+        """Composite date string from pre-rendered sprite cache.
+        Much faster than ImageDraw.text() for date rendering.
+        """
+        if not date_str or not self._sprite_cache:
+            return None
+        
+        total_width = 0
+        max_height = 0
+        sprites_to_use = []
+        
+        for char in date_str:
+            cache_key = f'date_{char}'
+            if cache_key not in self._sprite_cache:
+                # Cache miss - fallback to direct rendering
+                return None
+            sprite_info = self._sprite_cache[cache_key]
+            sprites_to_use.append(sprite_info)
+            total_width += sprite_info['width']
+            max_height = max(max_height, sprite_info['height'])
+        
+        # Create composite
+        composite = Image.new('RGB', (total_width, max_height), (0, 0, 0))
+        
+        # Apply brightness if needed
+        needs_tint = color != self.color
+        brightness_factor = color[0] / max(1, self.color[0]) if self.color[0] > 0 else 1.0
+        
+        x_offset = 0
+        for sprite_info in sprites_to_use:
+            sprite_img = sprite_info['image']
+            
+            if needs_tint and brightness_factor != 1.0:
+                arr = np.array(sprite_img)
+                arr = (arr * brightness_factor).astype(np.uint8)
+                sprite_img = Image.fromarray(arr)
+            
+            y_offset = (max_height - sprite_info['height']) // 2
+            composite.paste(sprite_img, (x_offset, y_offset))
+            x_offset += sprite_info['width']
+        
+        return composite
+
     def hex_to_rgb(self, hex_color):
         """Convert hex color to RGB tuple."""
         hex_color = hex_color.lstrip('#')
@@ -1195,25 +1276,34 @@ class FramebufferClock:
             time_y = max(margin, min(self.fb_height - margin - time_img.height, center_y - time_offset_y - (time_img.height // 2)))
             self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect', skip_write=True)
         
-        # Render date with generous padding - always clear previous to avoid artifacts
-        if not self._temp_draw:
-            self._temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
-        date_bbox = self._temp_draw.textbbox((0,0), date_str, font=self.date_font)
-        date_w = date_bbox[2] - date_bbox[0]
-        date_h = date_bbox[3] - date_bbox[1]
-        # Extra wide padding to handle date changes and pixel shift
-        d_pad_left = max(40, int(self.date_font_size * 0.4))
-        d_pad_right = max(40, int(self.date_font_size * 0.4))
-        d_pad_top = max(20, int(self.date_font_size * 0.2))
-        d_pad_bottom = max(20, int(self.date_font_size * 0.2))
-        date_canvas_w = date_w + d_pad_left + d_pad_right
-        date_canvas_h = date_h + d_pad_top + d_pad_bottom
-        date_x = max(margin, min(self.fb_width - margin - date_canvas_w, center_x - date_canvas_w // 2))
-        date_y = max(margin, min(self.fb_height - margin - date_canvas_h, center_y + date_offset_y))
-        date_img = Image.new('RGB', (date_canvas_w, date_canvas_h), (0,0,0))
-        # Draw with padding to include full glyph bounds
-        ImageDraw.Draw(date_img).text((d_pad_left - date_bbox[0], d_pad_top - date_bbox[1]), date_str, font=self.date_font, fill=display_color)
-        self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True)
+        # Render date with generous padding - try sprite cache first
+        date_img = self._composite_date_from_cache(date_str, display_color)
+        if date_img:
+            # Center the cached date composite
+            date_x = max(margin, min(self.fb_width - margin - date_img.width, center_x - (date_img.width // 2)))
+            date_y = max(margin, min(self.fb_height - margin - date_img.height, center_y + date_offset_y))
+            self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True)
+            if not hasattr(self, '_date_cache_hit_logged'):
+                logging.info("Date sprite cache HIT: fast date rendering enabled")
+                self._date_cache_hit_logged = True
+        else:
+            # Fallback to direct rendering (slow path)
+            if not self._temp_draw:
+                self._temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
+            date_bbox = self._temp_draw.textbbox((0,0), date_str, font=self.date_font)
+            date_w = date_bbox[2] - date_bbox[0]
+            date_h = date_bbox[3] - date_bbox[1]
+            d_pad_left = max(40, int(self.date_font_size * 0.4))
+            d_pad_right = max(40, int(self.date_font_size * 0.4))
+            d_pad_top = max(20, int(self.date_font_size * 0.2))
+            d_pad_bottom = max(20, int(self.date_font_size * 0.2))
+            date_canvas_w = date_w + d_pad_left + d_pad_right
+            date_canvas_h = date_h + d_pad_top + d_pad_bottom
+            date_x = max(margin, min(self.fb_width - margin - date_canvas_w, center_x - date_canvas_w // 2))
+            date_y = max(margin, min(self.fb_height - margin - date_canvas_h, center_y + date_offset_y))
+            date_img = Image.new('RGB', (date_canvas_w, date_canvas_h), (0,0,0))
+            ImageDraw.Draw(date_img).text((d_pad_left - date_bbox[0], d_pad_top - date_bbox[1]), date_str, font=self.date_font, fill=display_color)
+            self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True)
         
         # Draw weather if available (measure, pad, and blit like time/date)
         if self.weather_text:
