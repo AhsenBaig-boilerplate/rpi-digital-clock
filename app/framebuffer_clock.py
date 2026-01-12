@@ -870,11 +870,14 @@ class FramebufferClock:
         """Render the clock display using partial updates into shadow buffer."""
         t_start = time.time()
         
+        # Clear entire shadow buffer to black at start of EVERY render
+        # This removes balena background and prevents artifacts
+        self.fb_shadow.fill(0)
+        
         try:
-            # If screensaver, blank shadow and write
+            # If screensaver, write blank and return
             if not self.should_show_display():
                 logging.debug("Screensaver active - blanking display")
-                self.fb_shadow.fill(0)
                 self.write_to_framebuffer(None)
                 return
         except Exception as e:
@@ -894,6 +897,7 @@ class FramebufferClock:
         status_color = self.apply_brightness(self.status_color)
 
         # If native renderer is enabled, send commands; fallback to PIL if any fail
+        native_ok = False
         if self.native_renderer_enabled:
             hex_color = f"#{display_color[0]:02X}{display_color[1]:02X}{display_color[2]:02X}"
             ok = True
@@ -907,12 +911,97 @@ class FramebufferClock:
                 if ok:
                     self._last_date_sent = date_str
             if ok:
-                return
+                native_ok = True
             else:
                 logging.warning("Native renderer send failed; rendering with PIL fallback")
         
         t_prep = time.time()
         
+        # If native path succeeded, draw only the status bar via PIL and write partial
+        if native_ok:
+            if self.show_status_bar:
+                # Build status items
+                status_items = []
+                if self.network_status:
+                    if "Connected" in self.network_status:
+                        status_items.append(("network", self.network_status))
+                    else:
+                        status_items.append(("error", self.network_status))
+                if self.timezone_name:
+                    status_items.append(("timezone", f"TZ:{self.timezone_name}"))
+                sync_time = self.get_time_since_sync()
+                if sync_time == "Just now" or "m ago" in sync_time:
+                    status_items.append(("sync_ok", f"Sync: {sync_time}"))
+                else:
+                    status_items.append(("sync_old", f"Sync: {sync_time}"))
+                if self.build_info:
+                    ver = self.build_info.get("git_version") or ""
+                    sha = self.build_info.get("git_sha") or ""
+                    short_sha = sha[:7] if isinstance(sha, str) and sha else ""
+                    parts = []
+                    if ver: parts.append(ver)
+                    if short_sha: parts.append(short_sha)
+                    if parts:
+                        status_items.append(("version", " ".join(parts)))
+                status_items.append(("settings", "Settings"))
+
+                # Rotate status position
+                margin = int(30 * self.display_scale)
+                if time.time() - self.last_status_position_change > self.status_position_interval:
+                    self.current_status_position = (self.current_status_position + 1) % len(self.status_bar_positions)
+                    self.last_status_position_change = time.time()
+                position_name = self.status_bar_positions[self.current_status_position]
+
+                # Measure and draw status into small image
+                if not self._temp_draw:
+                    self._temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
+                status_w = 0
+                status_h = 0
+                min_y_offset = 0
+                for idx, (name, label) in enumerate(status_items):
+                    if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
+                        status_w += 12
+                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
+                    status_w += lb[2] - lb[0]
+                    status_h = max(status_h, lb[3] - lb[1])
+                    min_y_offset = min(min_y_offset, lb[1])
+                    if idx < len(status_items) - 1:
+                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
+                        status_w += sep[2] - sep[0]
+                v_pad = max(5, -min_y_offset + 3)
+                status_h += v_pad
+                if position_name == 'bottom-left':
+                    status_x = margin
+                    status_y = self.fb_height - status_h - margin
+                elif position_name == 'bottom-right':
+                    status_x = self.fb_width - status_w - margin
+                    status_y = self.fb_height - status_h - margin
+                elif position_name == 'top-left':
+                    status_x = margin
+                    status_y = margin
+                else:
+                    status_x = self.fb_width - status_w - margin
+                    status_y = margin
+                status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
+                status_draw = ImageDraw.Draw(status_img)
+                cursor_x = 0
+                text_y = -min_y_offset if min_y_offset < 0 else 0
+                s_color = status_color
+                for idx, (name, label) in enumerate(status_items):
+                    if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
+                        self._draw_icon(status_draw, cursor_x, text_y, name, s_color)
+                        cursor_x += 12
+                    status_draw.text((cursor_x, text_y), label, font=self.status_font, fill=s_color)
+                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
+                    cursor_x += lb[2] - lb[0]
+                    if idx < len(status_items) - 1:
+                        status_draw.text((cursor_x, 0), " | ", font=self.status_font, fill=s_color)
+                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
+                        cursor_x += sep[2] - sep[0]
+                self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect')
+                self.write_to_framebuffer(None)
+            return
+
         # Calculate center position with pixel shift (full resolution)
         center_x = self.fb_width // 2 + self.pixel_shift_x
         # Time should stay strictly centered horizontally unless explicitly enabled
@@ -934,11 +1023,11 @@ class FramebufferClock:
         available_w = self.fb_width - 2 * margin
         time_font_to_use = self.time_font
         
-        # Symmetric padding for clean centering
-        t_pad_left = 16
-        t_pad_right = 16
-        t_pad_top = 6
-        t_pad_bottom = 6
+        # Generous padding to prevent M/AM/PM cutoff - scale with font size
+        t_pad_left = max(40, int(self.time_font_size * 0.15))
+        t_pad_right = max(40, int(self.time_font_size * 0.15))
+        t_pad_top = max(20, int(self.time_font_size * 0.08))
+        t_pad_bottom = max(20, int(self.time_font_size * 0.08))
         required_w = text_w + t_pad_left + t_pad_right
         
         if self.auto_shrink_time and required_w > available_w and getattr(self, 'font_file', None):
@@ -973,14 +1062,14 @@ class FramebufferClock:
         
         self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect')
         
-        # Render date
+        # Render date with generous padding
         date_bbox = self._temp_draw.textbbox((0,0), date_str, font=self.date_font)
         date_w = date_bbox[2] - date_bbox[0]
         date_h = date_bbox[3] - date_bbox[1]
-        d_pad_left = 10
-        d_pad_right = 25
-        d_pad_top = 6
-        d_pad_bottom = 6
+        d_pad_left = max(20, int(self.date_font_size * 0.25))
+        d_pad_right = max(20, int(self.date_font_size * 0.25))
+        d_pad_top = max(10, int(self.date_font_size * 0.12))
+        d_pad_bottom = max(10, int(self.date_font_size * 0.12))
         date_x = max(margin, min(self.fb_width - margin - (date_w+d_pad_left+d_pad_right), center_x - (date_w+d_pad_left+d_pad_right) // 2))
         date_y = max(margin, min(self.fb_height - margin - (date_h+d_pad_top+d_pad_bottom), center_y + date_offset_y))
         date_img = Image.new('RGB', (date_w+d_pad_left+d_pad_right, date_h+d_pad_top+d_pad_bottom), (0,0,0))
@@ -1285,7 +1374,7 @@ class FramebufferClock:
 
     def blit_rgb_image(self, img: Image.Image, x: int, y: int, clear_last_rect_attr: str):
         """Convert a small RGB888 PIL image to RGB565 and blit into shadow buffer at (x,y).
-        Clears previous rect stored in the attribute to avoid trails.
+        Does NOT clear previous rect - that's done at render start for entire buffer.
         """
         if self.fb_bpp != 16 or not isinstance(self.fb_shadow, np.ndarray):
             # Fallback: draw onto a full-size image (rare path)
@@ -1293,13 +1382,7 @@ class FramebufferClock:
             full.paste(img, (x, y))
             self.write_to_framebuffer(full)
             return
-        # Clear previous rect if any
-        last_rect = getattr(self, clear_last_rect_attr, None)
-        if last_rect:
-            lx, ly, lw, lh = last_rect
-            lx2 = max(0, min(self.fb_width, lx + lw))
-            ly2 = max(0, min(self.fb_height, ly + lh))
-            self.fb_shadow[ly:ly2, lx:lx2].fill(0)
+        # Don't clear old rect here - we clear entire buffer at render start
         w, h = img.size
         if w <= 0 or h <= 0:
             return

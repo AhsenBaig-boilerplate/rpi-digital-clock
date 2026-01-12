@@ -44,6 +44,7 @@ struct Renderer {
     fb_w: usize,
     fb_h: usize,
     stride: usize,
+    back: Vec<u8>,
     color: (u8, u8, u8),
     bright: f32,
     time_size: f32,
@@ -54,6 +55,8 @@ struct Renderer {
     margin: usize,
     last_time_rect: Option<(usize, usize, usize, usize)>,
     last_date_rect: Option<(usize, usize, usize, usize)>,
+    time_text: String,
+    date_text: String,
 }
 
 impl Renderer {
@@ -67,11 +70,12 @@ impl Renderer {
         let font_path = std::env::var("FONT_PATH").unwrap_or("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf".to_string());
         let font_bytes = std::fs::read(&font_path).expect("Font file not found");
         let font = Font::from_bytes(font_bytes, fontdue::FontSettings::default()).expect("Invalid font");
-        Ok(Self {
+        let mut r = Self {
             fb,
             fb_w,
             fb_h,
             stride: fb_w * 2,
+            back: vec![0u8; fb_len],
             color: parse_hex_color(&std::env::var("COLOR").unwrap_or("#00FF00".to_string())),
             bright: 1.0,
             time_size: std::env::var("TIME_SIZE").ok().and_then(|s| f32::from_str(&s).ok()).unwrap_or(280.0),
@@ -82,7 +86,12 @@ impl Renderer {
             margin: 30,
             last_time_rect: None,
             last_date_rect: None,
-        })
+            time_text: String::new(),
+            date_text: String::new(),
+        };
+        // Clear framebuffer on startup to remove boot background remnants
+        r.clear_rect(0, 0, r.fb_w, r.fb_h);
+        Ok(r)
     }
 
     fn clear_rect(&mut self, x: usize, y: usize, w: usize, h: usize) {
@@ -98,23 +107,59 @@ impl Renderer {
         }
     }
 
-    fn draw_text_centered(&mut self, text: &str, size: f32, y_center_offset: isize, min_top_y: Option<usize>) -> (usize, usize, usize, usize) {
-        // Layout text
+    fn clear_rect_diff(&mut self, old: (usize, usize, usize, usize), new: (usize, usize, usize, usize)) {
+        let (ox, oy, ow, oh) = old;
+        let (nx, ny, nw, nh) = new;
+        // Intersection
+        let ix1 = ox.max(nx);
+        let iy1 = oy.max(ny);
+        let ix2 = (ox + ow).min(nx + nw);
+        let iy2 = (oy + oh).min(ny + nh);
+        let has_intersection = ix2 > ix1 && iy2 > iy1;
+        if !has_intersection {
+            // No overlap, clear entire old rect
+            self.clear_rect(ox, oy, ow, oh);
+            return;
+        }
+        // Clear left band
+        if ix1 > ox {
+            self.clear_rect(ox, oy, ix1 - ox, oh);
+        }
+        // Clear right band
+        if ix2 < ox + ow {
+            self.clear_rect(ix2, oy, (ox + ow) - ix2, oh);
+        }
+        // Clear top band within intersection width
+        if iy1 > oy {
+            self.clear_rect(ix1, oy, ix2 - ix1, iy1 - oy);
+        }
+        // Clear bottom band within intersection width
+        if iy2 < oy + oh {
+            self.clear_rect(ix1, iy2, ix2 - ix1, (oy + oh) - iy2);
+        }
+    }
+
+    fn padding_for_size(size: f32) -> (usize, usize) {
+        // Scale padding with text size to avoid edge clipping at large sizes
+        let pad_lr = ((size / 12.0).ceil() as usize).max(16);
+        let pad_tb = ((size / 28.0).ceil() as usize).max(6);
+        (pad_lr, pad_tb)
+    }
+
+    fn compute_layout_and_bounds(&self, text: &str, size: f32) -> (Layout, usize, usize, f32, f32) {
         let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
         layout.reset(&LayoutSettings { ..LayoutSettings::default() });
         layout.append(&[&self.font], &TextStyle::new(text, size, 0));
-        
-        // Calculate bounding box from glyphs
+
         let glyphs = layout.glyphs();
         if glyphs.is_empty() {
-            return (0, 0, 0, 0);
+            return (layout, 0, 0, 0.0, 0.0);
         }
-        
         let mut min_x = f32::MAX;
         let mut min_y = f32::MAX;
         let mut max_x = f32::MIN;
         let mut max_y = f32::MIN;
-        
+
         for glyph in glyphs {
             let (metrics, _) = self.font.rasterize_config(glyph.key);
             let gx = glyph.x + metrics.xmin as f32;
@@ -126,11 +171,13 @@ impl Renderer {
             max_x = max_x.max(gx2);
             max_y = max_y.max(gy2);
         }
-        
         let text_w = (max_x - min_x).ceil() as usize;
         let text_h = (max_y - min_y).ceil() as usize;
-        let pad_lr = 16usize;
-        let pad_tb = 6usize;
+        (layout, text_w, text_h, min_x, min_y)
+    }
+
+    fn compute_pos(&self, text_w: usize, text_h: usize, size: f32, y_center_offset: isize, min_top_y: Option<usize>) -> (usize, usize, usize, usize, usize, usize) {
+        let (pad_lr, pad_tb) = Self::padding_for_size(size);
         let canvas_w = text_w + pad_lr * 2;
         let canvas_h = text_h + pad_tb * 2;
         let center_x = (self.fb_w as isize / 2) + self.shift_x;
@@ -145,12 +192,15 @@ impl Renderer {
         let mut y = desired_y.max(self.margin as isize) as usize;
         if x + canvas_w + self.margin > self.fb_w { x = self.fb_w.saturating_sub(canvas_w + self.margin); }
         if y + canvas_h + self.margin > self.fb_h { y = self.fb_h.saturating_sub(canvas_h + self.margin); }
+        (x, y, canvas_w, canvas_h, pad_lr, pad_tb)
+    }
+
+    fn draw_layout_to(&self, dest: &mut [u8], layout: &Layout, x: usize, y: usize, pad_lr: usize, pad_tb: usize) {
         // Color with brightness
         let (cr, cg, cb) = self.color;
         let r = (cr as f32 * self.bright).min(255.0) as u8;
         let g = (cg as f32 * self.bright).min(255.0) as u8;
         let b = (cb as f32 * self.bright).min(255.0) as u8;
-        let color565 = rgb_to_rgb565(r, g, b).0;
         // Rasterize each glyph at layout positions with simple alpha blend on black
         for glyph in layout.glyphs() {
             let (metrics, bitmap) = self.font.rasterize_config(glyph.key);
@@ -174,13 +224,35 @@ impl Renderer {
                         let sb = (b as f32 * covf) as u8;
                         let c565 = rgb_to_rgb565(sr, sg, sb).0;
                         let idx = off + (col as usize) * 2;
-                        self.fb[idx] = (c565 & 0xFF) as u8;
-                        self.fb[idx + 1] = (c565 >> 8) as u8;
+                        dest[idx] = (c565 & 0xFF) as u8;
+                        dest[idx + 1] = (c565 >> 8) as u8;
                     }
                 }
             }
         }
-        (x, y, canvas_w, canvas_h)
+    }
+    
+    fn render_frame(&mut self) {
+        // Clear backbuffer to black
+        for b in &mut self.back { *b = 0; }
+        // Render time if present
+        let mut min_top_for_date: Option<usize> = None;
+        if !self.time_text.is_empty() {
+            let (layout, tw, th, _minx, _miny) = self.compute_layout_and_bounds(&self.time_text, self.time_size);
+            let (x, y, w, h, pad_lr, pad_tb) = self.compute_pos(tw, th, self.time_size, -100, None);
+            self.draw_layout_to(&mut self.back, &layout, x, y, pad_lr, pad_tb);
+            self.last_time_rect = Some((x, y, w, h));
+            min_top_for_date = Some(y + h + 8);
+        }
+        // Render date if present
+        if !self.date_text.is_empty() {
+            let (layout, tw, th, _minx, _miny) = self.compute_layout_and_bounds(&self.date_text, self.date_size);
+            let (x, y, w, h, pad_lr, pad_tb) = self.compute_pos(tw, th, self.date_size, 140, min_top_for_date);
+            self.draw_layout_to(&mut self.back, &layout, x, y, pad_lr, pad_tb);
+            self.last_date_rect = Some((x, y, w, h));
+        }
+        // Blit backbuffer to framebuffer atomically
+        self.fb.copy_from_slice(&self.back);
     }
 
     fn handle_line(&mut self, line: &str) {
@@ -189,33 +261,28 @@ impl Renderer {
             match cmd {
                 "TIME" => {
                     let rest = line.trim()[4..].trim();
-                    if let Some((x, y, w, h)) = self.last_time_rect {
-                        self.clear_rect(x, y, w, h);
-                    }
-                    let rect = self.draw_text_centered(rest, self.time_size, -100, None);
-                    self.last_time_rect = Some(rect);
+                    self.time_text = rest.to_string();
+                    self.render_frame();
                 }
                 "DATE" => {
                     let rest = line.trim()[4..].trim();
-                    if let Some((x, y, w, h)) = self.last_date_rect {
-                        self.clear_rect(x, y, w, h);
-                    }
-                    // Ensure date is below time rect with a small gap to avoid overlap
-                    let min_top = self.last_time_rect.map(|(_, ty, _, th)| ty + th + 8);
-                    let rect = self.draw_text_centered(rest, self.date_size, 140, min_top);
-                    self.last_date_rect = Some(rect);
+                    self.date_text = rest.to_string();
+                    self.render_frame();
                 }
                 "BRIGHT" => {
                     if let Some(val) = parts.next() { self.bright = f32::from_str(val).unwrap_or(1.0).clamp(0.0, 1.0); }
+                    self.render_frame();
                 }
                 "COLOR" => {
                     if let Some(hex) = parts.next() { self.color = parse_hex_color(hex); }
+                    self.render_frame();
                 }
                 "SHIFT" => {
                     if let (Some(xs), Some(ys)) = (parts.next(), parts.next()) {
                         self.shift_x = isize::from_str(xs).unwrap_or(0).clamp(-10, 10);
                         self.shift_y = isize::from_str(ys).unwrap_or(0).clamp(-10, 10);
                     }
+                    self.render_frame();
                 }
                 "QUIT" => {
                     std::process::exit(0);
