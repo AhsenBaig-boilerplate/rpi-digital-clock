@@ -677,9 +677,21 @@ class FramebufferClock:
             draw.line([x+7, y+5, x+9, y+5], fill=color)
 
     def _render_status_bar(self, status_items, status_color, margin):
-        """Render status bar with icons and text. Returns None to skip rendering."""
+        """Render status bar with icons and text. Caches result and only redraws when changed."""
         if not status_items:
             return
+        
+        # Create cache key from status items and color
+        cache_key = (tuple(status_items), status_color, self.status_bar_position)
+        
+        # Check if we can use cached status bar
+        if hasattr(self, '_status_cache_key') and self._status_cache_key == cache_key:
+            # Status hasn't changed, use cached image and position
+            if hasattr(self, '_status_cached_img') and hasattr(self, '_status_cached_pos'):
+                status_img = self._status_cached_img
+                status_x, status_y = self._status_cached_pos
+                self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect', skip_write=True)
+                return
         
         position_name = self.status_bar_position  # Use fixed position
         
@@ -747,6 +759,11 @@ class FramebufferClock:
                 cursor_rel_x += sep[2] - sep[0]
         
         self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect', skip_write=True)
+        
+        # Cache the rendered status bar
+        self._status_cache_key = cache_key
+        self._status_cached_img = status_img
+        self._status_cached_pos = (status_x, status_y)
 
     # ------------------------
     # Input handling
@@ -1588,12 +1605,12 @@ class FramebufferClock:
             if not skip_write:
                 self.write_to_framebuffer(full)
             return
-        # Clear previous rect with extra padding to eliminate all artifacts
+        # Clear previous rect with padding to eliminate artifacts from width changes
         last_rect = getattr(self, clear_last_rect_attr, None)
         if last_rect:
             lx, ly, lw, lh = last_rect
-            # Add 50px padding on each side to catch width changes
-            clear_pad = 50
+            # Add 15px padding on each side (enough for character width changes)
+            clear_pad = 15
             lx_clear = max(0, lx - clear_pad)
             ly_clear = max(0, ly - clear_pad)
             lx2_clear = min(self.fb_width, lx + lw + clear_pad)
