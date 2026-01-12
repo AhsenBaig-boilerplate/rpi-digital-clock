@@ -1378,7 +1378,7 @@ class FramebufferClock:
             # Center the composite image
             time_x = max(margin, min(self.fb_width - margin - time_img.width, center_x_time - (time_img.width // 2)))
             time_y = max(margin, min(self.fb_height - margin - time_img.height, center_y - time_offset_y - (time_img.height // 2)))
-            self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect', skip_write=True)
+            self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect', skip_write=True, clear_full_region=True)
             if not hasattr(self, '_cache_hit_logged'):
                 logging.info(f"Sprite cache HIT: rendered time in {cache_time_ms:.1f}ms (vs 750ms direct)")
                 self._cache_hit_logged = True
@@ -1395,7 +1395,7 @@ class FramebufferClock:
             ImageDraw.Draw(time_img).text((t_pad - time_bbox[0], t_pad - time_bbox[1]), time_str, font=self.time_font, fill=display_color)
             time_x = max(margin, min(self.fb_width - margin - time_img.width, center_x_time - (time_img.width // 2)))
             time_y = max(margin, min(self.fb_height - margin - time_img.height, center_y - time_offset_y - (time_img.height // 2)))
-            self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect', skip_write=True)
+            self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect', skip_write=True, clear_full_region=True)
         
         # Render date with generous padding - try sprite cache first
         t_date_start = time.time()
@@ -1406,7 +1406,8 @@ class FramebufferClock:
             # Center the cached date composite
             date_x = max(margin, min(self.fb_width - margin - date_img.width, center_x - (date_img.width // 2)))
             date_y = max(margin, min(self.fb_height - margin - date_img.height, center_y + date_offset_y))
-            self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True)
+            # Clear full date region to avoid artifacts
+            self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True, clear_full_region=True)
             if not hasattr(self, '_date_cache_hit_logged'):
                 logging.info(f"Date sprite cache HIT: rendered '{date_str}' in {date_cache_ms:.1f}ms")
                 self._date_cache_hit_logged = True
@@ -1430,7 +1431,7 @@ class FramebufferClock:
             date_y = max(margin, min(self.fb_height - margin - date_canvas_h, center_y + date_offset_y))
             date_img = Image.new('RGB', (date_canvas_w, date_canvas_h), (0,0,0))
             ImageDraw.Draw(date_img).text((d_pad_left - date_bbox[0], d_pad_top - date_bbox[1]), date_str, font=self.date_font, fill=display_color)
-            self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True)
+            self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True, clear_full_region=True)
         
         # Draw weather if available (measure, pad, and blit like time/date)
         if self.weather_text:
@@ -1604,29 +1605,61 @@ class FramebufferClock:
             if not skip_write:
                 self.write_to_framebuffer(full)
             return
-        # Clear previous rect with padding to eliminate artifacts from width changes
-        last_rect = getattr(self, clear_last_rect_attr, None)
-        if last_rect:
-            lx, ly, lw, lh = last_rect
-            # Add 50px padding (large 280pt font needs wide coverage)
-            clear_pad = 50
-            lx_clear = max(0, lx - clear_pad)
-            ly_clear = max(0, ly - clear_pad)
-            lx2_clear = min(self.fb_width, lx + lw + clear_pad)
-            ly2_clear = min(self.fb_height, ly + lh + clear_pad)
-            self.fb_shadow[ly_clear:ly2_clear, lx_clear:lx2_clear].fill(0)
+    def blit_rgb_image(self, img: Image.Image, x: int, y: int, clear_last_rect_attr: str, skip_write: bool = False, clear_full_region: bool = False):
+        """Convert a small RGB888 PIL image to RGB565 and blit into shadow buffer at (x,y).
+        Clears previous rect stored in the attribute to avoid trails.
+        If clear_full_region=True, clears union of previous and current rect (fixes artifacts from width changes).
+        If skip_write=True, don't write to framebuffer yet (batch writes).
+        """
+        if self.fb_bpp != 16 or not isinstance(self.fb_shadow, np.ndarray):
+            # Fallback: draw onto a full-size image (rare path)
+            full = Image.new('RGB', (self.fb_width, self.fb_height), self.bg_color)
+            full.paste(img, (x, y))
+            if not skip_write:
+                self.write_to_framebuffer(full)
+            return
+        
         w, h = img.size
         if w <= 0 or h <= 0:
             return
-        # Bounds clamp
+        
+        # Get current rect
         x2 = min(self.fb_width, x + w)
         y2 = min(self.fb_height, y + h)
-        w = max(0, x2 - x)
-        h = max(0, y2 - y)
-        if w == 0 or h == 0:
+        w_clamp = max(0, x2 - x)
+        h_clamp = max(0, y2 - y)
+        if w_clamp == 0 or h_clamp == 0:
             return
+        
+        # Clear region - either full union or just previous rect with padding
+        last_rect = getattr(self, clear_last_rect_attr, None)
+        if last_rect:
+            lx, ly, lw, lh = last_rect
+            
+            if clear_full_region:
+                # Clear union of previous and current rects (eliminates artifacts from varying widths)
+                clear_x1 = min(lx, x)
+                clear_y1 = min(ly, y)
+                clear_x2 = max(lx + lw, x + w)
+                clear_y2 = max(ly + lh, y + h)
+                # Add small padding for antialiasing
+                clear_pad = 10
+                clear_x1 = max(0, clear_x1 - clear_pad)
+                clear_y1 = max(0, clear_y1 - clear_pad)
+                clear_x2 = min(self.fb_width, clear_x2 + clear_pad)
+                clear_y2 = min(self.fb_height, clear_y2 + clear_pad)
+            else:
+                # Clear previous rect with large padding (for status bar)
+                clear_pad = 50
+                clear_x1 = max(0, lx - clear_pad)
+                clear_y1 = max(0, ly - clear_pad)
+                clear_x2 = min(self.fb_width, lx + lw + clear_pad)
+                clear_y2 = min(self.fb_height, ly + lh + clear_pad)
+            
+            self.fb_shadow[clear_y1:clear_y2, clear_x1:clear_x2].fill(0)
+        
         # Convert to RGB565
-        arr = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((img.height, img.width, 3))[:h, :w]
+        arr = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((img.height, img.width, 3))[:h_clamp, :w_clamp]
         r = (arr[:, :, 0] >> 3).astype(np.uint16)
         g = (arr[:, :, 1] >> 2).astype(np.uint16)
         b = (arr[:, :, 2] >> 3).astype(np.uint16)
@@ -1634,7 +1667,7 @@ class FramebufferClock:
         # Blit into shadow
         self.fb_shadow[y:y2, x:x2] = rgb565
         # Store rect
-        rect = (x, y, w, h)
+        rect = (x, y, w_clamp, h_clamp)
         setattr(self, clear_last_rect_attr, rect)
         # Track dirty rect for partial writes
         if hasattr(self, '_dirty_rects'):
