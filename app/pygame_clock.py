@@ -86,21 +86,24 @@ class PygameClock:
         self.night_end = display_config.get('night_end_hour', 6)
         self.current_brightness = 1.0
         
-        # Setup display - try fullscreen first, fallback to windowed for development
+        # Setup display for Pi Zero framebuffer
+        # Force SDL2 to use framebuffer device
+        os.environ['SDL_VIDEODRIVER'] = 'fbcon'
+        os.environ['SDL_FBDEV'] = '/dev/fb0'
+        os.environ['SDL_NOMOUSE'] = '1'
+        
         try:
-            # Pi: fullscreen framebuffer
-            if os.environ.get('DISPLAY'):
-                # X11 available
-                info = pygame.display.Info()
-                self.screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF)
-            else:
-                # Framebuffer mode
-                os.environ['SDL_VIDEODRIVER'] = 'fbcon'
-                os.environ['SDL_FBDEV'] = '/dev/fb0'
-                self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF)
-        except Exception as e:
-            logging.warning(f"Fullscreen failed ({e}), using 1920x1200 window for development")
+            # Initialize with specific framebuffer size
             self.screen = pygame.display.set_mode((1920, 1200), pygame.HWSURFACE | pygame.DOUBLEBUF)
+            logging.info(f"Pygame framebuffer mode initialized")
+        except Exception as e:
+            logging.error(f"Pygame init failed: {e}")
+            # Fallback: try without flags
+            try:
+                self.screen = pygame.display.set_mode((1920, 1200))
+            except Exception as e2:
+                logging.error(f"Pygame fallback failed: {e2}")
+                raise
         
         self.width, self.height = self.screen.get_size()
         logging.info(f"Display initialized: {self.width}x{self.height}")

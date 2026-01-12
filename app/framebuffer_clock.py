@@ -139,11 +139,12 @@ class FramebufferClock:
         self.show_status_bar = True
         self.status_color = tuple(int(c * 0.25) for c in self.color)  # Much dimmer for informational display
         
-        # Status bar position rotation for burn-in protection
-        self.status_bar_positions = ['bottom-left', 'bottom-right', 'top-left', 'top-right']
-        self.current_status_position = 0
-        self.last_status_position_change = time.time()
-        self.status_position_interval = 120  # Change position every 2 minutes
+        # Status bar position - FIXED to avoid artifacts during rotation
+        # self.status_bar_positions = ['bottom-left', 'bottom-right', 'top-left', 'top-right']
+        # self.current_status_position = 0
+        # self.last_status_position_change = time.time()
+        # self.status_position_interval = 120  # Change position every 2 minutes
+        self.status_bar_position = 'bottom-right'  # Fixed position
         self.status_item_regions = []  # [(name, (x,y,w,h))]
         
         # Network and sync tracking
@@ -413,7 +414,7 @@ class FramebufferClock:
         if not status_items:
             return
         
-        position_name = self.status_bar_positions[self.current_status_position]
+        position_name = self.status_bar_position  # Use fixed position
         
         # Calculate dimensions
         status_w = 0
@@ -1001,12 +1002,9 @@ class FramebufferClock:
                         status_items.append(("version", " ".join(parts)))
                 status_items.append(("settings", "Settings"))
 
-                # Rotate status position
+                # Use fixed status bar position
                 margin = int(30 * self.display_scale)
-                if time.time() - self.last_status_position_change > self.status_position_interval:
-                    self.current_status_position = (self.current_status_position + 1) % len(self.status_bar_positions)
-                    self.last_status_position_change = time.time()
-                position_name = self.status_bar_positions[self.current_status_position]
+                position_name = self.status_bar_position
 
                 # Measure and draw status into small image
                 if not self._temp_draw:
@@ -1118,17 +1116,20 @@ class FramebufferClock:
         
         self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect', skip_write=True)
         
-        # Render date with generous padding
+        # Render date with generous padding - always clear previous to avoid artifacts
         date_bbox = self._temp_draw.textbbox((0,0), date_str, font=self.date_font)
         date_w = date_bbox[2] - date_bbox[0]
         date_h = date_bbox[3] - date_bbox[1]
-        d_pad_left = max(20, int(self.date_font_size * 0.25))
-        d_pad_right = max(20, int(self.date_font_size * 0.25))
-        d_pad_top = max(10, int(self.date_font_size * 0.12))
-        d_pad_bottom = max(10, int(self.date_font_size * 0.12))
-        date_x = max(margin, min(self.fb_width - margin - (date_w+d_pad_left+d_pad_right), center_x - (date_w+d_pad_left+d_pad_right) // 2))
-        date_y = max(margin, min(self.fb_height - margin - (date_h+d_pad_top+d_pad_bottom), center_y + date_offset_y))
-        date_img = Image.new('RGB', (date_w+d_pad_left+d_pad_right, date_h+d_pad_top+d_pad_bottom), (0,0,0))
+        # Extra wide padding to handle date changes and pixel shift
+        d_pad_left = max(40, int(self.date_font_size * 0.4))
+        d_pad_right = max(40, int(self.date_font_size * 0.4))
+        d_pad_top = max(20, int(self.date_font_size * 0.2))
+        d_pad_bottom = max(20, int(self.date_font_size * 0.2))
+        date_canvas_w = date_w + d_pad_left + d_pad_right
+        date_canvas_h = date_h + d_pad_top + d_pad_bottom
+        date_x = max(margin, min(self.fb_width - margin - date_canvas_w, center_x - date_canvas_w // 2))
+        date_y = max(margin, min(self.fb_height - margin - date_canvas_h, center_y + date_offset_y))
+        date_img = Image.new('RGB', (date_canvas_w, date_canvas_h), (0,0,0))
         # Draw with padding to include full glyph bounds
         ImageDraw.Draw(date_img).text((d_pad_left - date_bbox[0], d_pad_top - date_bbox[1]), date_str, font=self.date_font, fill=display_color)
         self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True)
@@ -1186,11 +1187,8 @@ class FramebufferClock:
             
             status_text = " | ".join([label for _, label in status_items])
             
-            # Rotate status bar position for burn-in protection
-            if time.time() - self.last_status_position_change > self.status_position_interval:
-                self.current_status_position = (self.current_status_position + 1) % len(self.status_bar_positions)
-                self.last_status_position_change = time.time()
-                logging.debug(f"Status bar position changed to: {self.status_bar_positions[self.current_status_position]}")
+            # Status bar position is now fixed to avoid artifacts
+            # Rotation disabled - pixel shift still provides burn-in protection
             # Render status bar using consolidated method
             self._render_status_bar(status_items, status_color, margin)
         
