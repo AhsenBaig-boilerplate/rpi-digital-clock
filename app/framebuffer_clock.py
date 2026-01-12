@@ -408,11 +408,11 @@ class FramebufferClock:
             char_w = bbox[2] - bbox[0]
             char_h = bbox[3] - bbox[1]
             
-            # Generous padding to capture full glyph
-            pad_l = max(20, int(self.time_font_size * 0.1))
-            pad_r = max(20, int(self.time_font_size * 0.1))
-            pad_t = max(10, int(self.time_font_size * 0.05))
-            pad_b = max(10, int(self.time_font_size * 0.05))
+            # More generous padding to capture full glyph (especially for 'A', 'M', 'P')
+            pad_l = max(40, int(self.time_font_size * 0.2))
+            pad_r = max(40, int(self.time_font_size * 0.2))
+            pad_t = max(30, int(self.time_font_size * 0.15))
+            pad_b = max(30, int(self.time_font_size * 0.15))
             
             sprite_w = char_w + pad_l + pad_r
             sprite_h = char_h + pad_t + pad_b
@@ -478,7 +478,7 @@ class FramebufferClock:
         
         # Debug: log the time string being rendered (once per minute to avoid spam)
         if not hasattr(self, '_last_time_str_logged') or self._last_time_str_logged != time_str[:5]:
-            logging.debug(f"Compositing time: '{time_str}' (len={len(time_str)})")
+            logging.info(f"Time string: {repr(time_str)} (len={len(time_str)}, chars={[c for c in time_str]})")
             self._last_time_str_logged = time_str[:5]
         
         for char in time_str:
@@ -1137,23 +1137,18 @@ class FramebufferClock:
         shift_changed = (self.pixel_shift_x != self._prev_pixel_shift_x or 
                         self.pixel_shift_y != self._prev_pixel_shift_y)
         if shift_changed:
-            # Clear all previous rects before rendering at new position
-            if hasattr(self, '_last_time_rect') and self._last_time_rect:
-                lx, ly, lw, lh = self._last_time_rect
-                self.fb_shadow[ly:ly+lh, lx:lx+lw].fill(0)
-                self._last_time_rect = None
-            if hasattr(self, '_last_date_rect') and self._last_date_rect:
-                lx, ly, lw, lh = self._last_date_rect
-                self.fb_shadow[ly:ly+lh, lx:lx+lw].fill(0)
-                self._last_date_rect = None
-            if hasattr(self, '_last_status_rect') and self._last_status_rect:
-                lx, ly, lw, lh = self._last_status_rect
-                self.fb_shadow[ly:ly+lh, lx:lx+lw].fill(0)
-                self._last_status_rect = None
+            # Full framebuffer clear to eliminate all artifacts
+            logging.info(f"Pixel shift: ({self._prev_pixel_shift_x},{self._prev_pixel_shift_y}) → ({self.pixel_shift_x},{self.pixel_shift_y}), clearing screen")
+            self.fb_shadow.fill(0)
+            # Reset all tracked rects
+            self._last_time_rect = None
+            self._last_date_rect = None
+            self._last_status_rect = None
+            if hasattr(self, '_last_weather_rect'):
+                self._last_weather_rect = None
             # Update tracking
             self._prev_pixel_shift_x = self.pixel_shift_x
             self._prev_pixel_shift_y = self.pixel_shift_y
-            logging.debug(f"Pixel shift changed to ({self.pixel_shift_x}, {self.pixel_shift_y}), cleared old positions")
         
         # Apply brightness
         display_color = self.apply_brightness(self.color)
@@ -1302,17 +1297,23 @@ class FramebufferClock:
             self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect', skip_write=True)
         
         # Render date with generous padding - try sprite cache first
+        t_date_start = time.time()
         date_img = self._composite_date_from_cache(date_str, display_color)
+        date_cache_ms = (time.time() - t_date_start) * 1000
+        
         if date_img:
             # Center the cached date composite
             date_x = max(margin, min(self.fb_width - margin - date_img.width, center_x - (date_img.width // 2)))
             date_y = max(margin, min(self.fb_height - margin - date_img.height, center_y + date_offset_y))
             self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True)
             if not hasattr(self, '_date_cache_hit_logged'):
-                logging.info("Date sprite cache HIT: fast date rendering enabled")
+                logging.info(f"Date sprite cache HIT: rendered '{date_str}' in {date_cache_ms:.1f}ms")
                 self._date_cache_hit_logged = True
         else:
             # Fallback to direct rendering (slow path)
+            if not hasattr(self, '_date_cache_miss_logged'):
+                logging.warning(f"Date sprite cache MISS for '{date_str}', using slow direct rendering")
+                self._date_cache_miss_logged = True
             if not self._temp_draw:
                 self._temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
             date_bbox = self._temp_draw.textbbox((0,0), date_str, font=self.date_font)
