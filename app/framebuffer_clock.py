@@ -403,8 +403,22 @@ class FramebufferClock:
         temp_draw = self._temp_draw or ImageDraw.Draw(Image.new('RGB', (1,1)))
         
         for char in chars:
-            # Render on large canvas to capture everything
-            large_size = int(self.time_font_size * 3)
+            # Special handling for space (no visible pixels)
+            if char == ' ':
+                # Create empty sprite with reasonable width
+                space_width = int(self.time_font_size * 0.3)  # 30% of font size
+                sprite = Image.new('RGB', (space_width, self.time_font_size), (0, 0, 0))
+                self._sprite_cache[char] = {
+                    'image': sprite,
+                    'width': space_width,
+                    'height': self.time_font_size,
+                    'baseline_offset': 0,
+                    'font': 'time'
+                }
+                continue
+            
+            # Render on VERY large canvas to capture everything (especially wide chars like M)
+            large_size = int(self.time_font_size * 4)
             temp_img = Image.new('RGB', (large_size, large_size), (0, 0, 0))
             temp_draw_img = ImageDraw.Draw(temp_img)
             
@@ -418,8 +432,8 @@ class FramebufferClock:
                 logging.warning(f"No pixels rendered for '{char}', skipping")
                 continue
             
-            # Crop to actual content + small padding
-            pad = 5
+            # Crop to actual content + padding for antialiasing
+            pad = 8
             x0 = max(0, bbox[0] - pad)
             y0 = max(0, bbox[1] - pad)
             x1 = min(large_size, bbox[2] + pad)
@@ -440,8 +454,22 @@ class FramebufferClock:
         
         # Render date character sprites (smaller font)
         for char in date_chars:
+            # Special handling for space
+            if char == ' ':
+                space_width = int(self.date_font_size * 0.3)
+                sprite = Image.new('RGB', (space_width, self.date_font_size), (0, 0, 0))
+                cache_key = f'date_{char}'
+                self._sprite_cache[cache_key] = {
+                    'image': sprite,
+                    'width': space_width,
+                    'height': self.date_font_size,
+                    'baseline_offset': 0,
+                    'font': 'date'
+                }
+                continue
+            
             # Render on large canvas
-            large_size = int(self.date_font_size * 3)
+            large_size = int(self.date_font_size * 4)
             temp_img = Image.new('RGB', (large_size, large_size), (0, 0, 0))
             temp_draw_img = ImageDraw.Draw(temp_img)
             
@@ -452,7 +480,7 @@ class FramebufferClock:
             if not bbox:
                 continue
             
-            pad = 3
+            pad = 5
             x0 = max(0, bbox[0] - pad)
             y0 = max(0, bbox[1] - pad)
             x1 = min(large_size, bbox[2] + pad)
