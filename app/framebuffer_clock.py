@@ -696,6 +696,9 @@ class FramebufferClock:
         if hasattr(self, '_status_cache_key') and self._status_cache_key == cache_key:
             # Status hasn't changed, use cached image and position
             if hasattr(self, '_status_cached_img') and hasattr(self, '_status_cached_pos'):
+                if not hasattr(self, '_status_cache_hit_logged'):
+                    logging.info("Status bar cache HIT - using cached render")
+                    self._status_cache_hit_logged = True
                 status_img = self._status_cached_img
                 status_x, status_y = self._status_cached_pos
                 self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect', skip_write=True)
@@ -1617,8 +1620,8 @@ class FramebufferClock:
         last_rect = getattr(self, clear_last_rect_attr, None)
         if last_rect:
             lx, ly, lw, lh = last_rect
-            # Add 30px padding (needed for 280pt font character width changes)
-            clear_pad = 30
+            # Add 50px padding (large 280pt font needs wide coverage)
+            clear_pad = 50
             lx_clear = max(0, lx - clear_pad)
             ly_clear = max(0, ly - clear_pad)
             lx2_clear = min(self.fb_width, lx + lw + clear_pad)
