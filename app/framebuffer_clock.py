@@ -198,7 +198,7 @@ class FramebufferClock:
         self.last_pixel_shift = 0
         self.pixel_shift_x = 0
         self.pixel_shift_y = 0
-        self.pixel_shift_max = 10
+        self.pixel_shift_max = 30  # Increased from 10 to make burn-in prevention more visible
         # Allow disabling horizontal pixel shift for strict centering of time
         ps_time_env = os.environ.get('PIXEL_SHIFT_TIME_ENABLED', '').lower()
         if ps_time_env in ('true', '1', 'yes'):
@@ -430,6 +430,7 @@ class FramebufferClock:
     def _composite_time_from_cache(self, time_str: str, color: tuple) -> Image.Image:
         """Composite time string from pre-rendered sprite cache.
         Returns PIL Image ready for blitting. Much faster than text rendering.
+        Applies brightness to sprites if color differs from cached color.
         """
         if not time_str or not self._sprite_cache:
             return None
@@ -442,7 +443,7 @@ class FramebufferClock:
         for char in time_str:
             if char not in self._sprite_cache:
                 # Cache miss - shouldn't happen
-                logging.warning(f"Sprite cache miss for '{char}'")
+                logging.warning(f"Sprite cache miss for '{char}' (ord={ord(char)})")
                 return None
             sprite_info = self._sprite_cache[char]
             sprites_to_use.append(sprite_info)
@@ -452,10 +453,22 @@ class FramebufferClock:
         # Create composite canvas
         composite = Image.new('RGB', (total_width, max_height), (0, 0, 0))
         
+        # Check if we need to apply brightness (color differs from cached self.color)
+        needs_tint = color != self.color
+        brightness_factor = color[0] / max(1, self.color[0]) if self.color[0] > 0 else 1.0
+        
         # Blit each sprite
         x_offset = 0
         for sprite_info in sprites_to_use:
             sprite_img = sprite_info['image']
+            
+            # Apply brightness if needed (for night dimming)
+            if needs_tint and brightness_factor != 1.0:
+                # Tint sprite by adjusting pixel values
+                arr = np.array(sprite_img)
+                arr = (arr * brightness_factor).astype(np.uint8)
+                sprite_img = Image.fromarray(arr)
+            
             # Center vertically if heights differ
             y_offset = (max_height - sprite_info['height']) // 2
             composite.paste(sprite_img, (x_offset, y_offset))
@@ -1155,15 +1168,21 @@ class FramebufferClock:
         date_offset_y = int(100 * self.display_scale)
         
         # Render time using pre-rendered sprite cache (7-15x faster)
+        t_cache_start = time.time()
         time_img = self._composite_time_from_cache(time_str, display_color)
+        cache_time_ms = (time.time() - t_cache_start) * 1000
+        
         if time_img:
             # Center the composite image
             time_x = max(margin, min(self.fb_width - margin - time_img.width, center_x_time - (time_img.width // 2)))
             time_y = max(margin, min(self.fb_height - margin - time_img.height, center_y - time_offset_y - (time_img.height // 2)))
             self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect', skip_write=True)
+            if not hasattr(self, '_cache_hit_logged'):
+                logging.info(f"Sprite cache HIT: rendered time in {cache_time_ms:.1f}ms (vs 750ms direct)")
+                self._cache_hit_logged = True
         else:
             # Fallback to direct rendering if cache fails (shouldn't happen)
-            logging.warning("Sprite cache miss, falling back to direct rendering")
+            logging.warning(f"Sprite cache MISS for time_str='{time_str}', falling back to direct rendering")
             if not self._temp_draw:
                 self._temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
             time_bbox = self._temp_draw.textbbox((0,0), time_str, font=self.time_font)
