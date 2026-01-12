@@ -52,8 +52,10 @@ class FramebufferClock:
         self.fb_width, self.fb_height = self.get_framebuffer_size()
         logging.info(f"Framebuffer resolution: {self.fb_width}x{self.fb_height}")
         
+        # Determine framebuffer pixel format once
+        self.fb_bpp = self.get_bits_per_pixel()
         # Shadow framebuffer buffer (RGB565) for partial updates
-        if self.get_bits_per_pixel() != 16:
+        if self.fb_bpp != 16:
             logging.warning("Optimized blitter assumes 16bpp RGB565; other bpp will fallback to full-frame writes")
         self.fb_shadow = np.zeros((self.fb_height, self.fb_width), dtype='<u2')
         # Track last drawn rects for clearing
@@ -76,10 +78,8 @@ class FramebufferClock:
             self.fb_mmap = None
             self._fb_file = None
             logging.warning(f"Framebuffer mmap not available, falling back to writes: {e}")
-        
-        
-        # Detect framebuffer pixel format
-        self.fb_bpp = self.get_bits_per_pixel()
+
+        # Log framebuffer pixel format
         logging.info(f"Framebuffer bits-per-pixel: {self.fb_bpp}")
         # Load configuration
         display_config = config.get('display', {})

@@ -20,7 +20,11 @@ if [ "${PRINT_BUILD_INFO}" = "true" ]; then
 fi
 
 # Choose renderer based on environment variable
-if [ "${USE_PYGAME}" = "true" ]; then
+USE_PYGAME_VAL="${USE_PYGAME}"
+echo "Renderer selection: USE_PYGAME=${USE_PYGAME_VAL}"
+# Normalize and accept common truthy values
+LOWER_VAL="${USE_PYGAME_VAL,,}"
+if [ "${LOWER_VAL}" = "true" ] || [ "${USE_PYGAME_VAL}" = "1" ] || [ "${LOWER_VAL}" = "yes" ]; then
     CLOCK_APP="pygame_clock.py"
     echo "=========================================="
     echo "Using Pygame renderer (hardware-accelerated)"
