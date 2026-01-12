@@ -130,14 +130,17 @@ class FramebufferClock:
         
         # Initialize fonts
         self.init_fonts()
-        
+
+        # Cache helpers (init before prerender to avoid AttributeError)
+        self._bbox_cache = {}  # Cache text bboxes
+        try:
+            self._temp_draw = ImageDraw.Draw(Image.new('RGB', (1, 1)))
+        except Exception:
+            self._temp_draw = None
+
         # Pre-render sprite cache for fast compositing (7-15x faster than text rendering)
         self._sprite_cache = {}
         self._prerender_time_sprites()
-        
-        # Cache for performance
-        self._bbox_cache = {}  # Cache text bboxes
-        self._temp_draw = None  # Reuse temp draw object
         
         # Status bar configuration
         self.show_status_bar = True
@@ -390,12 +393,12 @@ class FramebufferClock:
         # Characters needed for time display
         chars = '0123456789: AMP'
         
-        if not self._temp_draw:
-            self._temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
+        # Use a temporary draw context for bbox measurement
+        temp_draw = self._temp_draw or ImageDraw.Draw(Image.new('RGB', (1,1)))
         
         for char in chars:
             # Render character with time font
-            bbox = self._temp_draw.textbbox((0, 0), char, font=self.time_font)
+            bbox = temp_draw.textbbox((0, 0), char, font=self.time_font)
             char_w = bbox[2] - bbox[0]
             char_h = bbox[3] - bbox[1]
             
