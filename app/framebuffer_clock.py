@@ -692,6 +692,16 @@ class FramebufferClock:
                 cache_items.append((name, label))
         cache_key = (tuple(cache_items), status_color, self.status_bar_position)
         
+        # Debug: Log cache key on first few renders
+        if not hasattr(self, '_cache_key_log_count'):
+            self._cache_key_log_count = 0
+        if self._cache_key_log_count < 5:
+            self._cache_key_log_count += 1
+            logging.info(f"Status cache key: {cache_key}")
+            if hasattr(self, '_status_cache_key'):
+                logging.info(f"Previous cache key: {self._status_cache_key}")
+                logging.info(f"Keys match: {self._status_cache_key == cache_key}")
+        
         # Check if we can use cached status bar
         if hasattr(self, '_status_cache_key') and self._status_cache_key == cache_key:
             # Status hasn't changed, use cached image and position
