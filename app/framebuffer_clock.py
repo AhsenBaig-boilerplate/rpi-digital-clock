@@ -413,6 +413,7 @@ class FramebufferClock:
                     'width': space_width,
                     'height': self.time_font_size,
                     'baseline_offset': 0,
+                    'y_offset': 0,  # Track top offset for alignment
                     'font': 'time'
                 }
                 continue
@@ -423,7 +424,8 @@ class FramebufferClock:
             temp_draw_img = ImageDraw.Draw(temp_img)
             
             # Render at center of canvas
-            temp_draw_img.text((large_size // 2, large_size // 2), char, 
+            center = large_size // 2
+            temp_draw_img.text((center, center), char, 
                              font=self.time_font, fill=self.color, anchor='mm')
             
             # Find actual pixel bounds
@@ -443,12 +445,16 @@ class FramebufferClock:
             sprite_w = sprite.width
             sprite_h = sprite.height
             
+            # Calculate y_offset from center to preserve baseline alignment
+            y_offset_from_center = y0 - center
+            
             # Store sprite and its positioning info
             self._sprite_cache[char] = {
                 'image': sprite,
                 'width': sprite_w,
                 'height': sprite_h,
-                'baseline_offset': 0,  # Already aligned from crop
+                'baseline_offset': 0,
+                'y_offset': y_offset_from_center,  # For baseline alignment
                 'font': 'time'
             }
         
@@ -464,6 +470,7 @@ class FramebufferClock:
                     'width': space_width,
                     'height': self.date_font_size,
                     'baseline_offset': 0,
+                    'y_offset': 0,
                     'font': 'date'
                 }
                 continue
@@ -473,7 +480,8 @@ class FramebufferClock:
             temp_img = Image.new('RGB', (large_size, large_size), (0, 0, 0))
             temp_draw_img = ImageDraw.Draw(temp_img)
             
-            temp_draw_img.text((large_size // 2, large_size // 2), char,
+            center = large_size // 2
+            temp_draw_img.text((center, center), char,
                              font=self.date_font, fill=self.color, anchor='mm')
             
             bbox = temp_img.getbbox()
@@ -489,6 +497,7 @@ class FramebufferClock:
             sprite = temp_img.crop((x0, y0, x1, y1))
             sprite_w = sprite.width
             sprite_h = sprite.height
+            y_offset_from_center = y0 - center
             
             # Store with 'date_' prefix to distinguish from time sprites
             cache_key = f'date_{char}'
@@ -497,6 +506,7 @@ class FramebufferClock:
                 'width': sprite_w,
                 'height': sprite_h,
                 'baseline_offset': 0,
+                'y_offset': y_offset_from_center,
                 'font': 'date'
             }
         
@@ -532,14 +542,25 @@ class FramebufferClock:
             total_width += sprite_info['width']
             max_height = max(max_height, sprite_info['height'])
         
+        # Find the minimum y_offset (highest top) to determine canvas height
+        min_y_offset = 0
+        max_bottom_offset = 0
+        for sprite_info in sprites_to_use:
+            y_off = sprite_info.get('y_offset', 0)
+            min_y_offset = min(min_y_offset, y_off)
+            max_bottom_offset = max(max_bottom_offset, y_off + sprite_info['height'])
+        
+        # Canvas height to fit all sprites aligned to common baseline
+        canvas_height = max_bottom_offset - min_y_offset
+        
         # Create composite canvas
-        composite = Image.new('RGB', (total_width, max_height), (0, 0, 0))
+        composite = Image.new('RGB', (total_width, canvas_height), (0, 0, 0))
         
         # Check if we need to apply brightness (color differs from cached self.color)
         needs_tint = color != self.color
         brightness_factor = color[0] / max(1, self.color[0]) if self.color[0] > 0 else 1.0
         
-        # Blit each sprite
+        # Blit each sprite aligned to common baseline
         x_offset = 0
         for sprite_info in sprites_to_use:
             sprite_img = sprite_info['image']
@@ -551,8 +572,8 @@ class FramebufferClock:
                 arr = (arr * brightness_factor).astype(np.uint8)
                 sprite_img = Image.fromarray(arr)
             
-            # Center vertically if heights differ
-            y_offset = (max_height - sprite_info['height']) // 2
+            # Position sprite based on y_offset for baseline alignment
+            y_offset = sprite_info.get('y_offset', 0) - min_y_offset
             composite.paste(sprite_img, (x_offset, y_offset))
             x_offset += sprite_info['width']
         
@@ -591,8 +612,16 @@ class FramebufferClock:
                 self._date_cache_missing_logged = True
             return None
         
-        # Create composite
-        composite = Image.new('RGB', (total_width, max_height), (0, 0, 0))
+        # Find min/max y_offset for baseline alignment
+        min_y_offset = 0
+        max_bottom_offset = 0
+        for sprite_info in sprites_to_use:
+            y_off = sprite_info.get('y_offset', 0)
+            min_y_offset = min(min_y_offset, y_off)
+            max_bottom_offset = max(max_bottom_offset, y_off + sprite_info['height'])
+        
+        canvas_height = max_bottom_offset - min_y_offset
+        composite = Image.new('RGB', (total_width, canvas_height), (0, 0, 0))
         
         # Apply brightness if needed
         needs_tint = color != self.color
@@ -607,7 +636,8 @@ class FramebufferClock:
                 arr = (arr * brightness_factor).astype(np.uint8)
                 sprite_img = Image.fromarray(arr)
             
-            y_offset = (max_height - sprite_info['height']) // 2
+            # Baseline aligned position
+            y_offset = sprite_info.get('y_offset', 0) - min_y_offset
             composite.paste(sprite_img, (x_offset, y_offset))
             x_offset += sprite_info['width']
         
@@ -1558,13 +1588,17 @@ class FramebufferClock:
             if not skip_write:
                 self.write_to_framebuffer(full)
             return
-        # Clear previous rect if any to avoid trails
+        # Clear previous rect with extra padding to eliminate all artifacts
         last_rect = getattr(self, clear_last_rect_attr, None)
         if last_rect:
             lx, ly, lw, lh = last_rect
-            lx2 = max(0, min(self.fb_width, lx + lw))
-            ly2 = max(0, min(self.fb_height, ly + lh))
-            self.fb_shadow[ly:ly2, lx:lx2].fill(0)
+            # Add 50px padding on each side to catch width changes
+            clear_pad = 50
+            lx_clear = max(0, lx - clear_pad)
+            ly_clear = max(0, ly - clear_pad)
+            lx2_clear = min(self.fb_width, lx + lw + clear_pad)
+            ly2_clear = min(self.fb_height, ly + lh + clear_pad)
+            self.fb_shadow[ly_clear:ly2_clear, lx_clear:lx2_clear].fill(0)
         w, h = img.size
         if w <= 0 or h <= 0:
             return
