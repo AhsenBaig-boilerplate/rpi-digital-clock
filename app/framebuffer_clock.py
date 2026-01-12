@@ -548,15 +548,26 @@ class FramebufferClock:
         # Canvas height to fit all sprites aligned to common baseline
         canvas_height = max_bottom_offset - min_y_offset
         
-        # Create composite canvas
-        composite = Image.new('RGB', (total_width, canvas_height), (0, 0, 0))
+        # Use FIXED canvas width to prevent size changes (eliminates expensive clear operations)
+        # Calculate max width for widest possible time: "10:00:00 PM" (11 chars)
+        if not hasattr(self, '_time_canvas_width'):
+            max_width = 0
+            for char in "10:00:00 PM":
+                if char in self._sprite_cache:
+                    max_width += self._sprite_cache[char]['width']
+            self._time_canvas_width = max_width
+        
+        # Create fixed-width composite canvas, center the text
+        canvas_width = self._time_canvas_width
+        x_start = (canvas_width - total_width) // 2  # Center horizontally
+        composite = Image.new('RGB', (canvas_width, canvas_height), (0, 0, 0))
         
         # Check if we need to apply brightness (color differs from cached self.color)
         needs_tint = color != self.color
         brightness_factor = color[0] / max(1, self.color[0]) if self.color[0] > 0 else 1.0
         
         # Blit each sprite aligned to common baseline
-        x_offset = 0
+        x_offset = x_start  # Start from centered position
         for sprite_info in sprites_to_use:
             sprite_img = sprite_info['image']
             
@@ -616,13 +627,26 @@ class FramebufferClock:
             max_bottom_offset = max(max_bottom_offset, y_off + sprite_info['height'])
         
         canvas_height = max_bottom_offset - min_y_offset
-        composite = Image.new('RGB', (total_width, canvas_height), (0, 0, 0))
+        
+        # Use FIXED canvas width for dates (longest: "Wednesday, September 30, 2026")
+        if not hasattr(self, '_date_canvas_width'):
+            max_date = "Wednesday, September 30, 2026"
+            max_width = 0
+            for char in max_date:
+                cache_key = f'date_{char}'
+                if cache_key in self._sprite_cache:
+                    max_width += self._sprite_cache[cache_key]['width']
+            self._date_canvas_width = max_width
+        
+        canvas_width = self._date_canvas_width
+        x_start = (canvas_width - total_width) // 2  # Center horizontally
+        composite = Image.new('RGB', (canvas_width, canvas_height), (0, 0, 0))
         
         # Apply brightness if needed
         needs_tint = color != self.color
         brightness_factor = color[0] / max(1, self.color[0]) if self.color[0] > 0 else 1.0
         
-        x_offset = 0
+        x_offset = x_start  # Start from centered position
         for sprite_info in sprites_to_use:
             sprite_img = sprite_info['image']
             
