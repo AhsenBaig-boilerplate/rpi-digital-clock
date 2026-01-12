@@ -685,10 +685,10 @@ class FramebufferClock:
                 status_img = self._status_cached_img
                 status_x, status_y = self._status_cached_pos
                 self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect', skip_write=True)
-                logging.debug(f"Status bar: cache HIT (minute={current_minute})")
+                logging.info(f"Status cache HIT (min={current_minute})")
                 return
         
-        logging.debug(f"Status bar: cache MISS, re-rendering (minute={current_minute})")
+        logging.info(f"Status cache MISS - rendering (min={current_minute})")
         
         position_name = self.status_bar_position  # Use fixed position
         
@@ -1379,7 +1379,7 @@ class FramebufferClock:
             t_blit_start = time.time()
             self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect', skip_write=True, clear_full_region=True)
             blit_time_ms = (time.time() - t_blit_start) * 1000
-            logging.debug(f"Time: cache={cache_time_ms:.1f}ms, blit={blit_time_ms:.1f}ms")
+            logging.info(f"Time: cache={cache_time_ms:.1f}ms, blit={blit_time_ms:.1f}ms")
             if not hasattr(self, '_cache_hit_logged'):
                 logging.info(f"Sprite cache HIT: rendered time in {cache_time_ms:.1f}ms (vs 750ms direct)")
                 self._cache_hit_logged = True
@@ -1411,7 +1411,7 @@ class FramebufferClock:
             t_blit_start = time.time()
             self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True, clear_full_region=True)
             blit_date_ms = (time.time() - t_blit_start) * 1000
-            logging.debug(f"Date: cache={date_cache_ms:.1f}ms, blit={blit_date_ms:.1f}ms")
+            logging.info(f"Date: cache={date_cache_ms:.1f}ms, blit={blit_date_ms:.1f}ms")
             if not hasattr(self, '_date_cache_hit_logged'):
                 logging.info(f"Date sprite cache HIT: rendered '{date_str}' in {date_cache_ms:.1f}ms")
                 self._date_cache_hit_logged = True
@@ -1496,7 +1496,7 @@ class FramebufferClock:
             t_status_start = time.time()
             self._render_status_bar(status_items, status_color, margin)
             status_ms = (time.time() - t_status_start) * 1000
-            logging.debug(f"Status bar: render={status_ms:.1f}ms")
+            logging.info(f"Status: total={status_ms:.1f}ms")
         
         t_draw = time.time()
         # Render settings overlay if active
