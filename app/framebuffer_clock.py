@@ -403,44 +403,64 @@ class FramebufferClock:
         temp_draw = self._temp_draw or ImageDraw.Draw(Image.new('RGB', (1,1)))
         
         for char in chars:
-            # Get accurate text bounds using anchor
-            bbox = temp_draw.textbbox((0, 0), char, font=self.time_font, anchor='lt')
-            char_w = bbox[2] - bbox[0]
-            char_h = bbox[3] - bbox[1]
+            # Render on large canvas to capture everything
+            large_size = int(self.time_font_size * 3)
+            temp_img = Image.new('RGB', (large_size, large_size), (0, 0, 0))
+            temp_draw_img = ImageDraw.Draw(temp_img)
             
-            # Generous padding for full glyph capture (antialiasing, descenders, etc.)
-            pad = 20
-            sprite_w = char_w + 2 * pad
-            sprite_h = char_h + 2 * pad
+            # Render at center of canvas
+            temp_draw_img.text((large_size // 2, large_size // 2), char, 
+                             font=self.time_font, fill=self.color, anchor='mm')
             
-            # Render sprite on black background
-            sprite = Image.new('RGB', (sprite_w, sprite_h), (0, 0, 0))
-            draw = ImageDraw.Draw(sprite)
-            # Draw at padding offset, adjusting for bbox origin
-            draw.text((pad - bbox[0], pad - bbox[1]), char, font=self.time_font, fill=self.color)
+            # Find actual pixel bounds
+            bbox = temp_img.getbbox()
+            if not bbox:
+                logging.warning(f"No pixels rendered for '{char}', skipping")
+                continue
+            
+            # Crop to actual content + small padding
+            pad = 5
+            x0 = max(0, bbox[0] - pad)
+            y0 = max(0, bbox[1] - pad)
+            x1 = min(large_size, bbox[2] + pad)
+            y1 = min(large_size, bbox[3] + pad)
+            
+            sprite = temp_img.crop((x0, y0, x1, y1))
+            sprite_w = sprite.width
+            sprite_h = sprite.height
             
             # Store sprite and its positioning info
             self._sprite_cache[char] = {
                 'image': sprite,
                 'width': sprite_w,
                 'height': sprite_h,
-                'baseline_offset': pad - bbox[1],
+                'baseline_offset': 0,  # Already aligned from crop
                 'font': 'time'
             }
         
         # Render date character sprites (smaller font)
         for char in date_chars:
-            bbox = temp_draw.textbbox((0, 0), char, font=self.date_font, anchor='lt')
-            char_w = bbox[2] - bbox[0]
-            char_h = bbox[3] - bbox[1]
-            pad = 10
+            # Render on large canvas
+            large_size = int(self.date_font_size * 3)
+            temp_img = Image.new('RGB', (large_size, large_size), (0, 0, 0))
+            temp_draw_img = ImageDraw.Draw(temp_img)
             
-            sprite_w = char_w + 2 * pad
-            sprite_h = char_h + 2 * pad
+            temp_draw_img.text((large_size // 2, large_size // 2), char,
+                             font=self.date_font, fill=self.color, anchor='mm')
             
-            sprite = Image.new('RGB', (sprite_w, sprite_h), (0, 0, 0))
-            draw = ImageDraw.Draw(sprite)
-            draw.text((pad - bbox[0], pad - bbox[1]), char, font=self.date_font, fill=self.color)
+            bbox = temp_img.getbbox()
+            if not bbox:
+                continue
+            
+            pad = 3
+            x0 = max(0, bbox[0] - pad)
+            y0 = max(0, bbox[1] - pad)
+            x1 = min(large_size, bbox[2] + pad)
+            y1 = min(large_size, bbox[3] + pad)
+            
+            sprite = temp_img.crop((x0, y0, x1, y1))
+            sprite_w = sprite.width
+            sprite_h = sprite.height
             
             # Store with 'date_' prefix to distinguish from time sprites
             cache_key = f'date_{char}'
@@ -448,7 +468,7 @@ class FramebufferClock:
                 'image': sprite,
                 'width': sprite_w,
                 'height': sprite_h,
-                'baseline_offset': pad - bbox[1],
+                'baseline_offset': 0,
                 'font': 'date'
             }
         
