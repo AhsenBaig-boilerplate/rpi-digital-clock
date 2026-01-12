@@ -396,59 +396,64 @@ class FramebufferClock:
         
         # Characters needed for time display
         chars = '0123456789: AMP'
-        # Also cache common date characters (letters, comma, space) for date rendering
-        date_chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ, '
+        # Also cache date characters: letters, digits, comma, space for date rendering
+        date_chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789, '
         
         # Use a temporary draw context for bbox measurement
         temp_draw = self._temp_draw or ImageDraw.Draw(Image.new('RGB', (1,1)))
         
         for char in chars:
-            # Render character with time font
-            bbox = temp_draw.textbbox((0, 0), char, font=self.time_font)
-            char_w = bbox[2] - bbox[0]
-            char_h = bbox[3] - bbox[1]
+            # Render character with time font - get actual rendered size
+            test_img = Image.new('RGB', (500, 500), (0, 0, 0))
+            test_draw = ImageDraw.Draw(test_img)
+            test_draw.text((100, 100), char, font=self.time_font, fill=(255, 255, 255))
+            bbox = test_img.getbbox()  # Get actual pixel bounds of rendered glyph
             
-            # Minimal padding - just enough for full glyph, not spacing
-            pad_l = max(5, int(char_w * 0.05))
-            pad_r = max(5, int(char_w * 0.05))
-            pad_t = max(5, -bbox[1])  # Capture ascenders
-            pad_b = max(5, bbox[3] - char_h)  # Capture descenders
+            if bbox:
+                # Use actual glyph dimensions from render
+                glyph_w = bbox[2] - bbox[0]
+                glyph_h = bbox[3] - bbox[1]
+                # Small uniform padding for safety
+                pad = 3
+            else:
+                # Fallback if no pixels rendered
+                bbox = temp_draw.textbbox((0, 0), char, font=self.time_font)
+                glyph_w = bbox[2] - bbox[0]
+                glyph_h = bbox[3] - bbox[1]
+                pad = 3
             
-            sprite_w = char_w + pad_l + pad_r
-            sprite_h = char_h + pad_t + pad_b
+            sprite_w = glyph_w + 2 * pad
+            sprite_h = glyph_h + 2 * pad
             
             # Render sprite on black background
             sprite = Image.new('RGB', (sprite_w, sprite_h), (0, 0, 0))
             draw = ImageDraw.Draw(sprite)
-            draw.text((pad_l - bbox[0], pad_t - bbox[1]), char, font=self.time_font, fill=self.color)
+            # Center the character in the sprite
+            draw.text((pad, pad), char, font=self.time_font, fill=self.color)
             
             # Store sprite and its positioning info
             self._sprite_cache[char] = {
                 'image': sprite,
                 'width': sprite_w,
                 'height': sprite_h,
-                'baseline_offset': pad_t - bbox[1],
+                'baseline_offset': pad,
                 'font': 'time'
             }
         
         # Render date character sprites (smaller font)
         for char in date_chars:
+            # Simple padding for date chars
             bbox = temp_draw.textbbox((0, 0), char, font=self.date_font)
             char_w = bbox[2] - bbox[0]
             char_h = bbox[3] - bbox[1]
+            pad = 2
             
-            # Minimal padding for date chars
-            pad_l = max(3, int(char_w * 0.05))
-            pad_r = max(3, int(char_w * 0.05))
-            pad_t = max(3, -bbox[1])
-            pad_b = max(3, bbox[3] - char_h)
-            
-            sprite_w = char_w + pad_l + pad_r
-            sprite_h = char_h + pad_t + pad_b
+            sprite_w = char_w + 2 * pad
+            sprite_h = char_h + 2 * pad
             
             sprite = Image.new('RGB', (sprite_w, sprite_h), (0, 0, 0))
             draw = ImageDraw.Draw(sprite)
-            draw.text((pad_l - bbox[0], pad_t - bbox[1]), char, font=self.date_font, fill=self.color)
+            draw.text((pad, pad), char, font=self.date_font, fill=self.color)
             
             # Store with 'date_' prefix to distinguish from time sprites
             cache_key = f'date_{char}'
@@ -456,7 +461,7 @@ class FramebufferClock:
                 'image': sprite,
                 'width': sprite_w,
                 'height': sprite_h,
-                'baseline_offset': pad_t - bbox[1],
+                'baseline_offset': pad,
                 'font': 'date'
             }
         
@@ -1153,6 +1158,8 @@ class FramebufferClock:
             # Full framebuffer clear to eliminate all artifacts
             logging.info(f"Pixel shift: ({self._prev_pixel_shift_x},{self._prev_pixel_shift_y}) → ({self.pixel_shift_x},{self.pixel_shift_y}), clearing screen")
             self.fb_shadow.fill(0)
+            # Write the clear immediately before drawing new content
+            self.write_to_framebuffer(None)
             # Reset all tracked rects
             self._last_time_rect = None
             self._last_date_rect = None
