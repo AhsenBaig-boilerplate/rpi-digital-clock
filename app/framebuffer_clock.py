@@ -199,6 +199,9 @@ class FramebufferClock:
         self.pixel_shift_x = 0
         self.pixel_shift_y = 0
         self.pixel_shift_max = 30  # Increased from 10 to make burn-in prevention more visible
+        # Track previous shift to detect changes and clear artifacts
+        self._prev_pixel_shift_x = 0
+        self._prev_pixel_shift_y = 0
         # Allow disabling horizontal pixel shift for strict centering of time
         ps_time_env = os.environ.get('PIXEL_SHIFT_TIME_ENABLED', '').lower()
         if ps_time_env in ('true', '1', 'yes'):
@@ -1129,6 +1132,28 @@ class FramebufferClock:
         now = datetime.now()
         time_str = self.format_time(now)
         date_str = self.format_date(now)
+        
+        # Detect pixel shift change and clear old positions to prevent artifacts
+        shift_changed = (self.pixel_shift_x != self._prev_pixel_shift_x or 
+                        self.pixel_shift_y != self._prev_pixel_shift_y)
+        if shift_changed:
+            # Clear all previous rects before rendering at new position
+            if hasattr(self, '_last_time_rect') and self._last_time_rect:
+                lx, ly, lw, lh = self._last_time_rect
+                self.fb_shadow[ly:ly+lh, lx:lx+lw].fill(0)
+                self._last_time_rect = None
+            if hasattr(self, '_last_date_rect') and self._last_date_rect:
+                lx, ly, lw, lh = self._last_date_rect
+                self.fb_shadow[ly:ly+lh, lx:lx+lw].fill(0)
+                self._last_date_rect = None
+            if hasattr(self, '_last_status_rect') and self._last_status_rect:
+                lx, ly, lw, lh = self._last_status_rect
+                self.fb_shadow[ly:ly+lh, lx:lx+lw].fill(0)
+                self._last_status_rect = None
+            # Update tracking
+            self._prev_pixel_shift_x = self.pixel_shift_x
+            self._prev_pixel_shift_y = self.pixel_shift_y
+            logging.debug(f"Pixel shift changed to ({self.pixel_shift_x}, {self.pixel_shift_y}), cleared old positions")
         
         # Apply brightness
         display_color = self.apply_brightness(self.color)
