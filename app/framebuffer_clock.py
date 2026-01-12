@@ -408,11 +408,11 @@ class FramebufferClock:
             char_w = bbox[2] - bbox[0]
             char_h = bbox[3] - bbox[1]
             
-            # More generous padding to capture full glyph (especially for 'A', 'M', 'P')
-            pad_l = max(40, int(self.time_font_size * 0.2))
-            pad_r = max(40, int(self.time_font_size * 0.2))
-            pad_t = max(30, int(self.time_font_size * 0.15))
-            pad_b = max(30, int(self.time_font_size * 0.15))
+            # Minimal padding - just enough for full glyph, not spacing
+            pad_l = max(5, int(char_w * 0.05))
+            pad_r = max(5, int(char_w * 0.05))
+            pad_t = max(5, -bbox[1])  # Capture ascenders
+            pad_b = max(5, bbox[3] - char_h)  # Capture descenders
             
             sprite_w = char_w + pad_l + pad_r
             sprite_h = char_h + pad_t + pad_b
@@ -437,10 +437,11 @@ class FramebufferClock:
             char_w = bbox[2] - bbox[0]
             char_h = bbox[3] - bbox[1]
             
-            pad_l = max(8, int(self.date_font_size * 0.1))
-            pad_r = max(8, int(self.date_font_size * 0.1))
-            pad_t = max(4, int(self.date_font_size * 0.05))
-            pad_b = max(4, int(self.date_font_size * 0.05))
+            # Minimal padding for date chars
+            pad_l = max(3, int(char_w * 0.05))
+            pad_r = max(3, int(char_w * 0.05))
+            pad_t = max(3, -bbox[1])
+            pad_b = max(3, bbox[3] - char_h)
             
             sprite_w = char_w + pad_l + pad_r
             sprite_h = char_h + pad_t + pad_b
@@ -524,19 +525,31 @@ class FramebufferClock:
         if not date_str or not self._sprite_cache:
             return None
         
+        # Normalize date string (remove extra spaces that might break cache)
+        date_str = ' '.join(date_str.split())
+        
         total_width = 0
         max_height = 0
         sprites_to_use = []
+        missing_chars = []
         
         for char in date_str:
             cache_key = f'date_{char}'
             if cache_key not in self._sprite_cache:
-                # Cache miss - fallback to direct rendering
-                return None
+                # Track missing character for logging
+                missing_chars.append(char)
+                continue
             sprite_info = self._sprite_cache[cache_key]
             sprites_to_use.append(sprite_info)
             total_width += sprite_info['width']
             max_height = max(max_height, sprite_info['height'])
+        
+        # If any characters are missing, fallback
+        if missing_chars:
+            if not hasattr(self, '_date_cache_missing_logged'):
+                logging.warning(f"Date cache missing chars: {missing_chars} in '{date_str}'")
+                self._date_cache_missing_logged = True
+            return None
         
         # Create composite
         composite = Image.new('RGB', (total_width, max_height), (0, 0, 0))
