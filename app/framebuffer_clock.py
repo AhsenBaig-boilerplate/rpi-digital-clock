@@ -1596,9 +1596,11 @@ class FramebufferClock:
                         
                         # Update pixel shift
                         self.update_pixel_shift()
-        
-        # Update burn-in protection: vary font size and font family
-        self.update_burn_in_protection()
+                        
+                        # Update burn-in protection: vary font size and font family
+                        self.update_burn_in_protection()
+                    
+                    # Render
                     self.render()
                     
                     last_second = current_second
