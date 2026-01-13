@@ -448,9 +448,17 @@ class FramebufferClock:
             # Calculate y_offset from center to preserve baseline alignment
             y_offset_from_center = y0 - center
             
-            # Store sprite and its positioning info
+            # Pre-convert to RGB565 for fast blitting (eliminates per-frame conversion)
+            arr = np.frombuffer(sprite.tobytes(), dtype=np.uint8).reshape((sprite_h, sprite_w, 3))
+            r = (arr[:, :, 0] >> 3).astype(np.uint16)
+            g = (arr[:, :, 1] >> 2).astype(np.uint16)
+            b = (arr[:, :, 2] >> 3).astype(np.uint16)
+            sprite_rgb565 = ((r << 11) | (g << 5) | b)
+            
+            # Store sprite with BOTH RGB888 (for brightness adjustment) and RGB565 (for fast blit)
             self._sprite_cache[char] = {
-                'image': sprite,
+                'image': sprite,  # RGB888 for brightness adjustment
+                'rgb565': sprite_rgb565,  # Pre-converted RGB565 for fast blit
                 'width': sprite_w,
                 'height': sprite_h,
                 'baseline_offset': 0,
@@ -499,10 +507,18 @@ class FramebufferClock:
             sprite_h = sprite.height
             y_offset_from_center = y0 - center
             
+            # Pre-convert to RGB565
+            arr = np.frombuffer(sprite.tobytes(), dtype=np.uint8).reshape((sprite_h, sprite_w, 3))
+            r = (arr[:, :, 0] >> 3).astype(np.uint16)
+            g = (arr[:, :, 1] >> 2).astype(np.uint16)
+            b = (arr[:, :, 2] >> 3).astype(np.uint16)
+            sprite_rgb565 = ((r << 11) | (g << 5) | b)
+            
             # Store with 'date_' prefix to distinguish from time sprites
             cache_key = f'date_{char}'
             self._sprite_cache[cache_key] = {
                 'image': sprite,
+                'rgb565': sprite_rgb565,  # Pre-converted for fast blit
                 'width': sprite_w,
                 'height': sprite_h,
                 'baseline_offset': 0,
@@ -513,10 +529,10 @@ class FramebufferClock:
         elapsed = (time.time() - t_start) * 1000
         logging.info(f"Cached {len(self._sprite_cache)} sprites (time + date chars) in {elapsed:.1f}ms")
     
-    def _composite_time_from_cache(self, time_str: str, color: tuple) -> Image.Image:
+    def _composite_time_from_cache(self, time_str: str, color: tuple):
         """Composite time string from pre-rendered sprite cache.
-        Returns PIL Image ready for blitting. Much faster than text rendering.
-        Applies brightness to sprites if color differs from cached color.
+        Returns (rgb565_array, width, height) tuple for ultra-fast blitting.
+        RGB565 conversion already done during cache creation.
         """
         if not time_str or not self._sprite_cache:
             logging.debug(f"Cache composite skipped: time_str='{time_str}', cache_size={len(self._sprite_cache)}")
@@ -529,7 +545,6 @@ class FramebufferClock:
         
         for char in time_str:
             if char not in self._sprite_cache:
-                # Cache miss - log details and fallback
                 logging.warning(f"Sprite cache MISS for char='{char}' (ord={ord(char)}, time_str='{time_str}')")
                 return None
             sprite_info = self._sprite_cache[char]
@@ -548,8 +563,7 @@ class FramebufferClock:
         # Canvas height to fit all sprites aligned to common baseline
         canvas_height = max_bottom_offset - min_y_offset
         
-        # Use FIXED canvas width to prevent size changes (eliminates expensive clear operations)
-        # Calculate max width for widest possible time: "10:00:00 PM" (11 chars)
+        # Use FIXED canvas width
         if not hasattr(self, '_time_canvas_width'):
             max_width = 0
             for char in "10:00:00 PM":
@@ -557,33 +571,42 @@ class FramebufferClock:
                     max_width += self._sprite_cache[char]['width']
             self._time_canvas_width = max_width
         
-        # Create fixed-width composite canvas, center the text
         canvas_width = self._time_canvas_width
-        x_start = (canvas_width - total_width) // 2  # Center horizontally
-        composite = Image.new('RGB', (canvas_width, canvas_height), (0, 0, 0))
+        x_start = (canvas_width - total_width) // 2
         
-        # Check if we need to apply brightness (color differs from cached self.color)
+        # Create RGB565 canvas directly (no PIL Image intermediate)
+        canvas_rgb565 = np.zeros((canvas_height, canvas_width), dtype=np.uint16)
+        
+        # Check if we need brightness adjustment
         needs_tint = color != self.color
         brightness_factor = color[0] / max(1, self.color[0]) if self.color[0] > 0 else 1.0
         
-        # Blit each sprite aligned to common baseline
-        x_offset = x_start  # Start from centered position
+        # Blit each sprite (use pre-converted RGB565 data)
+        x_offset = x_start
         for sprite_info in sprites_to_use:
-            sprite_img = sprite_info['image']
+            sw = sprite_info['width']
+            sh = sprite_info['height']
+            y_off = sprite_info.get('y_offset', 0) - min_y_offset
             
-            # Apply brightness if needed (for night dimming)
+            # Use pre-converted RGB565 data
+            sprite_data = sprite_info['rgb565']
+            
+            # Apply brightness if needed (adjust RGB565 values)
             if needs_tint and brightness_factor != 1.0:
-                # Tint sprite by adjusting pixel values
-                arr = np.array(sprite_img)
-                arr = (arr * brightness_factor).astype(np.uint8)
-                sprite_img = Image.fromarray(arr)
+                # Extract RGB components, apply brightness, recombine
+                r = ((sprite_data >> 11) & 0x1F)
+                g = ((sprite_data >> 5) & 0x3F)
+                b = (sprite_data & 0x1F)
+                r = (r * brightness_factor).astype(np.uint16).clip(0, 31)
+                g = (g * brightness_factor).astype(np.uint16).clip(0, 63)
+                b = (b * brightness_factor).astype(np.uint16).clip(0, 31)
+                sprite_data = (r << 11) | (g << 5) | b
             
-            # Position sprite based on y_offset for baseline alignment
-            y_offset = sprite_info.get('y_offset', 0) - min_y_offset
-            composite.paste(sprite_img, (x_offset, y_offset))
-            x_offset += sprite_info['width']
+            # Blit into canvas
+            canvas_rgb565[y_off:y_off+sh, x_offset:x_offset+sw] = sprite_data
+            x_offset += sw
         
-        return composite
+        return (canvas_rgb565, canvas_width, canvas_height)
     
     def _composite_date_from_cache(self, date_str: str, color: tuple) -> Image.Image:
         """Composite date string from pre-rendered sprite cache.
@@ -1393,15 +1416,16 @@ class FramebufferClock:
         
         # Render time using pre-rendered sprite cache (7-15x faster)
         t_cache_start = time.time()
-        time_img = self._composite_time_from_cache(time_str, display_color)
+        time_result = self._composite_time_from_cache(time_str, display_color)
         cache_time_ms = (time.time() - t_cache_start) * 1000
         
-        if time_img:
-            # Center the composite image
-            time_x = max(margin, min(self.fb_width - margin - time_img.width, center_x_time - (time_img.width // 2)))
-            time_y = max(margin, min(self.fb_height - margin - time_img.height, center_y - time_offset_y - (time_img.height // 2)))
+        if time_result:
+            # Result is (rgb565_array, width, height)
+            time_rgb565, time_w, time_h = time_result
+            time_x = max(margin, min(self.fb_width - margin - time_w, center_x_time - (time_w // 2)))
+            time_y = max(margin, min(self.fb_height - margin - time_h, center_y - time_offset_y - (time_h // 2)))
             t_blit_start = time.time()
-            self.blit_rgb_image(time_img, time_x, time_y, clear_last_rect_attr='_last_time_rect', skip_write=True, clear_full_region=True)
+            self.blit_rgb565_direct(time_rgb565, time_x, time_y, clear_last_rect_attr='_last_time_rect', skip_write=True, clear_full_region=True)
             blit_time_ms = (time.time() - t_blit_start) * 1000
             logging.info(f"Time: cache={cache_time_ms:.1f}ms, blit={blit_time_ms:.1f}ms")
             if not hasattr(self, '_cache_hit_logged'):
@@ -1621,6 +1645,65 @@ class FramebufferClock:
             logging.error(f"Failed to write to framebuffer: {e}")
 
 
+    def blit_rgb565_direct(self, rgb565_array: np.ndarray, x: int, y: int, clear_last_rect_attr: str, skip_write: bool = False, clear_full_region: bool = False):
+        """Blit pre-converted RGB565 array directly to framebuffer (ultra-fast, no conversion).
+        rgb565_array: 2D numpy array of uint16 RGB565 pixels
+        Clears previous rect if position/size changed.
+        """
+        if self.fb_bpp != 16 or not isinstance(self.fb_shadow, np.ndarray):
+            return  # Can't use fast path
+        
+        h, w = rgb565_array.shape
+        if w <= 0 or h <= 0:
+            return
+        
+        # Get current rect
+        x2 = min(self.fb_width, x + w)
+        y2 = min(self.fb_height, y + h)
+        w_clamp = max(0, x2 - x)
+        h_clamp = max(0, y2 - y)
+        if w_clamp == 0 or h_clamp == 0:
+            return
+        
+        # Clear region - only if position or size changed
+        last_rect = getattr(self, clear_last_rect_attr, None)
+        needs_clear = False
+        
+        if last_rect:
+            lx, ly, lw, lh = last_rect
+            if lx != x or ly != y or lw != w_clamp or lh != h_clamp:
+                needs_clear = True
+        
+        if needs_clear:
+            if clear_full_region:
+                clear_x1 = min(lx, x)
+                clear_y1 = min(ly, y)
+                clear_x2 = max(lx + lw, x + w)
+                clear_y2 = max(ly + lh, y + h)
+                clear_pad = 10
+                clear_x1 = max(0, clear_x1 - clear_pad)
+                clear_y1 = max(0, clear_y1 - clear_pad)
+                clear_x2 = min(self.fb_width, clear_x2 + clear_pad)
+                clear_y2 = min(self.fb_height, clear_y2 + clear_pad)
+            else:
+                clear_pad = 50
+                clear_x1 = max(0, lx - clear_pad)
+                clear_y1 = max(0, ly - clear_pad)
+                clear_x2 = min(self.fb_width, lx + lw + clear_pad)
+                clear_y2 = min(self.fb_height, ly + lh + clear_pad)
+            
+            self.fb_shadow[clear_y1:clear_y2, clear_x1:clear_x2].fill(0)
+        
+        # Blit RGB565 directly (NO conversion needed!)
+        self.fb_shadow[y:y2, x:x2] = rgb565_array[:h_clamp, :w_clamp]
+        
+        # Store rect
+        rect = (x, y, w_clamp, h_clamp)
+        setattr(self, clear_last_rect_attr, rect)
+        
+        if hasattr(self, '_dirty_rects'):
+            self._dirty_rects.append(rect)
+    
     def blit_rgb_image(self, img: Image.Image, x: int, y: int, clear_last_rect_attr: str, skip_write: bool = False, clear_full_region: bool = False):
         """Convert a small RGB888 PIL image to RGB565 and blit into shadow buffer at (x,y).
         Clears previous rect stored in the attribute to avoid trails.
