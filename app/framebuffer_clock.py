@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Direct framebuffer clock display - fast rendering for Raspberry Pi.
-No X11, no pygame - just raw framebuffer access via PIL.
+Direct framebuffer clock display - fast RGB565 rendering for Raspberry Pi.
+No X11, no pygame, no Rust - pure PIL with pre-converted sprite cache.
 """
 
 import os
@@ -281,20 +281,8 @@ class FramebufferClock:
         except Exception:
             pass
         
-        # Native time renderer (Rust daemon) integration
-        self.native_renderer_enabled = os.environ.get('NATIVE_TIME_RENDERER', '').lower() in ('true', '1', 'yes')
-        self.native_proc = None
-        self._native_restart_attempts = 0
-        self._last_native_restart = 0
+        # Date tracking for optimization
         self._last_date_sent = None
-        if self.native_renderer_enabled:
-            try:
-                bin_path = os.environ.get('NATIVE_TIME_BIN', str(Path(__file__).parent / 'native' / 'clock_fb_rust' / 'target' / 'release' / 'clock_fb_rust'))
-                logging.info(f"Starting native time renderer: {bin_path}")
-                self.native_proc = subprocess.Popen([bin_path], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except Exception as e:
-                logging.error(f"Failed to start native renderer: {e}")
-                self.native_renderer_enabled = False
         logging.info("Framebuffer clock initialized")
     
     def get_framebuffer_size(self):
@@ -1074,52 +1062,6 @@ class FramebufferClock:
         """Apply current brightness to a color tuple."""
         return tuple(int(c * self.current_brightness) for c in color)
 
-    def _send_native(self, line: str):
-        # Return True on success, False on failure
-        try:
-            if self.native_renderer_enabled and self.native_proc:
-                # If process died, attempt restart
-                if self.native_proc.poll() is not None:
-                    return self._restart_native_renderer()
-                if self.native_proc.stdin:
-                    self.native_proc.stdin.write((line + "\n").encode('utf-8'))
-                    self.native_proc.stdin.flush()
-                    return True
-        except BrokenPipeError:
-            # Attempt one restart, then disable
-            return self._restart_native_renderer()
-        except Exception as e:
-            # Throttle error logging
-            if not hasattr(self, '_last_native_error') or time.time() - getattr(self, '_last_native_error', 0) > 2:
-                logging.error(f"Native send failed: {e}")
-                self._last_native_error = time.time()
-        return False
-
-    def _restart_native_renderer(self) -> bool:
-        now = time.time()
-        if now - self._last_native_restart < 2:
-            return False
-        self._last_native_restart = now
-        self._native_restart_attempts += 1
-        try:
-            if self.native_proc:
-                try:
-                    self.native_proc.terminate()
-                except Exception:
-                    pass
-            bin_path = os.environ.get('NATIVE_TIME_BIN', str(Path(__file__).parent / 'native' / 'clock_fb_rust' / 'target' / 'release' / 'clock_fb_rust'))
-            logging.warning(f"Restarting native renderer (attempt {self._native_restart_attempts}): {bin_path}")
-            self.native_proc = subprocess.Popen([bin_path], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            # Reset attempts after successful start
-            self._native_restart_attempts = 0
-            return True
-        except Exception as e:
-            logging.error(f"Native renderer restart failed: {e}")
-            if self._native_restart_attempts >= 3:
-                logging.error("Disabling native renderer after repeated failures; falling back to PIL rendering")
-                self.native_renderer_enabled = False
-            return False
-    
     def check_network_status(self):
         """Check network connectivity."""
         try:
@@ -1315,110 +1257,9 @@ class FramebufferClock:
         # Apply brightness
         display_color = self.apply_brightness(self.color)
         status_color = self.apply_brightness(self.status_color)
-
-        # If native renderer is enabled, send commands; fallback to PIL if any fail
-        native_ok = False
-        if self.native_renderer_enabled:
-            hex_color = f"#{display_color[0]:02X}{display_color[1]:02X}{display_color[2]:02X}"
-            ok = True
-            ok &= self._send_native(f"COLOR {hex_color}")
-            ok &= self._send_native(f"BRIGHT {self.current_brightness:.3f}")
-            ok &= self._send_native(f"SHIFT {self.pixel_shift_x} {self.pixel_shift_y}")
-            ok &= self._send_native(f"TIME {time_str}")
-            # Send DATE only when it changes (reduce flicker and overlap clears)
-            if self._last_date_sent != date_str:
-                ok &= self._send_native(f"DATE {date_str}")
-                if ok:
-                    self._last_date_sent = date_str
-            if ok:
-                native_ok = True
-            else:
-                logging.warning("Native renderer send failed; rendering with PIL fallback")
         
         t_prep = time.time()
         
-        # If native path succeeded, draw only the status bar via PIL and write partial
-        if native_ok:
-            if self.show_status_bar:
-                # Build status items
-                status_items = []
-                if self.network_status:
-                    if "Connected" in self.network_status:
-                        status_items.append(("network", self.network_status))
-                    else:
-                        status_items.append(("error", self.network_status))
-                if self.timezone_name:
-                    status_items.append(("timezone", f"TZ:{self.timezone_name}"))
-                sync_time = self.get_time_since_sync()
-                if sync_time == "Just now" or "m ago" in sync_time:
-                    status_items.append(("sync_ok", f"Sync: {sync_time}"))
-                else:
-                    status_items.append(("sync_old", f"Sync: {sync_time}"))
-                if self.build_info:
-                    ver = self.build_info.get("git_version") or ""
-                    sha = self.build_info.get("git_sha") or ""
-                    short_sha = sha[:7] if isinstance(sha, str) and sha else ""
-                    parts = []
-                    if ver: parts.append(ver)
-                    if short_sha: parts.append(short_sha)
-                    if parts:
-                        status_items.append(("version", " ".join(parts)))
-                status_items.append(("settings", "Settings"))
-
-                # Use fixed status bar position
-                margin = int(30 * self.display_scale)
-                position_name = self.status_bar_position
-
-                # Measure and draw status into small image
-                if not self._temp_draw:
-                    self._temp_draw = ImageDraw.Draw(Image.new('RGB', (1,1)))
-                status_w = 0
-                status_h = 0
-                min_y_offset = 0
-                for idx, (name, label) in enumerate(status_items):
-                    if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
-                        status_w += 12
-                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
-                    status_w += lb[2] - lb[0]
-                    status_h = max(status_h, lb[3] - lb[1])
-                    min_y_offset = min(min_y_offset, lb[1])
-                    if idx < len(status_items) - 1:
-                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
-                        status_w += sep[2] - sep[0]
-                v_pad = max(5, -min_y_offset + 3)
-                status_h += v_pad
-                if position_name == 'bottom-left':
-                    status_x = margin
-                    status_y = self.fb_height - status_h - margin
-                elif position_name == 'bottom-right':
-                    status_x = self.fb_width - status_w - margin
-                    status_y = self.fb_height - status_h - margin
-                elif position_name == 'top-left':
-                    status_x = margin
-                    status_y = margin
-                else:
-                    status_x = self.fb_width - status_w - margin
-                    status_y = margin
-                status_img = Image.new('RGB', (status_w, status_h), (0,0,0))
-                status_draw = ImageDraw.Draw(status_img)
-                cursor_x = 0
-                text_y = -min_y_offset if min_y_offset < 0 else 0
-                s_color = status_color
-                for idx, (name, label) in enumerate(status_items):
-                    if name in ['network', 'error', 'sync_ok', 'sync_old', 'settings']:
-                        self._draw_icon(status_draw, cursor_x, text_y, name, s_color)
-                        cursor_x += 12
-                    status_draw.text((cursor_x, text_y), label, font=self.status_font, fill=s_color)
-                    lb = self._temp_draw.textbbox((0,0), label, font=self.status_font)
-                    cursor_x += lb[2] - lb[0]
-                    if idx < len(status_items) - 1:
-                        status_draw.text((cursor_x, 0), " | ", font=self.status_font, fill=s_color)
-                        sep = self._temp_draw.textbbox((0,0), " | ", font=self.status_font)
-                        cursor_x += sep[2] - sep[0]
-                self.blit_rgb_image(status_img, status_x, status_y, clear_last_rect_attr='_last_status_rect', skip_write=True)
-                self.write_to_framebuffer(None)  # Write once for native path
-            return
-
         # Calculate center position with pixel shift (full resolution)
         center_x = self.fb_width // 2 + self.pixel_shift_x
         # Time should stay strictly centered horizontally unless explicitly enabled
@@ -1998,16 +1839,6 @@ class FramebufferClock:
     def cleanup(self):
         """Cleanup resources."""
         logging.info("Framebuffer clock stopped")
-        # Terminate native renderer if running
-        try:
-            if getattr(self, 'native_renderer_enabled', False) and self.native_proc and self.native_proc.stdin:
-                # Ask daemon to exit gracefully
-                self._send_native("QUIT")
-                time.sleep(0.2)
-            if getattr(self, 'native_proc', None):
-                self.native_proc.terminate()
-        except Exception:
-            pass
         try:
             if getattr(self, 'fb_mmap', None):
                 self.fb_mmap.close()
