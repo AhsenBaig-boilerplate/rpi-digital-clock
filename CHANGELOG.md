@@ -5,6 +5,25 @@ All notable changes to the Raspberry Pi Digital Clock project will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.121] - 2026-01-12
+
+### Added
+- **Helper script for clean releases**: `scripts/tag-and-push.sh`
+  - Commits, tags, and pushes in one command
+  - Pushes ONLY the tag (not main branch) to avoid duplicate workflows
+  - Prevents the "3 workflows for 1 commit" issue
+  - Usage: `./scripts/tag-and-push.sh v1.4.121 "Commit message"`
+
+### Changed
+- **README deployment best practices**: Document proper tag/push workflow
+  - Explains why `git push origin main --tags` triggers duplicate runs
+  - Shows recommended single-tag push method
+  - Clarifies workflow trigger behavior (main + tags)
+
+### Fixed
+- Stop amending commits after tagging (causes tag/commit mismatch)
+- Clarified version format documentation (removed duplicate section)
+
 ## [1.4.120] - 2026-01-12
 
 ### Fixed

@@ -607,17 +607,61 @@ This ensures you can always trace a running instance back to the exact source co
 
 This project follows [Semantic Versioning 2.0.0](https://semver.org/) with Git tags.
 
-**Current status**: 76 commits since v1.3.0 → Ready for v1.4.0 release!
+### Quick Release (Recommended Method)
 
-### Quick Release
+**Important**: To avoid duplicate workflow runs, use the helper script:
 
 ```bash
-# Create a new release
-./scripts/release.sh 1.4.0
+# 1. Make your changes and update CHANGELOG.md
+# 2. Use the helper script to commit, tag, and push in one step
+./scripts/tag-and-push.sh v1.4.121 "Fix: description of changes"
 
-# Push to trigger deployment
-git push origin v1.4.0
+# 3. Later, sync main branch (optional)
+git push origin main
 ```
+
+This pushes **ONLY the tag**, triggering one workflow run instead of two.
+
+### Manual Release (Advanced)
+
+If you prefer manual control:
+
+```bash
+# Make changes and commit (including CHANGELOG.md)
+git add -A
+git commit -m "v1.4.121: Fix description"
+git tag v1.4.121
+
+# Push tag ONLY (not main branch) to avoid duplicate workflows
+git push origin v1.4.121
+
+# Later, push main branch if needed
+git push origin main
+```
+
+**⚠️ Don't do this** (triggers duplicate workflows):
+```bash
+git push origin main --tags  # ❌ Triggers 2 workflows for same commit
+```
+
+### Why This Matters
+
+The workflow triggers on both:
+- `push` to `main` branch
+- `push` of `v*` tags
+
+When you `git push origin main --tags`, GitHub runs the workflow **twice** for the same commit:
+1. For the main branch push
+2. For the tag push
+
+The workflow now detects this and skips the main branch build when the commit is already tagged, but pushing tags separately is cleaner.
+
+### Version Format
+
+- **Tagged releases**: `v1.4.0` (shows as "v1.4.0" in UI)
+- **Development builds**: `v1.3.0+rev76` (76 commits after v1.3.0 tag)
+
+### Workflow Behavior
 
 The workflow automatically:
 - Uses the tag version in balena.yml
@@ -625,15 +669,10 @@ The workflow automatically:
 - Shows version in logs and on-screen status bar
 - Tags the Balena release with GitHub metadata
 
-### Version Format
-
-- **Tagged releases**: `v1.4.0` (shows as "v1.4.0" in UI)
-- **Development builds**: `v1.3.0+rev76` (76 commits after v1.3.0 tag)
-
 ### When to Release
 
 - **MAJOR** (2.0.0): Breaking changes (config format, API changes)
-- **MINOR** (1.4.0): New features (backward compatible) ← **Current recommendation**
+- **MINOR** (1.4.0): New features (backward compatible)
 - **PATCH** (1.3.1): Bug fixes only
 
 See [VERSIONING.md](VERSIONING.md) for detailed guidelines.
