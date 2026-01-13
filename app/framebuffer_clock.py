@@ -614,9 +614,9 @@ class FramebufferClock:
         
         return (canvas_rgb565, canvas_width, canvas_height)
     
-    def _composite_date_from_cache(self, date_str: str, color: tuple) -> Image.Image:
+    def _composite_date_from_cache(self, date_str: str, color: tuple):
         """Composite date string from pre-rendered sprite cache.
-        Much faster than ImageDraw.text() for date rendering.
+        Returns (rgb565_array, width, height) tuple for ultra-fast blitting.
         """
         if not date_str or not self._sprite_cache:
             return None
@@ -632,7 +632,6 @@ class FramebufferClock:
         for char in date_str:
             cache_key = f'date_{char}'
             if cache_key not in self._sprite_cache:
-                # Track missing character for logging
                 missing_chars.append(char)
                 continue
             sprite_info = self._sprite_cache[cache_key]
@@ -657,7 +656,7 @@ class FramebufferClock:
         
         canvas_height = max_bottom_offset - min_y_offset
         
-        # Use FIXED canvas width for dates (longest: "Wednesday, September 30, 2026")
+        # Use FIXED canvas width for dates
         if not hasattr(self, '_date_canvas_width'):
             max_date = "Wednesday, September 30, 2026"
             max_width = 0
@@ -668,28 +667,39 @@ class FramebufferClock:
             self._date_canvas_width = max_width
         
         canvas_width = self._date_canvas_width
-        x_start = (canvas_width - total_width) // 2  # Center horizontally
-        composite = Image.new('RGB', (canvas_width, canvas_height), (0, 0, 0))
+        x_start = (canvas_width - total_width) // 2
+        
+        # Create RGB565 canvas directly
+        canvas_rgb565 = np.zeros((canvas_height, canvas_width), dtype=np.uint16)
         
         # Apply brightness if needed
         needs_tint = color != self.color
         brightness_factor = color[0] / max(1, self.color[0]) if self.color[0] > 0 else 1.0
         
-        x_offset = x_start  # Start from centered position
+        x_offset = x_start
         for sprite_info in sprites_to_use:
-            sprite_img = sprite_info['image']
+            sw = sprite_info['width']
+            sh = sprite_info['height']
+            y_off = sprite_info.get('y_offset', 0) - min_y_offset
             
+            # Use pre-converted RGB565 data
+            sprite_data = sprite_info['rgb565']
+            
+            # Apply brightness if needed
             if needs_tint and brightness_factor != 1.0:
-                arr = np.array(sprite_img)
-                arr = (arr * brightness_factor).astype(np.uint8)
-                sprite_img = Image.fromarray(arr)
+                r = ((sprite_data >> 11) & 0x1F)
+                g = ((sprite_data >> 5) & 0x3F)
+                b = (sprite_data & 0x1F)
+                r = (r * brightness_factor).astype(np.uint16).clip(0, 31)
+                g = (g * brightness_factor).astype(np.uint16).clip(0, 63)
+                b = (b * brightness_factor).astype(np.uint16).clip(0, 31)
+                sprite_data = (r << 11) | (g << 5) | b
             
-            # Baseline aligned position
-            y_offset = sprite_info.get('y_offset', 0) - min_y_offset
-            composite.paste(sprite_img, (x_offset, y_offset))
-            x_offset += sprite_info['width']
+            # Blit into canvas
+            canvas_rgb565[y_off:y_off+sh, x_offset:x_offset+sw] = sprite_data
+            x_offset += sw
         
-        return composite
+        return (canvas_rgb565, canvas_width, canvas_height)
 
     def hex_to_rgb(self, hex_color):
         """Convert hex color to RGB tuple."""
@@ -1454,16 +1464,16 @@ class FramebufferClock:
         
         # Render date with generous padding - try sprite cache first
         t_date_start = time.time()
-        date_img = self._composite_date_from_cache(date_str, display_color)
+        date_result = self._composite_date_from_cache(date_str, display_color)
         date_cache_ms = (time.time() - t_date_start) * 1000
         
-        if date_img:
-            # Center the cached date composite
-            date_x = max(margin, min(self.fb_width - margin - date_img.width, center_x - (date_img.width // 2)))
-            date_y = max(margin, min(self.fb_height - margin - date_img.height, center_y + date_offset_y))
-            # Clear full date region to avoid artifacts
+        if date_result:
+            # Result is (rgb565_array, width, height)
+            date_rgb565, date_w, date_h = date_result
+            date_x = max(margin, min(self.fb_width - margin - date_w, center_x - (date_w // 2)))
+            date_y = max(margin, min(self.fb_height - margin - date_h, center_y + date_offset_y))
             t_blit_start = time.time()
-            self.blit_rgb_image(date_img, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True, clear_full_region=True)
+            self.blit_rgb565_direct(date_rgb565, date_x, date_y, clear_last_rect_attr='_last_date_rect', skip_write=True, clear_full_region=True)
             blit_date_ms = (time.time() - t_blit_start) * 1000
             logging.info(f"Date: cache={date_cache_ms:.1f}ms, blit={blit_date_ms:.1f}ms")
             if not hasattr(self, '_date_cache_hit_logged'):
