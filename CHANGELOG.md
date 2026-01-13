@@ -5,6 +5,20 @@ All notable changes to the Raspberry Pi Digital Clock project will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.118] - 2026-01-12
+
+### Changed
+- **Startup behavior documentation**: Explains expected 99% CPU spike during initialization
+  - Sprite cache generation takes 3-5 seconds on Pi Zero W
+  - Pre-renders 80+ character sprites (time + date) with RGB565 conversion
+  - One-time cost that enables fast per-frame rendering (6-7ms vs 280ms)
+  - CPU returns to 30-40% after cache completes
+  - Added detailed logging: "Pre-rendering sprite cache (this takes 3-5 sec on Pi Zero W, CPU will spike)..."
+
+### Added
+- Troubleshooting section in README for high startup CPU (normal vs abnormal)
+- Progress logging for sprite cache generation
+
 ## [1.4.117] - 2026-01-12
 
 ### Added

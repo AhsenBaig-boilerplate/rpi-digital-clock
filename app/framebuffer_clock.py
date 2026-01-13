@@ -378,14 +378,19 @@ class FramebufferClock:
         """Pre-render all time characters as sprites for fast compositing.
         This eliminates expensive per-frame text rendering (750ms -> 50-100ms).
         Also caches date characters for full optimization.
+        
+        NOTE: This runs once at startup and causes 99% CPU for 3-5 seconds on Pi Zero W.
+        This is expected - after caching completes, CPU drops to 30-40% during normal operation.
         """
-        logging.info("Pre-rendering time sprite cache...")
+        logging.info("Pre-rendering sprite cache (this takes 3-5 sec on Pi Zero W, CPU will spike)...")
         t_start = time.time()
         
         # Characters needed for time display
         chars = '0123456789: AMP'
         # Also cache date characters: letters, digits, comma, space for date rendering
         date_chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789, '
+        
+        logging.info(f"Generating {len(chars)} time sprites + {len(date_chars)} date sprites...")
         
         # Use a temporary draw context for bbox measurement
         temp_draw = self._temp_draw or ImageDraw.Draw(Image.new('RGB', (1,1)))
@@ -521,7 +526,8 @@ class FramebufferClock:
             }
         
         elapsed = (time.time() - t_start) * 1000
-        logging.info(f"Cached {len(self._sprite_cache)} sprites (time + date chars) in {elapsed:.1f}ms")
+        logging.info(f"✓ Sprite cache complete: {len(self._sprite_cache)} sprites generated in {elapsed:.1f}ms")
+        logging.info(f"  CPU will now return to normal levels (30-40% during rendering)")
     
     def _composite_time_from_cache(self, time_str: str, color: tuple):
         """Composite time string from pre-rendered sprite cache.

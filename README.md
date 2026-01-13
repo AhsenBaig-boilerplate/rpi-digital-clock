@@ -441,6 +441,26 @@ The clock supports both landscape (horizontal) and portrait (vertical) display o
 
 ## 🔧 Troubleshooting
 
+### High CPU at Startup (Normal Behavior)
+
+**Expected:** CPU spikes to 99% for 3-5 seconds during startup, then drops to 30-40%
+
+**Why this happens:**
+- The app pre-renders 80+ character sprites (0-9, A-Z, punctuation) at startup
+- Each sprite requires RGB565 conversion for fast framebuffer rendering
+- This is a **one-time initialization cost** that eliminates per-frame rendering overhead
+- After sprite cache completes, CPU returns to normal levels
+
+**What you'll see in logs:**
+```
+Pre-rendering sprite cache (this takes 3-5 sec on Pi Zero W, CPU will spike)...
+Generating 14 time sprites + 66 date sprites...
+✓ Sprite cache complete: 80 sprites generated in 3500ms
+  CPU will now return to normal levels (30-40% during rendering)
+```
+
+**If CPU stays high (>50%) after 10 seconds:** Check logs for errors or set `LOG_LEVEL=DEBUG`
+
 ### Clock Not Displaying
 
 1. Check balena dashboard logs for errors
