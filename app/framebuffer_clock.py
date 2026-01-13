@@ -408,8 +408,11 @@ class FramebufferClock:
                 # Create empty sprite with reasonable width
                 space_width = int(self.time_font_size * 0.3)  # 30% of font size
                 sprite = Image.new('RGB', (space_width, self.time_font_size), (0, 0, 0))
+                # Pre-convert to RGB565
+                sprite_rgb565 = np.zeros((self.time_font_size, space_width), dtype=np.uint16)
                 self._sprite_cache[char] = {
                     'image': sprite,
+                    'rgb565': sprite_rgb565,
                     'width': space_width,
                     'height': self.time_font_size,
                     'baseline_offset': 0,
@@ -472,9 +475,12 @@ class FramebufferClock:
             if char == ' ':
                 space_width = int(self.date_font_size * 0.3)
                 sprite = Image.new('RGB', (space_width, self.date_font_size), (0, 0, 0))
+                # Pre-convert to RGB565
+                sprite_rgb565 = np.zeros((self.date_font_size, space_width), dtype=np.uint16)
                 cache_key = f'date_{char}'
                 self._sprite_cache[cache_key] = {
                     'image': sprite,
+                    'rgb565': sprite_rgb565,
                     'width': space_width,
                     'height': self.date_font_size,
                     'baseline_offset': 0,
