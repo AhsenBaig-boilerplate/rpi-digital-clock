@@ -1838,13 +1838,13 @@ class FramebufferClock:
                 elif not self.show_seconds and not self.show_settings_overlay:
                     now_ts = time.time()
                     next_minute = (math.floor(now_ts / 60.0) * 60.0) + 60.0
-                    delay = max(0.0, next_minute - now_ts)
+                    delay = max(0.01, next_minute - now_ts)  # Minimum 10ms
+                    time.sleep(delay)
                 else:
+                    # With seconds shown: align to next second boundary
                     now_ts = time.time()
                     next_second = math.floor(now_ts) + 1.0
-                    delay = max(0.0, next_second - now_ts)
-                # Sleep until next boundary (if not already slept for overlay cadence)
-                if not self.show_settings_overlay:
+                    delay = max(0.01, next_second - now_ts)  # Minimum 10ms to prevent tight loop
                     time.sleep(delay)
         
         except KeyboardInterrupt:

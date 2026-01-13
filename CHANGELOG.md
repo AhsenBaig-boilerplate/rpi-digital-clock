@@ -5,6 +5,21 @@ All notable changes to the Raspberry Pi Digital Clock project will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.116] - 2026-01-12
+
+### Fixed
+- **Critical CPU usage fix**: 99% CPU usage due to missing sleep
+  - Fixed main loop sleep logic that could skip time.sleep() call
+  - Each code path now explicitly calls time.sleep() with calculated delay
+  - Added minimum 10ms delay to prevent tight loops
+  - **Root cause**: Nested if/else logic could skip sleep when seconds shown
+  - **Impact**: CPU was spinning at 99% instead of sleeping between renders
+
+### Changed
+- Simplified main loop sleep logic for better readability
+- Each mode (overlay/seconds/minute) now handles its own sleep directly
+- Performance: ~170ms renders + ~830ms sleep = smooth 1 FPS with low CPU
+
 ## [1.4.115] - 2026-01-12
 
 ### Fixed
