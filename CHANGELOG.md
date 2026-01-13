@@ -5,6 +5,17 @@ All notable changes to the Raspberry Pi Digital Clock project will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.120] - 2026-01-12
+
+### Fixed
+- **GitHub Actions duplicate deployments**: Fixed workflow triggering twice on `git push origin main --tags`
+  - Main branch builds now skip when commit is already tagged
+  - Prevents duplicate/conflicting deployments (red X marks in Actions)
+  - Tag push handles deployment, main branch push exits gracefully
+  - Added `skip_build` flag checked by all workflow steps
+  - **Root cause**: Workflow triggered on both `main` push AND `v*` tag push simultaneously
+  - Tag builds succeed, main builds failed trying to create duplicate tags
+
 ## [1.4.119] - 2026-01-12
 
 ### Changed
