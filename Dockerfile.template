@@ -3,9 +3,7 @@
 FROM balenalib/raspberry-pi-debian-python:3.11-bookworm
 
 # Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    NATIVE_TIME_RENDERER=false \
-    USE_PYGAME=false
+ENV PYTHONUNBUFFERED=1
 
 # Install system dependencies
 RUN install_packages \
@@ -14,8 +12,6 @@ RUN install_packages \
     python3-yaml \
     python3-requests \
     python3-evdev \
-    python3-pygame \
-    libsdl2-2.0-0 \
     systemd-timesyncd \
     ntpdate \
     fonts-liberation \

@@ -1,6 +1,6 @@
 #!/bin/bash
-# Startup script for Raspberry Pi Digital Clock (Pygame SDL FBDEV mode)
-# SDL framebuffer rendering - no X server needed
+# Startup script for Raspberry Pi Digital Clock
+# Direct framebuffer rendering with PIL RGB565 optimization
 
 echo "Starting Raspberry Pi Digital Clock (Framebuffer mode)..."
 
@@ -11,7 +11,7 @@ if [ -n "$TIMEZONE" ]; then
     echo "$TIMEZONE" > /etc/timezone 2>/dev/null || true
 fi
 
-# Launch clock application - pygame or PIL framebuffer
+# Launch clock application
 echo "Launching clock application..."
 cd /app
 if [ "${PRINT_BUILD_INFO}" = "true" ]; then
@@ -19,24 +19,10 @@ if [ "${PRINT_BUILD_INFO}" = "true" ]; then
   python3 build_info.py || true
 fi
 
-# Choose renderer based on environment variable
-USE_PYGAME_VAL="${USE_PYGAME}"
-echo "Renderer selection: USE_PYGAME=${USE_PYGAME_VAL}"
-# Normalize and accept common truthy values
-LOWER_VAL="${USE_PYGAME_VAL,,}"
-if [ "${LOWER_VAL}" = "true" ] || [ "${USE_PYGAME_VAL}" = "1" ] || [ "${LOWER_VAL}" = "yes" ]; then
-    CLOCK_APP="pygame_clock.py"
-    echo "=========================================="
-    echo "Using Pygame renderer (hardware-accelerated)"
-    echo "=========================================="
-    # Verify pygame is available
-    python3 -c "import pygame; print('Pygame version:', pygame.version.ver)" || echo "WARNING: Pygame import failed!"
-else
-    CLOCK_APP="framebuffer_clock.py"
-    echo "=========================================="
-    echo "Using PIL framebuffer renderer (current)"
-    echo "=========================================="
-fi
+CLOCK_APP="framebuffer_clock.py"
+echo "=========================================="
+echo "Using PIL framebuffer renderer with RGB565 optimization"
+echo "========================================="
 
 echo "Launching: python3 $CLOCK_APP"
 
