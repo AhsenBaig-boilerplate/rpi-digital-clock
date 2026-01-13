@@ -5,6 +5,23 @@ All notable changes to the Raspberry Pi Digital Clock project will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.117] - 2026-01-12
+
+### Added
+- **Comprehensive startup logging**: Now logs complete runtime environment
+  - Runtime summary: PIL RGB565, vector icons, RTC status
+  - Git version/tag from build-info.json
+  - Balena device metadata (device name, type, UUID, service name)
+  - Environment variables with sensitive values masked (API keys shown as ****)
+  - Shows all device/fleet variable overrides at startup
+  - Matches README documentation for troubleshooting
+
+### Technical Details
+- New `log_runtime_summary()` function in utils.py
+- Logs both `VARNAME` and `BALENA_VARNAME` environment variables
+- Displays git tag version for easy deployment tracking
+- Helps identify which device variables are active vs config.yaml defaults
+
 ## [1.4.116] - 2026-01-12
 
 ### Fixed

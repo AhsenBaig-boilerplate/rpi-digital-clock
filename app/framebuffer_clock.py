@@ -1868,7 +1868,7 @@ class FramebufferClock:
 
 def main():
     """Main entry point."""
-    from utils import setup_logging, load_build_info, format_build_info
+    from utils import setup_logging, load_build_info, log_runtime_summary
     
     # Setup logging
     log_level = os.environ.get('LOG_LEVEL', 'INFO')
@@ -1888,9 +1888,9 @@ def main():
         logging.error(f"Error loading configuration: {e}")
         sys.exit(1)
     
-    # Build info logging
+    # Load build info and log comprehensive runtime summary
     build_info = load_build_info()
-    logging.info(f"Build info: {format_build_info(build_info)}")
+    log_runtime_summary(config, build_info)
     
     # Create and run clock
     clock = FramebufferClock(config, build_info=build_info)
