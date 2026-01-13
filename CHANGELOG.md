@@ -5,6 +5,21 @@ All notable changes to the Raspberry Pi Digital Clock project will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.115] - 2026-01-12
+
+### Fixed
+- **Critical crash fix**: Sprite overflow during pixel shift
+  - Added bounds checking in `_composite_time_from_cache()` and `_composite_date_from_cache()`
+  - Prevents ValueError: "could not broadcast input array from shape (220,161) into shape (220,0)"
+  - Sprites now clipped to canvas boundaries instead of crashing
+  - **Root cause**: Pixel shift could position time/date so sprites extend beyond fixed-width canvas
+  - **Impact**: Clock would crash every 30 seconds during pixel shift with certain time values
+
+### Technical Details
+- Fixed invalid numpy array slicing when `x_offset + sw > canvas_width`
+- Added sprite clipping: `sprite_data[:, :sw_clipped]` to fit within canvas
+- Applied to both time and date rendering functions
+
 ## [1.4.114] - 2026-01-12
 
 ### Removed

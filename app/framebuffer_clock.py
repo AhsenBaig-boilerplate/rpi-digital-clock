@@ -596,6 +596,15 @@ class FramebufferClock:
                 b = (b * brightness_factor).astype(np.uint16).clip(0, 31)
                 sprite_data = (r << 11) | (g << 5) | b
             
+            # Bounds check: ensure sprite fits within canvas
+            if x_offset + sw > canvas_width:
+                # Clip sprite to fit within canvas
+                sw_clipped = canvas_width - x_offset
+                if sw_clipped <= 0:
+                    break  # No room left
+                sprite_data = sprite_data[:, :sw_clipped]
+                sw = sw_clipped
+            
             # Blit into canvas
             canvas_rgb565[y_off:y_off+sh, x_offset:x_offset+sw] = sprite_data
             x_offset += sw
@@ -682,6 +691,15 @@ class FramebufferClock:
                 g = (g * brightness_factor).astype(np.uint16).clip(0, 63)
                 b = (b * brightness_factor).astype(np.uint16).clip(0, 31)
                 sprite_data = (r << 11) | (g << 5) | b
+            
+            # Bounds check: ensure sprite fits within canvas
+            if x_offset + sw > canvas_width:
+                # Clip sprite to fit within canvas
+                sw_clipped = canvas_width - x_offset
+                if sw_clipped <= 0:
+                    break  # No room left
+                sprite_data = sprite_data[:, :sw_clipped]
+                sw = sw_clipped
             
             # Blit into canvas
             canvas_rgb565[y_off:y_off+sh, x_offset:x_offset+sw] = sprite_data
