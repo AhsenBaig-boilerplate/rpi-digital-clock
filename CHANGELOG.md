@@ -5,6 +5,29 @@ All notable changes to the Raspberry Pi Digital Clock project will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.114] - 2026-01-12
+
+### Removed
+- **Unused files cleanup** (~1,650 lines removed):
+  - `app/pygame_clock.py` (463 lines) - Pygame renderer no longer needed
+  - `app/compare_renderers.py` (142 lines) - Benchmarking script
+  - `app/web_ui.py` (218 lines) - Flask web UI (unused)
+  - `app/assets/emojis/` - 7 PNG icon files + README (not used)
+  - `benchmark.sh` - Renderer comparison script
+  - `RENDERER_COMPARISON.md` - Outdated documentation
+  
+### Changed
+- **Documentation cleanup**:
+  - Removed `USE_EMOJI` environment variable references
+  - Updated runtime summary to show "Vector" icons instead of "PNG"
+  - Clarified that status icons are drawn by PIL as vector graphics
+  - No external PNG files needed for icons
+
+### Technical Notes
+- Status bar icons (network, sync, settings) are now clearly documented as vector-drawn
+- Reduced repository size and maintenance complexity
+- Pure PIL architecture with RGB565 optimization
+
 ## [1.4.113] - 2026-01-12
 
 ### Removed

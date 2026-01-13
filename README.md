@@ -2,7 +2,7 @@
 
 A production-ready digital clock display for Raspberry Pi Zero (1st gen) with weather information, designed for HDMI TV displays. Built with Python and PIL with RGB565 optimization for direct framebuffer rendering, deployed via balena.io with comprehensive screen burn-in prevention features.
 
-Note: The container base uses Debian Bookworm with Python 3.11, optimized for Raspberry Pi Zero W (ARMv6). Emoji icons use PNG sprites for performance.
+Note: The container base uses Debian Bookworm with Python 3.11, optimized for Raspberry Pi Zero W (ARMv6). Status icons are drawn as vector graphics for minimal overhead.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.11-blue.svg)
@@ -45,8 +45,8 @@ Note: The container base uses Debian Bookworm with Python 3.11, optimized for Ra
 On startup, the application logs a concise runtime summary and environment scopes to aid troubleshooting:
 
 ```
-2026-01-12 21:45:05 - root - INFO - Runtime summary: PIL RGB565 | Icons: PNG (6 icons) | RTC: Disabled
-2026-01-12 21:45:05 - root - INFO - Emoji icons available: clock, ethernet, globe, network_error, sync, wifi
+2026-01-12 21:45:05 - root - INFO - Runtime summary: PIL RGB565 | Icons: Vector | RTC: Disabled
+2026-01-12 21:45:05 - root - INFO - Status icons: network, sync_ok, sync_old, error, settings
 2026-01-12 21:45:05 - root - INFO - Device metadata (balena environment):
 2026-01-12 21:45:05 - root - INFO -   [Device] BALENA_DEVICE_NAME=LivingRoomClock
 2026-01-12 21:45:05 - root - INFO -   [Device] BALENA_DEVICE_TYPE=raspberry-pi
@@ -57,7 +57,7 @@ On startup, the application logs a concise runtime summary and environment scope
 2026-01-12 21:45:05 - root - INFO -   [Service(clock)] TIMEZONE=America/Los_Angeles
 ```
 
-This helps confirm the runtime (PIL with RGB565 optimization), icon mode (PNG vs ASCII), RTC status, device context, and scoped variables.
+This helps confirm the runtime (PIL with RGB565 optimization), vector icon rendering, RTC status, device context, and scoped variables.
 
 ## 📋 Prerequisites
 
@@ -128,7 +128,6 @@ After deployment, you **must** configure variables in your balena dashboard. The
 | `NIGHT_BRIGHTNESS` | `0.3` | Night brightness (0.0–1.0) |
 | `NIGHT_START_HOUR` | `22` | Night start hour |
 | `NIGHT_END_HOUR` | `6` | Night end hour |
-| `USE_EMOJI` | `true` | Use PNG emoji icons in status bar (place icons in app/assets/emojis/) |
 
 💡 **Multi-Device Setup:** Use Fleet Variables for common settings (like API key) and Device Variables for location-specific settings (like `WEATHER_LOCATION`).
 
