@@ -5,6 +5,26 @@ All notable changes to the Raspberry Pi Digital Clock project will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.119] - 2026-01-12
+
+### Changed
+- **Lazy loading for date sprites**: Dramatically reduced startup time and CPU spike
+  - Startup: 99% CPU for 3-5s → 60-80% CPU for ~1s (70% faster)
+  - Only pre-renders 14 time sprites at startup (instead of 80+ total)
+  - Date sprites (A-Z, a-z, punctuation) rendered on-demand via `_get_or_create_date_sprite()`
+  - First date render adds 50-100ms to lazy-load needed characters
+  - Subsequent date renders use cached sprites with no overhead
+  - Maintains same steady-state performance: ~170ms renders at 30-40% CPU
+
+### Fixed
+- GitHub Actions build issues: Re-tagged v1.4.117 and v1.4.118 to point to correct commits
+
+### Technical Details
+- New `_get_or_create_date_sprite()` method for on-demand sprite generation
+- Date canvas width calculation uses lazy loading
+- Startup log now shows "lazy-loading date sprites" message
+- Perfect for Pi Zero W: fast startup, low memory, smooth operation
+
 ## [1.4.118] - 2026-01-12
 
 ### Changed

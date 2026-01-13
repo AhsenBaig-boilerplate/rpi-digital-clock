@@ -375,22 +375,19 @@ class FramebufferClock:
             self._font_cache = {}
     
     def _prerender_time_sprites(self):
-        """Pre-render all time characters as sprites for fast compositing.
-        This eliminates expensive per-frame text rendering (750ms -> 50-100ms).
-        Also caches date characters for full optimization.
+        """Pre-render time characters as sprites for fast compositing.
+        Date sprites are lazy-loaded on first use to reduce startup time.
         
-        NOTE: This runs once at startup and causes 99% CPU for 3-5 seconds on Pi Zero W.
-        This is expected - after caching completes, CPU drops to 30-40% during normal operation.
+        This eliminates expensive per-frame text rendering (750ms -> 50-100ms).
+        Startup only pre-renders 14 time chars (~500ms), date chars loaded as needed.
         """
-        logging.info("Pre-rendering sprite cache (this takes 3-5 sec on Pi Zero W, CPU will spike)...")
+        logging.info("Pre-rendering time sprite cache (lazy-loading date sprites)...")
         t_start = time.time()
         
-        # Characters needed for time display
+        # Characters needed for time display (pre-render at startup)
         chars = '0123456789: AMP'
-        # Also cache date characters: letters, digits, comma, space for date rendering
-        date_chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789, '
         
-        logging.info(f"Generating {len(chars)} time sprites + {len(date_chars)} date sprites...")
+        logging.info(f"Generating {len(chars)} time sprites at startup...")
         
         # Use a temporary draw context for bbox measurement
         temp_draw = self._temp_draw or ImageDraw.Draw(Image.new('RGB', (1,1)))
@@ -462,72 +459,91 @@ class FramebufferClock:
                 'font': 'time'
             }
         
-        # Render date character sprites (smaller font)
-        for char in date_chars:
-            # Special handling for space
-            if char == ' ':
-                space_width = int(self.date_font_size * 0.3)
-                sprite = Image.new('RGB', (space_width, self.date_font_size), (0, 0, 0))
-                # Pre-convert to RGB565
-                sprite_rgb565 = np.zeros((self.date_font_size, space_width), dtype=np.uint16)
-                cache_key = f'date_{char}'
-                self._sprite_cache[cache_key] = {
-                    'image': sprite,
-                    'rgb565': sprite_rgb565,
-                    'width': space_width,
-                    'height': self.date_font_size,
-                    'baseline_offset': 0,
-                    'y_offset': 0,
-                    'font': 'date'
-                }
-                continue
-            
-            # Render on large canvas
-            large_size = int(self.date_font_size * 4)
-            temp_img = Image.new('RGB', (large_size, large_size), (0, 0, 0))
-            temp_draw_img = ImageDraw.Draw(temp_img)
-            
-            center = large_size // 2
-            temp_draw_img.text((center, center), char,
-                             font=self.date_font, fill=self.color, anchor='mm')
-            
-            bbox = temp_img.getbbox()
-            if not bbox:
-                continue
-            
-            pad = 5
-            x0 = max(0, bbox[0] - pad)
-            y0 = max(0, bbox[1] - pad)
-            x1 = min(large_size, bbox[2] + pad)
-            y1 = min(large_size, bbox[3] + pad)
-            
-            sprite = temp_img.crop((x0, y0, x1, y1))
-            sprite_w = sprite.width
-            sprite_h = sprite.height
-            y_offset_from_center = y0 - center
-            
-            # Pre-convert to RGB565
-            arr = np.frombuffer(sprite.tobytes(), dtype=np.uint8).reshape((sprite_h, sprite_w, 3))
-            r = (arr[:, :, 0] >> 3).astype(np.uint16)
-            g = (arr[:, :, 1] >> 2).astype(np.uint16)
-            b = (arr[:, :, 2] >> 3).astype(np.uint16)
-            sprite_rgb565 = ((r << 11) | (g << 5) | b)
-            
-            # Store with 'date_' prefix to distinguish from time sprites
-            cache_key = f'date_{char}'
+        elapsed = (time.time() - t_start) * 1000
+        logging.info(f"✓ Time sprite cache complete: {len(self._sprite_cache)} sprites in {elapsed:.1f}ms")
+        logging.info(f"  Date sprites will be lazy-loaded on first use")
+    
+    def _get_or_create_date_sprite(self, char: str):
+        """Lazy-load date sprite on first use.
+        Renders sprite on-demand and caches for future use.
+        """
+        cache_key = f'date_{char}'
+        
+        # Return from cache if already rendered
+        if cache_key in self._sprite_cache:
+            return self._sprite_cache[cache_key]
+        
+        # Render sprite on-demand
+        if char == ' ':
+            space_width = int(self.date_font_size * 0.3)
+            sprite = Image.new('RGB', (space_width, self.date_font_size), (0, 0, 0))
+            sprite_rgb565 = np.zeros((self.date_font_size, space_width), dtype=np.uint16)
             self._sprite_cache[cache_key] = {
                 'image': sprite,
-                'rgb565': sprite_rgb565,  # Pre-converted for fast blit
-                'width': sprite_w,
-                'height': sprite_h,
+                'rgb565': sprite_rgb565,
+                'width': space_width,
+                'height': self.date_font_size,
                 'baseline_offset': 0,
-                'y_offset': y_offset_from_center,
+                'y_offset': 0,
                 'font': 'date'
             }
+            return self._sprite_cache[cache_key]
         
-        elapsed = (time.time() - t_start) * 1000
-        logging.info(f"✓ Sprite cache complete: {len(self._sprite_cache)} sprites generated in {elapsed:.1f}ms")
-        logging.info(f"  CPU will now return to normal levels (30-40% during rendering)")
+        # Render on large canvas
+        large_size = int(self.date_font_size * 4)
+        temp_img = Image.new('RGB', (large_size, large_size), (0, 0, 0))
+        temp_draw_img = ImageDraw.Draw(temp_img)
+        
+        center = large_size // 2
+        temp_draw_img.text((center, center), char,
+                         font=self.date_font, fill=self.color, anchor='mm')
+        
+        bbox = temp_img.getbbox()
+        if not bbox:
+            # Return empty sprite if char didn't render
+            sprite = Image.new('RGB', (1, self.date_font_size), (0, 0, 0))
+            sprite_rgb565 = np.zeros((self.date_font_size, 1), dtype=np.uint16)
+            self._sprite_cache[cache_key] = {
+                'image': sprite,
+                'rgb565': sprite_rgb565,
+                'width': 1,
+                'height': self.date_font_size,
+                'baseline_offset': 0,
+                'y_offset': 0,
+                'font': 'date'
+            }
+            return self._sprite_cache[cache_key]
+        
+        pad = 5
+        x0 = max(0, bbox[0] - pad)
+        y0 = max(0, bbox[1] - pad)
+        x1 = min(large_size, bbox[2] + pad)
+        y1 = min(large_size, bbox[3] + pad)
+        
+        sprite = temp_img.crop((x0, y0, x1, y1))
+        sprite_w = sprite.width
+        sprite_h = sprite.height
+        y_offset_from_center = y0 - center
+        
+        # Pre-convert to RGB565
+        arr = np.frombuffer(sprite.tobytes(), dtype=np.uint8).reshape((sprite_h, sprite_w, 3))
+        r = (arr[:, :, 0] >> 3).astype(np.uint16)
+        g = (arr[:, :, 1] >> 2).astype(np.uint16)
+        b = (arr[:, :, 2] >> 3).astype(np.uint16)
+        sprite_rgb565 = ((r << 11) | (g << 5) | b)
+        
+        # Cache for future use
+        self._sprite_cache[cache_key] = {
+            'image': sprite,
+            'rgb565': sprite_rgb565,
+            'width': sprite_w,
+            'height': sprite_h,
+            'baseline_offset': 0,
+            'y_offset': y_offset_from_center,
+            'font': 'date'
+        }
+        
+        return self._sprite_cache[cache_key]
     
     def _composite_time_from_cache(self, time_str: str, color: tuple):
         """Composite time string from pre-rendered sprite cache.
@@ -630,24 +646,13 @@ class FramebufferClock:
         total_width = 0
         max_height = 0
         sprites_to_use = []
-        missing_chars = []
         
         for char in date_str:
-            cache_key = f'date_{char}'
-            if cache_key not in self._sprite_cache:
-                missing_chars.append(char)
-                continue
-            sprite_info = self._sprite_cache[cache_key]
+            # Lazy-load date sprite on first use
+            sprite_info = self._get_or_create_date_sprite(char)
             sprites_to_use.append(sprite_info)
             total_width += sprite_info['width']
             max_height = max(max_height, sprite_info['height'])
-        
-        # If any characters are missing, fallback
-        if missing_chars:
-            if not hasattr(self, '_date_cache_missing_logged'):
-                logging.warning(f"Date cache missing chars: {missing_chars} in '{date_str}'")
-                self._date_cache_missing_logged = True
-            return None
         
         # Find min/max y_offset for baseline alignment
         min_y_offset = 0
@@ -659,14 +664,13 @@ class FramebufferClock:
         
         canvas_height = max_bottom_offset - min_y_offset
         
-        # Use FIXED canvas width for dates
+        # Use FIXED canvas width for dates (lazy-load sprites for width calculation)
         if not hasattr(self, '_date_canvas_width'):
             max_date = "Wednesday, September 30, 2026"
             max_width = 0
             for char in max_date:
-                cache_key = f'date_{char}'
-                if cache_key in self._sprite_cache:
-                    max_width += self._sprite_cache[cache_key]['width']
+                sprite_info = self._get_or_create_date_sprite(char)
+                max_width += sprite_info['width']
             self._date_canvas_width = max_width
         
         canvas_width = self._date_canvas_width
