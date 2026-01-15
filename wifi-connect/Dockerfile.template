@@ -5,8 +5,19 @@ RUN install_packages dnsmasq wireless-tools wget
 
 # Download and install wifi-connect
 WORKDIR /usr/src/app
-RUN curl -Ls "https://github.com/balena-os/wifi-connect/releases/download/v4.11.84/wifi-connect-v4.11.84-linux-%%BALENA_ARCH%%.tar.gz" \
-    | tar -xvz -C  /usr/src/app/
+
+# Map balena arch to Rust target triple and download wifi-connect
+RUN if [ "%%BALENA_ARCH%%" = "raspberrypi" ] || [ "%%BALENA_ARCH%%" = "raspberry-pi" ] || [ "%%BALENA_ARCH%%" = "rpi" ]; then \
+      ARCH="armv7-unknown-linux-gnueabihf"; \
+    elif [ "%%BALENA_ARCH%%" = "raspberrypi3" ] || [ "%%BALENA_ARCH%%" = "raspberrypi4-64" ] || [ "%%BALENA_ARCH%%" = "aarch64" ]; then \
+      ARCH="aarch64-unknown-linux-gnu"; \
+    elif [ "%%BALENA_ARCH%%" = "amd64" ] || [ "%%BALENA_ARCH%%" = "intel-nuc" ]; then \
+      ARCH="x86_64-unknown-linux-gnu"; \
+    else \
+      ARCH="armv7-unknown-linux-gnueabihf"; \
+    fi && \
+    curl -Ls "https://github.com/balena-os/wifi-connect/releases/download/v4.11.84/wifi-connect-${ARCH}.tar.gz" \
+    | tar -xvz -C /usr/src/app/
 
 # Start wifi-connect
 CMD /usr/src/app/wifi-connect
