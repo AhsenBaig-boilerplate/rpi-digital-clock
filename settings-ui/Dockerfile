@@ -15,6 +15,10 @@ RUN apt-get update && \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip list
+
+# Copy application files
+COPY . .
+
 # Expose port 8080
 EXPOSE 8080
 
