@@ -76,5 +76,48 @@ services:
       - "/dev/i2c-1:/dev/i2c-1"  # I2C for RTC module (only used if RTC_ENABLED=true)
       - "/dev/rtc0:/dev/rtc0"     # RTC device (only used if RTC_ENABLED=true)
 
+  # WiFi Connect service - provides captive portal for WiFi and settings configuration
+  wifi-connect:
+    image: bh.cr/balenalabs/wifi-connect-arm
+    restart: on-failure
+    network_mode: host
+    privileged: true
+    labels:
+      io.balena.features.dbus: '1'
+      io.balena.features.firmware: '1'
+    cap_add:
+      - NET_ADMIN
+    environment:
+      DBUS_SYSTEM_BUS_ADDRESS: "unix:path=/host/run/dbus/system_bus_socket"
+      # Portal configuration
+      PORTAL_SSID: "DigitalClock Setup"
+      PORTAL_PASSPHRASE: "clocksetup"
+      ACTIVITY_TIMEOUT: 300  # Exit portal after 5 min of inactivity
+      # UI customization
+      UI_DIRECTORY: /app/ui
+    volumes:
+      - 'wifi-connect-ui:/app/ui'
+
+  # Settings UI service - custom web interface for clock configuration
+  settings-ui:
+    build:
+      context: ./settings-ui
+      dockerfile: Dockerfile
+    restart: always
+    network_mode: host
+    environment:
+      # Access to Balena API for setting device variables
+      BALENA_SUPERVISOR_ADDRESS: "${BALENA_SUPERVISOR_ADDRESS}"
+      BALENA_SUPERVISOR_API_KEY: "${BALENA_SUPERVISOR_API_KEY}"
+      BALENA_DEVICE_UUID: "${BALENA_DEVICE_UUID}"
+      PORT: "8080"
+    labels:
+      io.balena.features.supervisor-api: '1'
+      io.balena.features.balena-api: '1'
+    volumes:
+      - 'settings-data:/data'
+
 volumes:
   clock-config:
+  wifi-connect-ui:
+  settings-data:

@@ -286,7 +286,26 @@ git push balena main
 
 ## ⚙️ Configuration
 
-Edit `app/config.yaml` to customize the clock:
+The clock can be configured in two ways:
+
+### 🌐 Web Interface (Recommended)
+
+Access the settings UI from any device on the same network:
+
+1. **Find your device IP**: Check your balena dashboard or router
+2. **Open settings page**: Navigate to `http://<device-ip>:8080`
+3. **Configure settings**: Use the web form to adjust:
+   - Weather location and API key
+   - Timezone and time format
+   - Display colors and date format
+   - Burn-in prevention settings
+   - Screensaver schedule
+
+Changes take effect after the clock restarts (automatically triggered by balena).
+
+### 📝 Configuration File
+
+Alternatively, edit `app/config.yaml` directly:
 
 ### Time Settings
 
@@ -396,7 +415,13 @@ To set variables in balena dashboard:
 
 **Using Device Variables:**
 
-Device variables are useful when you have multiple clocks showing different locations or configurations:
+Device variables are useful when you have multiple clocks showing different locations or configurations. You can set these via the web interface (recommended) or through the balena dashboard.
+
+**Via Web Interface (Port 8080):**
+
+Navigate to `http://<device-ip>:8080` to access the settings UI where you can configure all options through a user-friendly form.
+
+**Via Balena Dashboard:**
 
 ```
 Device 1 (Kitchen - New York):
@@ -408,16 +433,63 @@ Device 2 (Office - London):
   WEATHER_LOCATION: "London,GB"
   DISPLAY_COLOR: "#00FFFF"
   WEATHER_UNITS: "metric"
-  TIME_FORMAT_12H: "false"
+  TIME_FORMAT: "24"
 
 Device 3 (Bedroom):
   WEATHER_LOCATION: "Tokyo,JP"
-  DIM_AT_NIGHT: "true"
-  NIGHT_BRIGHTNESS: "0.2"
-  SCREENSAVER_DELAY_MINUTES: "30"
+  SCREENSAVER_ENABLED: "true"
+  SCREENSAVER_START: "23:00"
+  SCREENSAVER_END: "07:00"
 ```
 
 See [balena documentation](https://docs.balena.io/learn/manage/variables/#device-variables) for more details on variable types and precedence.
+
+## 📱 WiFi Configuration
+
+### Method 1: WiFi Connect (Captive Portal)
+
+When the device can't connect to configured WiFi networks, it automatically starts a WiFi Connect captive portal:
+
+1. **Look for WiFi network**: `DigitalClock Setup` (password: `clocksetup`)
+2. **Connect to it**: Your phone/computer will show a captive portal
+3. **Select your WiFi**: Choose your home network and enter password
+4. **Done**: Device will connect and clock starts
+
+The captive portal exits after 5 minutes of inactivity or successful connection.
+
+### Method 2: Dynamic Configuration via NetworkManager
+
+For devices already connected to WiFi, you can change networks remotely:
+
+**Using balena CLI:**
+```bash
+balena ssh <UUID>
+
+# Switch to a new WiFi network
+nmcli device wifi connect "YourNewSSID" password "YourPassword"
+
+# List available networks
+nmcli device wifi list
+```
+
+**Configure multiple networks with fallback:**
+
+Set device variables (via dashboard or web UI on port 8080):
+```
+WIFI_SSID: "HomeNetwork"
+WIFI_SSID_1: "OfficeNetwork"
+WIFI_SSID_2: "MobileHotspot"
+WIFI_PASSPHRASE: "homepassword"
+WIFI_PASSPHRASE_1: "officepassword"
+WIFI_PASSPHRASE_2: "hotspotpassword"
+```
+
+The device will automatically try each network in order until one connects.
+
+**Recommendations:**
+- **Method 1 (WiFi Connect)** - Best for initial setup or when you can't access the device remotely
+- **Method 2 (nmcli)** - Best for remote management when device is already online
+- **Web UI (port 8080)** - Best for all configuration changes including WiFi credentials
 
 ## 🎨 Customization
 
