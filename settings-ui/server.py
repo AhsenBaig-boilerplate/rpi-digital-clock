@@ -131,70 +131,73 @@ def login_required(f):
 
 
 def get_current_config():
-    """Fetch current device environment variables from Balena Supervisor API"""
+    """Load current configuration from file or environment variables"""
     try:
-        headers = {
-            'Authorization': f'Bearer {SUPERVISOR_API_KEY}',
-            'Content-Type': 'application/json'
-        }
+        import yaml
+        config_file = '/data/settings.yaml'
         
-        # Get device environment variables
-        response = requests.get(
-            f'{SUPERVISOR_ADDRESS}/v2/device/name',
-            headers=headers,
-            timeout=5
-        )
-        
-        if response.status_code == 200:
-            logger.info("Successfully fetched device configuration")
+        # Try to load from file first
+        if os.path.exists(config_file):
+            with open(config_file, 'r') as f:
+                file_config = yaml.safe_load(f) or {}
+            logger.info(f"Loaded configuration from {config_file}")
             
-            # For now, return defaults - in production would parse from API
+            # Merge with defaults
+            config = {}
+            for key, spec in CONFIG_OPTIONS.items():
+                config[key] = file_config.get(key, os.environ.get(key, spec['default']))
+            return config
+        else:
+            logger.info("No saved config file, using environment variables and defaults")
             config = {}
             for key, spec in CONFIG_OPTIONS.items():
                 config[key] = os.environ.get(key, spec['default'])
             return config
-        else:
-            logger.warning(f"Failed to fetch config: {response.status_code}")
-            return {key: spec['default'] for key, spec in CONFIG_OPTIONS.items()}
             
     except Exception as e:
-        logger.error(f"Error fetching config: {e}")
+        logger.error(f"Error loading config: {e}")
         return {key: spec['default'] for key, spec in CONFIG_OPTIONS.items()}
 
 
 def update_device_variables(updates):
-    """Update device environment variables via Balena Supervisor API"""
+    """Save configuration to shared config file"""
     try:
-        headers = {
-            'Authorization': f'Bearer {SUPERVISOR_API_KEY}',
-            'Content-Type': 'application/json'
-        }
+        import yaml
+        config_file = '/data/settings.yaml'
         
-        # Prepare all variables for bulk update
-        env_vars = {}
+        # Prepare configuration
+        config = {}
         for key, value in updates.items():
             # Convert checkbox values
             if CONFIG_OPTIONS[key]['type'] == 'checkbox':
-                value = 'true' if value else 'false'
-            env_vars[key] = str(value)
+                value = value if isinstance(value, bool) else (value == 'true' or value == True)
+            config[key] = value
         
-        # Update device environment variables using the correct endpoint
-        response = requests.patch(
-            f'{SUPERVISOR_ADDRESS}/v1/device',
-            headers=headers,
-            json={'environment': env_vars},
-            timeout=10
-        )
+        # Write to shared volume
+        os.makedirs('/data', exist_ok=True)
+        with open(config_file, 'w') as f:
+            yaml.safe_dump(config, f, default_flow_style=False)
         
-        if response.status_code == 200:
-            logger.info(f"Successfully updated {len(updates)} device variables")
-            return True
-        else:
-            logger.error(f"Failed to update variables: {response.status_code} - {response.text}")
-            return False
+        logger.info(f"Successfully saved {len(updates)} settings to {config_file}")
+        
+        # Trigger clock restart to apply new settings
+        try:
+            headers = {'Authorization': f'Bearer {SUPERVISOR_API_KEY}'}
+            response = requests.post(
+                f'{SUPERVISOR_ADDRESS}/v2/applications/{os.environ.get("BALENA_APP_ID", "")}/restart-service',
+                headers=headers,
+                json={'serviceName': 'clock'},
+                timeout=5
+            )
+            if response.status_code == 200:
+                logger.info("Triggered clock service restart")
+        except Exception as e:
+            logger.warning(f"Could not restart clock service: {e}")
+        
+        return True
         
     except Exception as e:
-        logger.error(f"Error updating variables: {e}")
+        logger.error(f"Error saving settings: {e}")
         return False
 
 

@@ -1947,10 +1947,52 @@ def main():
     
     # Load configuration
     CONFIG_PATH = Path(__file__).parent / "config.yaml"
+    SETTINGS_PATH = Path("/data/settings.yaml")
+    
     try:
+        # Load base configuration
         with open(CONFIG_PATH, 'r') as f:
             config = yaml.safe_load(f)
-        logging.info("Configuration loaded")
+        logging.info("Base configuration loaded from config.yaml")
+        
+        # Override with settings from UI if available
+        if SETTINGS_PATH.exists():
+            with open(SETTINGS_PATH, 'r') as f:
+                ui_settings = yaml.safe_load(f) or {}
+            logging.info(f"Loaded {len(ui_settings)} settings from settings UI")
+            
+            # Map UI setting names to config structure
+            # UI uses flat keys like WEATHER_ENABLED, config uses nested structure
+            if 'WEATHER_ENABLED' in ui_settings:
+                config['weather']['enabled'] = ui_settings['WEATHER_ENABLED']
+            if 'WEATHER_LOCATION' in ui_settings:
+                config['weather']['location'] = ui_settings['WEATHER_LOCATION']
+            if 'WEATHER_API_KEY' in ui_settings:
+                config['weather']['api_key'] = ui_settings['WEATHER_API_KEY']
+            if 'TIMEZONE' in ui_settings:
+                config['timezone'] = ui_settings['TIMEZONE']
+            if 'DISPLAY_COLOR' in ui_settings:
+                config['display']['color'] = ui_settings['DISPLAY_COLOR']
+            if 'TIME_FORMAT' in ui_settings:
+                config['time_format']['hour'] = '12' if ui_settings['TIME_FORMAT'] == '12' else '24'
+            if 'DISPLAY_DATE' in ui_settings:
+                config['display']['show_date'] = ui_settings['DISPLAY_DATE']
+            if 'SHIFT_ENABLED' in ui_settings:
+                config['burn_in_prevention']['enabled'] = ui_settings['SHIFT_ENABLED']
+            if 'SHIFT_INTERVAL' in ui_settings:
+                config['burn_in_prevention']['shift_interval_seconds'] = int(ui_settings['SHIFT_INTERVAL'])
+            if 'SHIFT_RANGE' in ui_settings:
+                config['burn_in_prevention']['max_shift_pixels'] = int(ui_settings['SHIFT_RANGE'])
+            if 'SCREENSAVER_ENABLED' in ui_settings:
+                config['screensaver']['enabled'] = ui_settings['SCREENSAVER_ENABLED']
+            if 'SCREENSAVER_START' in ui_settings:
+                start_hour = int(ui_settings['SCREENSAVER_START'].split(':')[0])
+                config['screensaver']['start_hour'] = start_hour
+            if 'SCREENSAVER_END' in ui_settings:
+                end_hour = int(ui_settings['SCREENSAVER_END'].split(':')[0])
+                config['screensaver']['end_hour'] = end_hour
+                
+        logging.info("Configuration loaded successfully")
     except Exception as e:
         logging.error(f"Error loading configuration: {e}")
         sys.exit(1)

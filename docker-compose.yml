@@ -65,8 +65,8 @@ services:
     
     # Volume mounts
     volumes:
-      # Persist configuration changes
-      - 'clock-config:/app/config'
+      # Persist configuration changes (shared with settings-ui)
+      - 'clock-config:/data'
     
     # Device access for display and optional hardware
     # All devices mounted so features can be enabled via env vars without redeployment
@@ -106,6 +106,7 @@ services:
       BALENA_SUPERVISOR_ADDRESS: "${BALENA_SUPERVISOR_ADDRESS}"
       BALENA_SUPERVISOR_API_KEY: "${BALENA_SUPERVISOR_API_KEY}"
       BALENA_DEVICE_UUID: "${BALENA_DEVICE_UUID}"
+      BALENA_APP_ID: "${BALENA_APP_ID}"
       PORT: "8080"
       # Security: Set SETTINGS_PASSWORD to require authentication (recommended!)
       # If not set, anyone on WiFi can access settings without password
@@ -114,8 +115,7 @@ services:
       io.balena.features.supervisor-api: '1'
       io.balena.features.balena-api: '1'
     volumes:
-      - 'settings-data:/data'
+      - 'clock-config:/data'  # Shared with clock service
 
 volumes:
   clock-config:
-  settings-data:
