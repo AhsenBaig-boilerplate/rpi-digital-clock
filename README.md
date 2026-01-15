@@ -129,22 +129,78 @@ After deployment, you **must** configure variables in your balena dashboard. The
 | `NIGHT_START_HOUR` | `22` | Night start hour |
 | `NIGHT_END_HOUR` | `6` | Night end hour |
 
-#### WiFi Configuration (Device Variables)
+#### WiFi Configuration
 
-Configure WiFi networks without reflashing the SD card:
+**Method 1: Dynamic WiFi Change (No Reboot Required)**
+
+Use balenaOS's NetworkManager via D-Bus to change WiFi without rebooting:
+
+```bash
+# SSH into device
+balena ssh <device-uuid>
+
+# Switch to host OS
+balena ssh <device-uuid> host
+
+# Connect to new WiFi network
+nmcli device wifi connect "NetworkName" password "password123"
+
+# Or scan and connect
+nmcli device wifi list
+nmcli device wifi connect "NetworkName" password "password123"
+```
+
+**Method 2: WiFi Connect (Captive Portal)**
+
+For user-friendly WiFi setup, use [Balena WiFi Connect](https://github.com/balena-io/wifi-connect) - creates a captive portal when WiFi is unavailable. Add to your fleet:
+
+```yaml
+# In docker-compose.yml, add wifi-connect service
+wifi-connect:
+  image: bh.cr/balenalabs/wifi-connect-arm
+  network_mode: host
+  labels:
+    io.balena.features.dbus: '1'
+    io.balena.features.firmware: '1'
+  cap_add:
+    - NET_ADMIN
+  environment:
+    DBUS_SYSTEM_BUS_ADDRESS: "unix:path=/host/run/dbus/system_bus_socket"
+```
+
+**Method 3: Device Variables (Requires Reboot)**
+
+Set WiFi via device variables (device will reboot to apply):
 
 | Variable Name | Description | Example |
 |--------------|-------------|---------|
 | `BALENA_HOST_CONFIG_wifi_ssid` | WiFi network name | `MyHomeNetwork` |
+| `BALENA_HOST_CONFIG_wifi_ssid_1` | Second network (fallback) | `OfficeNetwork` |
 | `BALENA_HOST_CONFIG_wifi_psk` | WiFi password | `mypassword123` |
+| `BALENA_HOST_CONFIG_wifi_psk_1` | Second network password | `officepass456` |
 
-**To change WiFi network:**
+**To change WiFi network (Method 3):**
 1. Go to Device Variables in Balena dashboard
 2. Add/update `BALENA_HOST_CONFIG_wifi_ssid` with your network name
 3. Add/update `BALENA_HOST_CONFIG_wifi_psk` with your password
 4. Device will reboot and connect to new network
 
-**Multiple WiFi networks**: For multiple networks (home, office, etc.), see [Balena WiFi Connect](https://github.com/balena-io/wifi-connect).
+**Multiple WiFi Networks (Automatic Fallback):**
+
+Configure multiple networks by adding `_1`, `_2`, etc. suffixes:
+
+```
+BALENA_HOST_CONFIG_wifi_ssid = "HomeNetwork"
+BALENA_HOST_CONFIG_wifi_psk = "homepass"
+BALENA_HOST_CONFIG_wifi_ssid_1 = "OfficeNetwork"
+BALENA_HOST_CONFIG_wifi_psk_1 = "officepass"
+BALENA_HOST_CONFIG_wifi_ssid_2 = "MobileHotspot"
+BALENA_HOST_CONFIG_wifi_psk_2 = "mobilepass"
+```
+
+Device will automatically try networks in order and connect to the first available.
+
+💡 **Recommendation**: Use Method 1 (nmcli) for quick changes, Method 2 (WiFi Connect) for user-friendly setup, Method 3 for pre-configured deployments.
 
 💡 **Multi-Device Setup:** Use Fleet Variables for common settings (like API key) and Device Variables for location-specific settings (like `WEATHER_LOCATION`).
 
