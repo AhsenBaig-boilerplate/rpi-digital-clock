@@ -294,7 +294,8 @@ Access the settings UI from any device on the same network:
 
 1. **Find your device IP**: Check your balena dashboard or router
 2. **Open settings page**: Navigate to `http://<device-ip>:8080`
-3. **Configure settings**: Use the web form to adjust:
+3. **Login (if enabled)**: Enter password if `SETTINGS_PASSWORD` is set
+4. **Configure settings**: Use the web form to adjust:
    - Weather location and API key
    - Timezone and time format
    - Display colors and date format
@@ -302,6 +303,27 @@ Access the settings UI from any device on the same network:
    - Screensaver schedule
 
 Changes take effect after the clock restarts (automatically triggered by balena).
+
+#### 🔒 Security (IMPORTANT!)
+
+**By default, the settings page has NO password protection!** Anyone on your WiFi network can access it.
+
+**To enable password protection:**
+
+1. Go to your balena dashboard → Device Variables
+2. Add variable: `SETTINGS_PASSWORD` = `your_secure_password`
+3. The settings page will now require login
+
+**Recommendations:**
+- ✅ **Set a password** if your WiFi has guests or untrusted users
+- ✅ Use a strong password (at least 12 characters)
+- ⚠️ Without a password, anyone on WiFi can change settings
+- 💡 Password is optional for private home networks
+
+**Alternative security options:**
+- Disable the settings-ui service entirely in [docker-compose.yml](docker-compose.yml)
+- Use firewall rules to restrict access to port 8080
+- Only enable when needed, then remove the service
 
 ### 📝 Configuration File
 

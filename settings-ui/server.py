@@ -5,10 +5,13 @@ Runs on port 8080 and provides a simple form to update device variables
 """
 import os
 import logging
+import secrets
 import requests
-from flask import Flask, render_template, request, jsonify
+from functools import wraps
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -16,6 +19,10 @@ logger = logging.getLogger(__name__)
 SUPERVISOR_ADDRESS = os.environ.get('BALENA_SUPERVISOR_ADDRESS', 'http://127.0.0.1:48484')
 SUPERVISOR_API_KEY = os.environ.get('BALENA_SUPERVISOR_API_KEY', '')
 DEVICE_UUID = os.environ.get('BALENA_DEVICE_UUID', '')
+
+# Security configuration
+SETTINGS_PASSWORD = os.environ.get('SETTINGS_PASSWORD', '')  # If empty, no authentication required
+AUTH_ENABLED = bool(SETTINGS_PASSWORD)
 
 # Configuration options with defaults
 CONFIG_OPTIONS = {
@@ -113,6 +120,16 @@ CONFIG_OPTIONS = {
 }
 
 
+def login_required(f):
+    """Decorator to require authentication if password is set"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if AUTH_ENABLED and not session.get('authenticated'):
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 def get_current_config():
     """Fetch current device environment variables from Balena Supervisor API"""
     try:
@@ -180,22 +197,52 @@ def update_device_variables(updates):
         return False
 
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page"""
+    if not AUTH_ENABLED:
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        if password == SETTINGS_PASSWORD:
+            session['authenticated'] = True
+            logger.info("Successful login attempt")
+            return redirect(url_for('index'))
+        else:
+            logger.warning("Failed login attempt")
+            return render_template('login.html', error='Invalid password')
+    
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    """Logout and clear session"""
+    session.pop('authenticated', None)
+    return redirect(url_for('login'))
+
+
 @app.route('/')
+@login_required
 def index():
     """Render the settings form"""
     current_config = get_current_config()
     return render_template('index.html', 
                           config=CONFIG_OPTIONS,
-                          current=current_config)
+                          current=current_config,
+                          auth_enabled=AUTH_ENABLED)
 
 
 @app.route('/api/config', methods=['GET'])
+@login_required
 def get_config():
     """API endpoint to get current configuration"""
     return jsonify(get_current_config())
 
 
 @app.route('/api/config', methods=['POST'])
+@login_required
 def save_config():
     """API endpoint to save configuration"""
     try:
@@ -232,5 +279,8 @@ def health():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    logger.info(f"Starting settings UI server on port {port}")
+    if AUTH_ENABLED:
+        logger.info(f"Starting settings UI server on port {port} (password protection enabled)")
+    else:
+        logger.warning(f"Starting settings UI server on port {port} (NO PASSWORD PROTECTION - set SETTINGS_PASSWORD to enable)")
     app.run(host='0.0.0.0', port=port, debug=False)

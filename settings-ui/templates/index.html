@@ -33,6 +33,25 @@
             color: white;
             padding: 30px;
             text-align: center;
+            position: relative;
+        }
+        
+        .logout-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            color: white;
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .logout-btn:hover {
+            background: rgba(255,255,255,0.3);
         }
         
         .header h1 {
@@ -213,6 +232,9 @@
 <body>
     <div class="container">
         <div class="header">
+            {% if auth_enabled %}
+            <a href="/logout" class="logout-btn">🔒 Logout</a>
+            {% endif %}
             <h1>⏰ Digital Clock Settings</h1>
             <p>Configure your Raspberry Pi clock display</p>
         </div>

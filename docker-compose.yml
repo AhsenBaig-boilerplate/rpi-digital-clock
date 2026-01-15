@@ -111,6 +111,9 @@ services:
       BALENA_SUPERVISOR_API_KEY: "${BALENA_SUPERVISOR_API_KEY}"
       BALENA_DEVICE_UUID: "${BALENA_DEVICE_UUID}"
       PORT: "8080"
+      # Security: Set SETTINGS_PASSWORD to require authentication (recommended!)
+      # If not set, anyone on WiFi can access settings without password
+      SETTINGS_PASSWORD: ""  # Set this to enable password protection!
     labels:
       io.balena.features.supervisor-api: '1'
       io.balena.features.balena-api: '1'
