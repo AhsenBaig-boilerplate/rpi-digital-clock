@@ -1,0 +1,12 @@
+FROM balenalib/%%BALENA_ARCH%%-debian:bookworm
+
+# Install dependencies
+RUN install_packages dnsmasq wireless-tools wget
+
+# Download and install wifi-connect
+WORKDIR /usr/src/app
+RUN curl -Ls "https://github.com/balena-os/wifi-connect/releases/download/v4.11.84/wifi-connect-v4.11.84-linux-%%BALENA_ARCH%%.tar.gz" \
+    | tar -xvz -C  /usr/src/app/
+
+# Start wifi-connect
+CMD /usr/src/app/wifi-connect
