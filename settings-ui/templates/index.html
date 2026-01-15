@@ -198,6 +198,12 @@
             border: 1px solid #c3e6cb;
         }
         
+        .message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
         .message.error {
             background: #f8d7da;
             color: #721c24;
@@ -366,6 +372,7 @@
                 
                 <div class="button-group">
                     <button type="button" class="btn-secondary" onclick="resetForm()">Reset</button>
+                    <button type="button" class="btn-secondary" onclick="restartClock()">🔄 Restart Clock</button>
                     <button type="submit" class="btn-primary">💾 Save Settings</button>
                 </div>
             </form>
@@ -375,6 +382,29 @@
     <script>
         const form = document.getElementById('settingsForm');
         const messageDiv = document.getElementById('message');
+        
+        async function restartClock() {
+            showMessage('Restarting clock service...', 'info');
+            
+            try {
+                const response = await fetch('/api/restart-clock', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    showMessage('✓ Clock service restarted successfully!', 'success');
+                } else {
+                    showMessage('Failed to restart clock: ' + (result.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                showMessage('Error restarting clock: ' + error.message, 'error');
+            }
+        }
         
         form.addEventListener('submit', async (e) => {
             e.preventDefault();

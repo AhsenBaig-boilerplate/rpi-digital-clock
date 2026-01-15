@@ -181,23 +181,55 @@ def update_device_variables(updates):
         logger.info(f"Successfully saved {len(updates)} settings to {config_file}")
         
         # Trigger clock restart to apply new settings
+        # Try multiple approaches to restart the clock service
+        restart_success = False
+        
         try:
-            app_id = os.environ.get("BALENA_APP_ID", "")
-            if app_id and SUPERVISOR_ADDRESS and SUPERVISOR_API_KEY:
-                url = f"{SUPERVISOR_ADDRESS}/v2/applications/{app_id}/restart-service?apikey={SUPERVISOR_API_KEY}"
-                response = requests.post(
-                    url,
-                    json={'serviceName': 'clock'},
-                    timeout=5
-                )
-                if response.status_code == 200:
-                    logger.info("Triggered clock service restart")
-                else:
-                    logger.warning(f"Restart service failed: {response.status_code} - {response.text}")
+            if SUPERVISOR_ADDRESS and SUPERVISOR_API_KEY:
+                # Method 1: Try with BALENA_APP_ID if available
+                app_id = os.environ.get("BALENA_APP_ID", "")
+                if app_id:
+                    url = f"{SUPERVISOR_ADDRESS}/v2/applications/{app_id}/restart-service?apikey={SUPERVISOR_API_KEY}"
+                    response = requests.post(
+                        url,
+                        json={'serviceName': 'clock'},
+                        timeout=5
+                    )
+                    if response.status_code == 200:
+                        logger.info("Triggered clock service restart via app ID")
+                        restart_success = True
+                    else:
+                        logger.warning(f"Restart via app ID failed: {response.status_code} - {response.text}")
+                
+                # Method 2: Fallback to restart via v1/restart endpoint (restarts all services in app)
+                if not restart_success:
+                    # Get the current app state to find the correct app ID
+                    state_url = f"{SUPERVISOR_ADDRESS}/v2/applications/state?apikey={SUPERVISOR_API_KEY}"
+                    state_response = requests.get(state_url, timeout=5)
+                    if state_response.status_code == 200:
+                        apps = state_response.json()
+                        # Find the first app (should be only one in single-app fleets)
+                        for app_name, app_data in apps.items():
+                            found_app_id = app_data.get('appId')
+                            if found_app_id:
+                                restart_url = f"{SUPERVISOR_ADDRESS}/v2/applications/{found_app_id}/restart-service?apikey={SUPERVISOR_API_KEY}"
+                                restart_response = requests.post(
+                                    restart_url,
+                                    json={'serviceName': 'clock'},
+                                    timeout=5
+                                )
+                                if restart_response.status_code == 200:
+                                    logger.info(f"Triggered clock service restart via detected app ID: {found_app_id}")
+                                    restart_success = True
+                                    break
+                
+                if not restart_success:
+                    logger.warning("Could not restart clock service automatically. Please restart manually or changes will apply on next reboot.")
             else:
-                logger.warning("Missing BALENA_APP_ID or supervisor env; skip restart")
+                logger.warning("Missing supervisor env; skip restart")
         except Exception as e:
             logger.warning(f"Could not restart clock service: {e}")
+
         
         return True
         
@@ -284,6 +316,54 @@ def save_config():
 def health():
     """Health check endpoint"""
     return jsonify({'status': 'ok'})
+
+
+@app.route('/api/restart-clock', methods=['POST'])
+@login_required
+def restart_clock():
+    """Manual endpoint to restart the clock service"""
+    try:
+        if not SUPERVISOR_ADDRESS or not SUPERVISOR_API_KEY:
+            return jsonify({
+                'success': False,
+                'error': 'Supervisor API not available'
+            }), 500
+        
+        # Get current app state
+        state_url = f"{SUPERVISOR_ADDRESS}/v2/applications/state?apikey={SUPERVISOR_API_KEY}"
+        state_response = requests.get(state_url, timeout=5)
+        
+        if state_response.status_code == 200:
+            apps = state_response.json()
+            for app_name, app_data in apps.items():
+                app_id = app_data.get('appId')
+                if app_id:
+                    restart_url = f"{SUPERVISOR_ADDRESS}/v2/applications/{app_id}/restart-service?apikey={SUPERVISOR_API_KEY}"
+                    restart_response = requests.post(
+                        restart_url,
+                        json={'serviceName': 'clock'},
+                        timeout=5
+                    )
+                    if restart_response.status_code == 200:
+                        logger.info(f"Manually triggered clock restart for app {app_id}")
+                        return jsonify({
+                            'success': True,
+                            'message': 'Clock service restarted successfully'
+                        })
+                    else:
+                        return jsonify({
+                            'success': False,
+                            'error': f'Restart failed: {restart_response.text}'
+                        }), 500
+        
+        return jsonify({
+            'success': False,
+            'error': 'Could not determine app ID'
+        }), 500
+        
+    except Exception as e:
+        logger.error(f"Error restarting clock: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 if __name__ == '__main__':
