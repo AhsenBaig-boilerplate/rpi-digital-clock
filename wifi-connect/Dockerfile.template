@@ -7,14 +7,16 @@ RUN install_packages dnsmasq wireless-tools wget
 WORKDIR /usr/src/app
 
 # Map balena arch to Rust target triple and download wifi-connect
-RUN if [ "%%BALENA_ARCH%%" = "raspberrypi" ] || [ "%%BALENA_ARCH%%" = "raspberry-pi" ] || [ "%%BALENA_ARCH%%" = "rpi" ]; then \
+RUN if [ "%%BALENA_ARCH%%" = "rpi" ]; then \
+      ARCH="arm-unknown-linux-gnueabihf"; \
+    elif [ "%%BALENA_ARCH%%" = "armv7hf" ] || [ "%%BALENA_ARCH%%" = "raspberrypi3" ]; then \
       ARCH="armv7-unknown-linux-gnueabihf"; \
-    elif [ "%%BALENA_ARCH%%" = "raspberrypi3" ] || [ "%%BALENA_ARCH%%" = "raspberrypi4-64" ] || [ "%%BALENA_ARCH%%" = "aarch64" ]; then \
+    elif [ "%%BALENA_ARCH%%" = "aarch64" ] || [ "%%BALENA_ARCH%%" = "raspberrypi4-64" ]; then \
       ARCH="aarch64-unknown-linux-gnu"; \
     elif [ "%%BALENA_ARCH%%" = "amd64" ] || [ "%%BALENA_ARCH%%" = "intel-nuc" ]; then \
       ARCH="x86_64-unknown-linux-gnu"; \
     else \
-      ARCH="armv7-unknown-linux-gnueabihf"; \
+      ARCH="arm-unknown-linux-gnueabihf"; \
     fi && \
     curl -Ls "https://github.com/balena-os/wifi-connect/releases/download/v4.11.84/wifi-connect-${ARCH}.tar.gz" \
     | tar -xvz -C /usr/src/app/
