@@ -182,15 +182,20 @@ def update_device_variables(updates):
         
         # Trigger clock restart to apply new settings
         try:
-            headers = {'Authorization': f'Bearer {SUPERVISOR_API_KEY}'}
-            response = requests.post(
-                f'{SUPERVISOR_ADDRESS}/v2/applications/{os.environ.get("BALENA_APP_ID", "")}/restart-service',
-                headers=headers,
-                json={'serviceName': 'clock'},
-                timeout=5
-            )
-            if response.status_code == 200:
-                logger.info("Triggered clock service restart")
+            app_id = os.environ.get("BALENA_APP_ID", "")
+            if app_id and SUPERVISOR_ADDRESS and SUPERVISOR_API_KEY:
+                url = f"{SUPERVISOR_ADDRESS}/v2/applications/{app_id}/restart-service?apikey={SUPERVISOR_API_KEY}"
+                response = requests.post(
+                    url,
+                    json={'serviceName': 'clock'},
+                    timeout=5
+                )
+                if response.status_code == 200:
+                    logger.info("Triggered clock service restart")
+                else:
+                    logger.warning(f"Restart service failed: {response.status_code} - {response.text}")
+            else:
+                logger.warning("Missing BALENA_APP_ID or supervisor env; skip restart")
         except Exception as e:
             logger.warning(f"Could not restart clock service: {e}")
         

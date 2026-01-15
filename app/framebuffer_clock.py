@@ -1970,27 +1970,42 @@ def main():
             if 'WEATHER_API_KEY' in ui_settings:
                 config['weather']['api_key'] = ui_settings['WEATHER_API_KEY']
             if 'TIMEZONE' in ui_settings:
-                config['timezone'] = ui_settings['TIMEZONE']
+                config.setdefault('time', {})
+                config['time']['timezone'] = ui_settings['TIMEZONE']
             if 'DISPLAY_COLOR' in ui_settings:
                 config['display']['color'] = ui_settings['DISPLAY_COLOR']
             if 'TIME_FORMAT' in ui_settings:
-                config['time_format']['hour'] = '12' if ui_settings['TIME_FORMAT'] == '12' else '24'
-            if 'DISPLAY_DATE' in ui_settings:
-                config['display']['show_date'] = ui_settings['DISPLAY_DATE']
+                # '12' or '24' from UI -> boolean in config
+                config.setdefault('time', {})
+                config['time']['format_12h'] = (str(ui_settings['TIME_FORMAT']) == '12')
+            # DISPLAY_DATE not supported explicitly; leave for future
             if 'SHIFT_ENABLED' in ui_settings:
-                config['burn_in_prevention']['enabled'] = ui_settings['SHIFT_ENABLED']
+                config.setdefault('display', {})
+                config['display']['pixel_shift_enabled'] = bool(ui_settings['SHIFT_ENABLED'])
             if 'SHIFT_INTERVAL' in ui_settings:
-                config['burn_in_prevention']['shift_interval_seconds'] = int(ui_settings['SHIFT_INTERVAL'])
-            if 'SHIFT_RANGE' in ui_settings:
-                config['burn_in_prevention']['max_shift_pixels'] = int(ui_settings['SHIFT_RANGE'])
+                config.setdefault('display', {})
+                try:
+                    config['display']['pixel_shift_interval_seconds'] = int(ui_settings['SHIFT_INTERVAL'])
+                except Exception:
+                    pass
+            # SHIFT_RANGE not present in config; ignore
             if 'SCREENSAVER_ENABLED' in ui_settings:
-                config['screensaver']['enabled'] = ui_settings['SCREENSAVER_ENABLED']
+                config.setdefault('display', {})
+                config['display']['screensaver_enabled'] = bool(ui_settings['SCREENSAVER_ENABLED'])
             if 'SCREENSAVER_START' in ui_settings:
-                start_hour = int(ui_settings['SCREENSAVER_START'].split(':')[0])
-                config['screensaver']['start_hour'] = start_hour
+                try:
+                    start_hour = int(str(ui_settings['SCREENSAVER_START']).split(':')[0])
+                    config.setdefault('display', {})
+                    config['display']['screensaver_start_hour'] = start_hour
+                except Exception:
+                    pass
             if 'SCREENSAVER_END' in ui_settings:
-                end_hour = int(ui_settings['SCREENSAVER_END'].split(':')[0])
-                config['screensaver']['end_hour'] = end_hour
+                try:
+                    end_hour = int(str(ui_settings['SCREENSAVER_END']).split(':')[0])
+                    config.setdefault('display', {})
+                    config['display']['screensaver_end_hour'] = end_hour
+                except Exception:
+                    pass
                 
         logging.info("Configuration loaded successfully")
     except Exception as e:

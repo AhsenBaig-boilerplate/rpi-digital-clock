@@ -78,7 +78,7 @@ services:
 
   # WiFi Connect service - provides captive portal for WiFi and settings configuration
   wifi-connect:
-    build: ./wifi-connect
+    image: bh.cr/balenalabs/wifi-connect-%%BALENA_ARCH%%
     restart: on-failure
     network_mode: host
     privileged: true
