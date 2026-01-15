@@ -78,7 +78,7 @@ services:
 
   # WiFi Connect service - provides captive portal for WiFi and settings configuration
   wifi-connect:
-    image: balenablocks/wifi-connect:raspberrypi
+    image: ghcr.io/balena-os/wifi-connect:v4.11.84
     restart: on-failure
     network_mode: host
     privileged: true
