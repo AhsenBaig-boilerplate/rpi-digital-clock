@@ -588,7 +588,18 @@ class FramebufferClock:
             self._time_canvas_width = max_width
         
         canvas_width = self._time_canvas_width
+        
+        # Ensure canvas is wide enough for current time string
+        if total_width > canvas_width:
+            logging.warning(f"Time string too wide ({total_width}px) for canvas ({canvas_width}px), expanding canvas")
+            canvas_width = total_width
+            self._time_canvas_width = canvas_width
+        
         x_start = (canvas_width - total_width) // 2
+        
+        # Sanity check: x_start should never be negative or too large
+        if x_start < 0 or x_start > canvas_width:
+            x_start = 0
         
         # Create RGB565 canvas directly (no PIL Image intermediate)
         canvas_rgb565 = np.zeros((canvas_height, canvas_width), dtype=np.uint16)
@@ -623,12 +634,30 @@ class FramebufferClock:
                 # Clip sprite to fit within canvas
                 sw_clipped = canvas_width - x_offset
                 if sw_clipped <= 0:
+                    logging.warning(f"Sprite overflow: x_offset={x_offset}, sw={sw}, canvas_width={canvas_width}")
                     break  # No room left
+                logging.debug(f"Clipping sprite from {sw}px to {sw_clipped}px")
                 sprite_data = sprite_data[:, :sw_clipped]
                 sw = sw_clipped
             
+            # Additional safety checks
+            if y_off < 0 or y_off + sh > canvas_height:
+                logging.warning(f"Vertical bounds violation: y_off={y_off}, sh={sh}, canvas_height={canvas_height}")
+                continue
+            
+            if x_offset < 0 or x_offset >= canvas_width:
+                logging.warning(f"Horizontal bounds violation: x_offset={x_offset}, canvas_width={canvas_width}")
+                break
+            
             # Blit into canvas
-            canvas_rgb565[y_off:y_off+sh, x_offset:x_offset+sw] = sprite_data
+            try:
+                canvas_rgb565[y_off:y_off+sh, x_offset:x_offset+sw] = sprite_data
+            except ValueError as e:
+                logging.error(f"Blit failed: canvas shape={canvas_rgb565.shape}, "
+                            f"sprite shape={sprite_data.shape}, "
+                            f"y_off={y_off}, y_end={y_off+sh}, "
+                            f"x_offset={x_offset}, x_end={x_offset+sw}, error={e}")
+                raise
             x_offset += sw
         
         return (canvas_rgb565, canvas_width, canvas_height)
@@ -674,7 +703,18 @@ class FramebufferClock:
             self._date_canvas_width = max_width
         
         canvas_width = self._date_canvas_width
+        
+        # Ensure canvas is wide enough for current date string
+        if total_width > canvas_width:
+            logging.warning(f"Date string too wide ({total_width}px) for canvas ({canvas_width}px), expanding canvas")
+            canvas_width = total_width
+            self._date_canvas_width = canvas_width
+        
         x_start = (canvas_width - total_width) // 2
+        
+        # Sanity check: x_start should never be negative or too large
+        if x_start < 0 or x_start > canvas_width:
+            x_start = 0
         
         # Create RGB565 canvas directly
         canvas_rgb565 = np.zeros((canvas_height, canvas_width), dtype=np.uint16)
@@ -707,12 +747,29 @@ class FramebufferClock:
                 # Clip sprite to fit within canvas
                 sw_clipped = canvas_width - x_offset
                 if sw_clipped <= 0:
+                    logging.warning(f"Date sprite overflow: x_offset={x_offset}, sw={sw}, canvas_width={canvas_width}")
                     break  # No room left
                 sprite_data = sprite_data[:, :sw_clipped]
                 sw = sw_clipped
             
+            # Additional safety checks
+            if y_off < 0 or y_off + sh > canvas_height:
+                logging.warning(f"Date vertical bounds violation: y_off={y_off}, sh={sh}, canvas_height={canvas_height}")
+                continue
+            
+            if x_offset < 0 or x_offset >= canvas_width:
+                logging.warning(f"Date horizontal bounds violation: x_offset={x_offset}, canvas_width={canvas_width}")
+                break
+            
             # Blit into canvas
-            canvas_rgb565[y_off:y_off+sh, x_offset:x_offset+sw] = sprite_data
+            try:
+                canvas_rgb565[y_off:y_off+sh, x_offset:x_offset+sw] = sprite_data
+            except ValueError as e:
+                logging.error(f"Date blit failed: canvas shape={canvas_rgb565.shape}, "
+                            f"sprite shape={sprite_data.shape}, "
+                            f"y_off={y_off}, y_end={y_off+sh}, "
+                            f"x_offset={x_offset}, x_end={x_offset+sw}, error={e}")
+                raise
             x_offset += sw
         
         return (canvas_rgb565, canvas_width, canvas_height)
