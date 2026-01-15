@@ -9,9 +9,11 @@ import secrets
 import requests
 from functools import wraps
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask_cors import CORS
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+CORS(app)  # Enable CORS for all routes
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
