@@ -4,8 +4,6 @@ run-name: "${{ github.event.head_commit.message }}"
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
 
@@ -21,64 +19,19 @@ jobs:
       - name: Get version from Git
         id: version
         run: |
-          # Check if we're on a tag already
-          CURRENT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "")
+          # We're always on a tag since workflow only triggers on tag pushes
+          VERSION="${GITHUB_REF_NAME}"
+          BASE_VERSION="${VERSION}"
           
-          if [ -n "$CURRENT_TAG" ]; then
-            # Already on a tag, use it
-            VERSION="$CURRENT_TAG"
-            BASE_VERSION="$CURRENT_TAG"
-            echo "Using existing tag: $VERSION"
-            echo "is_tagged=true" >> $GITHUB_OUTPUT
-          else
-            # Check if this commit already has a tag (but we're building from main ref)
-            COMMIT_TAGS=$(git tag --points-at HEAD | grep '^v' || echo "")
-            
-            if [ -n "$COMMIT_TAGS" ]; then
-              # This commit is already tagged - skip main branch build
-              echo "⚠️  Commit already tagged with: $COMMIT_TAGS"
-              echo "Skipping duplicate build for main branch (tag build will handle deployment)"
-              echo "skip_build=true" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-            
-            # Not on a tag - auto-increment patch version for main branch pushes
-            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.4.0")
-            echo "Latest tag: $LATEST_TAG"
-            
-            # Strip 'v' prefix and parse MAJOR.MINOR.PATCH
-            VERSION_NUMBER="${LATEST_TAG#v}"
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NUMBER"
-            
-            # Increment patch version
-            NEW_PATCH=$((PATCH + 1))
-            NEW_VERSION="v${MAJOR}.${MINOR}.${NEW_PATCH}"
-            
-            echo "Auto-incrementing: $LATEST_TAG -> $NEW_VERSION"
-            
-            VERSION="$NEW_VERSION"
-            BASE_VERSION="$NEW_VERSION"
-            echo "is_tagged=false" >> $GITHUB_OUTPUT
-            echo "skip_build=false" >> $GITHUB_OUTPUT
-            
-            # Create and push the new tag
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag -a "$NEW_VERSION" -m "Auto-release $NEW_VERSION from commit ${{ github.sha }}"
-            git push origin "$NEW_VERSION" || echo "Tag push failed (may already exist)"
-          fi
-          
+          echo "Deploying version: ${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "base_version=${BASE_VERSION}" >> $GITHUB_OUTPUT
-          echo "Deploying version: ${VERSION}"
-          echo "Base version for balena.yml: ${BASE_VERSION}"
           
-          # Also compute and output display version immediately
+          # Compute display version (strip 'v' prefix)
           DV_NO_V="${VERSION#v}"
           echo "display_version=${DV_NO_V}" >> $GITHUB_OUTPUT
 
       - name: Annotate workflow with version
-        if: steps.version.outputs.skip_build != 'true'
         run: |
           # Get commit subject line
           SUBJECT=$(git log -1 --pretty=%s)
@@ -97,7 +50,6 @@ jobs:
           echo "::notice title=${DV_NO_V}::${SUBJECT}"
 
       - name: Compute release title
-        if: steps.version.outputs.skip_build != 'true'
         id: release_title
         run: |
           # Get commit subject line
@@ -108,7 +60,6 @@ jobs:
           echo "title=${TITLE}" >> $GITHUB_OUTPUT
 
       - name: Generate build-info.json (embedded in image)
-        if: steps.version.outputs.skip_build != 'true'
         run: |
           mkdir -p app
           cat > app/build-info.json <<JSON
@@ -126,14 +77,12 @@ jobs:
           echo "Embedded build-info.json:" && cat app/build-info.json
 
       - name: Update balena.yml with version
-        if: steps.version.outputs.skip_build != 'true'
         run: |
           # Use base version without +rev suffix (balena adds that automatically)
           sed -i "s/<version>/${{ steps.version.outputs.base_version }}/g" balena.yml
           cat balena.yml
 
       - name: Deploy to balena
-        if: steps.version.outputs.skip_build != 'true'
         uses: balena-io/deploy-to-balena-action@master
         id: build
         with:
@@ -141,14 +90,12 @@ jobs:
           fleet: ${{ secrets.BALENA_FLEET }}
 
       - name: Log release info
-        if: steps.version.outputs.skip_build != 'true'
         run: |
           echo "Built release ID: ${{ steps.build.outputs.release_id }}"
           echo "Release version: ${{ steps.build.outputs.version }}"
           echo "Git version: ${{ steps.version.outputs.version }}"
 
       - name: Install jq and balena CLI
-        if: steps.version.outputs.skip_build != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
@@ -156,14 +103,13 @@ jobs:
           balena version
 
       - name: Login to balena (CLI)
-        if: steps.version.outputs.skip_build != 'true'
         env:
           BALENA_TOKEN: ${{ secrets.BALENA_TOKEN }}
         run: |
           balena login --token "$BALENA_TOKEN"
 
       - name: Tag balena release with GitHub info
-        if: steps.version.outputs.skip_build != 'true' && steps.build.outputs.release_id
+        if: steps.build.outputs.release_id
         env:
           RELEASE_ID: ${{ steps.build.outputs.release_id }}
         run: |
@@ -174,7 +120,6 @@ jobs:
           balena tag set --release "$RELEASE_ID" github.run_url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - name: Write build-metadata.json (artifact)
-        if: steps.version.outputs.skip_build != 'true'
         run: |
           cat > build-metadata.json <<JSON
           {
@@ -191,14 +136,12 @@ jobs:
           echo "Build metadata artifact: " && cat build-metadata.json
 
       - name: Upload build metadata artifact
-        if: steps.version.outputs.skip_build != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: build-metadata
           path: build-metadata.json
 
       - name: Create GitHub Release with prefixed title
-        if: steps.version.outputs.skip_build != 'true'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.version }}

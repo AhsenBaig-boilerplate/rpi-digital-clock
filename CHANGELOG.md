@@ -5,6 +5,26 @@ All notable changes to the Raspberry Pi Digital Clock project will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.122] - 2026-01-12
+
+### Changed
+- **Simplified GitHub Actions workflow**: Only triggers on tag pushes now
+  - Removed `main` branch trigger - workflow only runs on `v*` tags
+  - No more duplicate workflows or special procedures needed
+  - Use normal git workflow: commit, tag, push (main + tags together)
+  - Removed all `skip_build` logic (no longer needed)
+  - Simplified version detection (always on a tag)
+
+### Removed
+- Helper script `scripts/tag-and-push.sh` (no longer needed)
+- Complex branch vs tag detection logic in workflow
+- Documentation about avoiding `git push origin main --tags`
+
+### Technical Details
+- **Old behavior**: Triggered on both main branch AND tags → duplicate runs
+- **New behavior**: Triggers ONLY on tags → single deployment per release
+- This is the standard pattern for release workflows
+
 ## [1.4.121] - 2026-01-12
 
 ### Added

@@ -129,6 +129,23 @@ After deployment, you **must** configure variables in your balena dashboard. The
 | `NIGHT_START_HOUR` | `22` | Night start hour |
 | `NIGHT_END_HOUR` | `6` | Night end hour |
 
+#### WiFi Configuration (Device Variables)
+
+Configure WiFi networks without reflashing the SD card:
+
+| Variable Name | Description | Example |
+|--------------|-------------|---------|
+| `BALENA_HOST_CONFIG_wifi_ssid` | WiFi network name | `MyHomeNetwork` |
+| `BALENA_HOST_CONFIG_wifi_psk` | WiFi password | `mypassword123` |
+
+**To change WiFi network:**
+1. Go to Device Variables in Balena dashboard
+2. Add/update `BALENA_HOST_CONFIG_wifi_ssid` with your network name
+3. Add/update `BALENA_HOST_CONFIG_wifi_psk` with your password
+4. Device will reboot and connect to new network
+
+**Multiple WiFi networks**: For multiple networks (home, office, etc.), see [Balena WiFi Connect](https://github.com/balena-io/wifi-connect).
+
 💡 **Multi-Device Setup:** Use Fleet Variables for common settings (like API key) and Device Variables for location-specific settings (like `WEATHER_LOCATION`).
 
 💡 **Variable Prefix:** You can use either `WEATHER_API_KEY` or `BALENA_WEATHER_API_KEY` - both work!
@@ -607,54 +624,30 @@ This ensures you can always trace a running instance back to the exact source co
 
 This project follows [Semantic Versioning 2.0.0](https://semver.org/) with Git tags.
 
-### Quick Release (Recommended Method)
+### Quick Release
 
-**Important**: To avoid duplicate workflow runs, use the helper script:
+Use normal git workflow:
 
 ```bash
 # 1. Make your changes and update CHANGELOG.md
-# 2. Use the helper script to commit, tag, and push in one step
-./scripts/tag-and-push.sh v1.4.121 "Fix: description of changes"
-
-# 3. Later, sync main branch (optional)
-git push origin main
-```
-
-This pushes **ONLY the tag**, triggering one workflow run instead of two.
-
-### Manual Release (Advanced)
-
-If you prefer manual control:
-
-```bash
-# Make changes and commit (including CHANGELOG.md)
 git add -A
-git commit -m "v1.4.121: Fix description"
-git tag v1.4.121
+git commit -m "v1.4.122: Fix description"
 
-# Push tag ONLY (not main branch) to avoid duplicate workflows
-git push origin v1.4.121
+# 2. Tag the release
+git tag v1.4.122
 
-# Later, push main branch if needed
-git push origin main
+# 3. Push everything (main + tags)
+git push origin main --tags
 ```
 
-**⚠️ Don't do this** (triggers duplicate workflows):
-```bash
-git push origin main --tags  # ❌ Triggers 2 workflows for same commit
-```
+**That's it!** The workflow only triggers on tag pushes, so no duplicate builds.
 
-### Why This Matters
+### How It Works
 
-The workflow triggers on both:
-- `push` to `main` branch
-- `push` of `v*` tags
-
-When you `git push origin main --tags`, GitHub runs the workflow **twice** for the same commit:
-1. For the main branch push
-2. For the tag push
-
-The workflow now detects this and skips the main branch build when the commit is already tagged, but pushing tags separately is cleaner.
+- Workflow **only triggers on `v*` tag pushes** (not main branch)
+- Push to main branch freely without triggering deployments
+- Tag when ready to release → automatic deployment to balena
+- One tag = one deployment = one workflow run
 
 ### Version Format
 
