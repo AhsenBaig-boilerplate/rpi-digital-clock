@@ -170,27 +170,28 @@ def update_device_variables(updates):
             'Content-Type': 'application/json'
         }
         
-        # Update each variable
+        # Prepare all variables for bulk update
+        env_vars = {}
         for key, value in updates.items():
             # Convert checkbox values
             if CONFIG_OPTIONS[key]['type'] == 'checkbox':
                 value = 'true' if value else 'false'
-            
-            # Set device environment variable
-            payload = {key: str(value)}
-            
-            response = requests.patch(
-                f'{SUPERVISOR_ADDRESS}/v1/device/host-config',
-                headers=headers,
-                json=payload,
-                timeout=10
-            )
-            
-            if response.status_code != 200:
-                logger.warning(f"Failed to update {key}: {response.status_code}")
-                
-        logger.info(f"Updated {len(updates)} device variables")
-        return True
+            env_vars[key] = str(value)
+        
+        # Update device environment variables using the correct endpoint
+        response = requests.patch(
+            f'{SUPERVISOR_ADDRESS}/v1/device',
+            headers=headers,
+            json={'environment': env_vars},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            logger.info(f"Successfully updated {len(updates)} device variables")
+            return True
+        else:
+            logger.error(f"Failed to update variables: {response.status_code} - {response.text}")
+            return False
         
     except Exception as e:
         logger.error(f"Error updating variables: {e}")
