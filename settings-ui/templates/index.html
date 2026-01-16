@@ -354,12 +354,12 @@
                     </p>
                     
                     <p style="background: #d4edda; padding: 15px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: #155724; border: 1px solid #c3e6cb;">
-                        ✓ WiFi changes are saved to <code>/mnt/boot/system-connections/</code> and persist across reboots
+                        ✓ WiFi settings are stored in <strong>NetworkManager</strong> and persist across reboots and fleet updates
                     </p>
                     
                     <p style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; color: #856404; border: 1px solid #ffeeba;">
-                        ⚠️ <strong>Important:</strong> Changing WiFi settings will <strong>reboot the device</strong> to apply changes. 
-                        The device will automatically try networks in order. Leave passwords as *** to keep existing passwords unchanged.
+                        ℹ️ <strong>Note:</strong> Changes apply immediately and the device will prefer the highest-priority visible network. 
+                        Leave passwords as *** to keep existing passwords unchanged.
                     </p>
                     
                     <!-- Scan button -->
@@ -568,11 +568,11 @@
         }
         
         async function saveWiFi() {
-            if (!confirm('⚠️ This will REBOOT the device to apply WiFi settings. Continue?')) {
+            if (!confirm('Save WiFi settings and switch to best available network?')) {
                 return;
             }
             
-            showMessage('Updating WiFi configuration and rebooting device...', 'info');
+            showMessage('Applying WiFi settings...', 'info');
             
             const wifiConfig = {
                 WIFI_SSID: document.getElementById('WIFI_SSID').value,
@@ -605,7 +605,7 @@
         }
 
         async function clearWifiConfigs() {
-            if (!confirm('⚠️ This will DELETE all WiFi configs from /mnt/boot/system-connections. Continue?')) {
+            if (!confirm('⚠️ This will DELETE all WiFi connections from NetworkManager. Continue?')) {
                 return;
             }
             const statusSpan = document.getElementById('clear-status');
