@@ -348,6 +348,10 @@
                 <div class="section">
                     <h2 class="section-title">📡 WiFi Configuration</h2>
                     
+                    <p id="current-wifi-banner" style="background: #e9f7ff; padding: 12px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; color: #0c5460; border: 1px solid #bee5eb;">
+                        📶 Connected WiFi: <strong id="current-wifi-ssid">{{ current_wifi_ssid if current_wifi_ssid else 'None' }}</strong>
+                    </p>
+                    
                     <p style="background: #d4edda; padding: 15px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: #155724; border: 1px solid #c3e6cb;">
                         ✓ WiFi changes are saved to <code>/mnt/boot/system-connections/</code> and persist across reboots
                     </p>
@@ -507,7 +511,23 @@
         // Auto-scan on page load
         window.addEventListener('load', () => {
             scanWiFiNetworks();
+            refreshCurrentWifi();
         });
+
+        async function refreshCurrentWifi() {
+            try {
+                const response = await fetch('/api/wifi/current');
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    const banner = document.getElementById('current-wifi-banner');
+                    const ssidEl = document.getElementById('current-wifi-ssid');
+                    ssidEl.textContent = result.ssid || 'None';
+                    banner.style.display = 'block';
+                }
+            } catch (e) {
+                // Silently ignore UI refresh errors
+            }
+        }
         
         async function saveWiFi() {
             if (!confirm('⚠️ This will REBOOT the device to apply WiFi settings. Continue?')) {

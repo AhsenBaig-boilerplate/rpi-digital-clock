@@ -661,12 +661,14 @@ def index():
     """Render the settings form"""
     current_config = get_current_config()
     wifi_config = get_wifi_config()
+    current_wifi_ssid = get_current_wifi_connection()
     return render_template('index.html', 
                           config=CONFIG_OPTIONS,
                           current=current_config,
                           wifi_config=WIFI_CONFIG,
                           wifi_current=wifi_config,
-                          auth_enabled=AUTH_ENABLED)
+                          auth_enabled=AUTH_ENABLED,
+                          current_wifi_ssid=current_wifi_ssid)
 
 
 @app.route('/api/config', methods=['GET'])
@@ -737,6 +739,21 @@ def scan_wifi():
 def get_wifi():
     """API endpoint to get current WiFi configuration"""
     return jsonify(get_wifi_config())
+
+
+@app.route('/api/wifi/current', methods=['GET'])
+@login_required
+def get_wifi_current():
+    """API endpoint to get current connected WiFi SSID"""
+    try:
+        ssid = get_current_wifi_connection()
+        return jsonify({
+            'success': True,
+            'ssid': ssid
+        })
+    except Exception as e:
+        logger.error(f"Error getting current WiFi: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/wifi', methods=['POST'])
