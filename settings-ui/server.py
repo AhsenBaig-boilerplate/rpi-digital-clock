@@ -9,6 +9,7 @@ import threading
 import time
 import secrets
 import requests
+import subprocess
 from functools import wraps
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from flask_cors import CORS
@@ -303,27 +304,45 @@ def nm_add_or_update_wifi_connection(con_name: str, ssid: str, psk: str, priorit
     and survive container restarts/updates.
     """
     try:
+        def run_nmcli(cmd: str):
+            """Run nmcli capturing stdout+stderr for better diagnostics."""
+            proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            out = (proc.stdout or '').strip()
+            err = (proc.stderr or '').strip()
+            if err:
+                logger.warning(f"nmcli stderr: {err}")
+            if out:
+                logger.debug(f"nmcli stdout: {out}")
+            return out, err, proc.returncode
+
         ifname = ifname or (get_wifi_device() or 'wlan0')
-        existing = os.popen(f"nmcli -t -f NAME connection show | grep -Fx \"{con_name}\"").read().strip()
+        existing, _, _ = run_nmcli(f"nmcli -t -f NAME connection show | grep -Fx \"{con_name}\"")
         if not existing:
             # Create new connection (--save yes ensures it persists to disk)
             cmd_add = f"nmcli connection add type wifi ifname {ifname} con-name \"{con_name}\" ssid \"{ssid}\" save yes"
-            add_out = os.popen(cmd_add).read().strip()
-            logger.info(f"Created new NM connection: {con_name} -> {add_out}")
+            add_out, add_err, rc = run_nmcli(cmd_add)
+            logger.info(f"Created new NM connection: {con_name} -> {add_out or add_err or rc}")
         # Ensure security, ssid, autoconnect and priority
         cmds = [
+            # SSID set
             f"nmcli connection modify \"{con_name}\" 802-11-wireless.ssid \"{ssid}\"",
+            # Preferred: wifi-sec.* aliases
             f"nmcli connection modify \"{con_name}\" wifi-sec.key-mgmt wpa-psk",
             f"nmcli connection modify \"{con_name}\" wifi-sec.psk \"{psk}\"",
+            # Fallback to explicit group in case alias unsupported
+            f"nmcli connection modify \"{con_name}\" 802-11-wireless-security.key-mgmt wpa-psk",
+            f"nmcli connection modify \"{con_name}\" 802-11-wireless-security.psk \"{psk}\"",
+            # Autoconnect + priority
             f"nmcli connection modify \"{con_name}\" connection.autoconnect yes",
             f"nmcli connection modify \"{con_name}\" connection.autoconnect-priority {priority}",
+            # Common IP settings for simplicity
+            f"nmcli connection modify \"{con_name}\" ipv4.method auto",
+            f"nmcli connection modify \"{con_name}\" ipv6.method ignore",
         ]
         for cmd in cmds:
-            _ = os.popen(cmd).read().strip()
-        # Explicitly save connection to persist to disk
-        save_out = os.popen(f'nmcli connection modify "{con_name}" connection.autoconnect yes').read().strip()
+            _, _, _ = run_nmcli(cmd)
         # Reload to ensure host NM picks up changes
-        _ = os.popen('nmcli connection reload').read().strip()
+        _, _, _ = run_nmcli('nmcli connection reload')
         logger.info(f"✓ Persisted WiFi connection: {con_name} (SSID: {ssid}, Priority: {priority})")
         return True
     except Exception as e:
@@ -990,11 +1009,39 @@ def wifi_debug():
         name_to_ssid = nm_get_wifi_connections_by_name()
         wifi_config = get_wifi_config()
         
+        # Get detailed info for our managed connections with masked secrets
+        connection_details = {}
+        for con_name in ['balena-wifi-primary', 'balena-wifi-backup1', 'balena-wifi-backup2']:
+            details = {}
+            # Check if connection exists
+            check = os.popen(f"nmcli -t -f NAME connection show | grep -Fx \"{con_name}\"").read().strip()
+            if check:
+                # Get SSID
+                ssid = os.popen(f"nmcli -g 802-11-wireless.ssid connection show \"{con_name}\"").read().strip()
+                # Get priority
+                priority = os.popen(f"nmcli -g connection.autoconnect-priority connection show \"{con_name}\"").read().strip()
+                # Get autoconnect
+                autoconnect = os.popen(f"nmcli -g connection.autoconnect connection show \"{con_name}\"").read().strip()
+                # Check if PSK is set (will show as asterisks or 0 length if unset)
+                psk_set = os.popen(f"nmcli -g 802-11-wireless-security.psk connection show \"{con_name}\"").read().strip()
+                details = {
+                    'exists': True,
+                    'ssid': ssid or '(none)',
+                    'priority': priority or '0',
+                    'autoconnect': autoconnect or 'no',
+                    'psk_configured': bool(psk_set and psk_set != '--'),
+                    'psk_length': len(psk_set) if psk_set and psk_set != '--' else 0
+                }
+            else:
+                details = {'exists': False}
+            connection_details[con_name] = details
+        
         return jsonify({
             'success': True,
             'all_nm_connections': all_conns.split('\n') if all_conns else [],
             'wifi_connections_map': name_to_ssid,
-            'parsed_wifi_config': wifi_config
+            'parsed_wifi_config': wifi_config,
+            'connection_details': connection_details
         })
     except Exception as e:
         logger.error(f"Error in debug endpoint: {e}")
