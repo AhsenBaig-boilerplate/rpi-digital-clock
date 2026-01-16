@@ -224,16 +224,48 @@ def get_current_config():
                 file_config = yaml.safe_load(f) or {}
             logger.info(f"Loaded configuration from {config_file}")
             
-            # Merge with defaults
+            # Priority: File > Env Vars > Defaults
             config = {}
             for key, spec in CONFIG_OPTIONS.items():
-                config[key] = file_config.get(key, os.environ.get(key, spec['default']))
+                if key in file_config:
+                    # Use file value (highest priority)
+                    value = file_config[key]
+                elif key in os.environ:
+                    # Use env var as fallback
+                    value = os.environ[key]
+                else:
+                    # Use default
+                    value = spec['default']
+                
+                # Type conversion for checkboxes
+                if spec['type'] == 'checkbox':
+                    if isinstance(value, bool):
+                        config[key] = value
+                    elif isinstance(value, str):
+                        config[key] = value.lower() in ('true', '1', 'yes', 'on')
+                    else:
+                        config[key] = bool(value)
+                else:
+                    config[key] = value
+                    
             return config
         else:
             logger.info("No saved config file, using environment variables and defaults")
             config = {}
             for key, spec in CONFIG_OPTIONS.items():
-                config[key] = os.environ.get(key, spec['default'])
+                value = os.environ.get(key, spec['default'])
+                
+                # Type conversion for checkboxes
+                if spec['type'] == 'checkbox':
+                    if isinstance(value, bool):
+                        config[key] = value
+                    elif isinstance(value, str):
+                        config[key] = value.lower() in ('true', '1', 'yes', 'on')
+                    else:
+                        config[key] = bool(value)
+                else:
+                    config[key] = value
+                    
             return config
             
     except Exception as e:
