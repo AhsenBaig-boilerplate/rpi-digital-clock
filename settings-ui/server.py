@@ -161,6 +161,26 @@ WIFI_CONFIG = {
 }
 
 
+def get_current_wifi_connection():
+    """Get the currently connected WiFi network SSID"""
+    try:
+        # Use nmcli to get current WiFi connection
+        result = os.popen('nmcli -t -f active,ssid dev wifi | grep "^yes"').read().strip()
+        if result:
+            # Format is "yes:SSID"
+            parts = result.split(':', 1)
+            if len(parts) == 2:
+                ssid = parts[1]
+                logger.info(f"📶 Currently connected to WiFi: {ssid}")
+                return ssid
+        
+        logger.info("📶 No WiFi connection detected (or using Ethernet)")
+        return None
+    except Exception as e:
+        logger.warning(f"Could not determine current WiFi: {e}")
+        return None
+
+
 def login_required(f):
     """Decorator to require authentication if password is set"""
     @wraps(f)
@@ -416,10 +436,11 @@ method=auto
 
 def remove_old_wifi_configs():
     """Remove all WiFi config files from boot partition to ensure clean slate."""
+    logger.info("Step 1: Removing old WiFi configuration files...")
     try:
         boot_connections = '/mnt/boot/system-connections'
         if not os.path.exists(boot_connections):
-            logger.warning(f"Boot connections directory not found: {boot_connections}")
+            logger.error(f"Boot connections directory not found: {boot_connections}")
             return False
         
         removed = []
@@ -455,14 +476,19 @@ def update_wifi_config(wifi_settings):
     This is the correct way per balena docs:
     https://docs.balena.io/reference/OS/network/#wifi-setup
     """
+    logger.info("")
+    logger.info("Starting WiFi Configuration Update Process")
+    logger.info("-" * 60)
     try:
         if not SUPERVISOR_ADDRESS or not SUPERVISOR_API_KEY:
+            logger.error("Cannot update WiFi: Supervisor API not available")
             return False, "Supervisor API not available"
         
         # Step 1: Remove ALL old WiFi configs to ensure clean slate
         remove_old_wifi_configs()
         
-        # Step 2: Create new NetworkManager connection files
+        logger.info("")
+        logger.info("Step 2: Creating new WiFi configuration files...")
         # Priority: higher number = preferred connection
         configs_created = []
         
@@ -501,10 +527,17 @@ def update_wifi_config(wifi_settings):
                     logger.warning(f"Failed to create config for backup network {ssid}")
         
         if not configs_created:
+            logger.warning("No valid WiFi networks to configure (passwords may be masked)")
             return False, "No valid WiFi networks to configure (passwords may be masked)"
         
-        logger.info(f"✓ Created {len(configs_created)} WiFi configuration(s): {', '.join(configs_created)}")
+        logger.info("")
+        logger.info("✓ WiFi Configuration Summary:")
+        logger.info(f"  - Created {len(configs_created)} network configuration(s)")
+        for i, config in enumerate(configs_created, 1):
+            logger.info(f"  {i}. {config}")
         
+        logger.info("")
+        logger.info("Step 3: Triggering device reboot to apply changes...")
         # Step 3: Trigger device reboot to apply WiFi changes
         # NetworkManager reads configs from /mnt/boot/system-connections on boot
         reboot_url = f"{SUPERVISOR_ADDRESS}/v1/reboot?apikey={SUPERVISOR_API_KEY}"
@@ -705,19 +738,40 @@ def restart_clock():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    if AUTH_ENABLED:
-        logger.info(f"Starting settings UI server on port {port} (password protection enabled)")
-    else:
-        logger.warning(f"Starting settings UI server on port {port} (NO PASSWORD PROTECTION - set SETTINGS_PASSWORD to enable)")
     
-    # Log API_TOKEN status for WiFi persistence
-    if API_TOKEN:
-        logger.info("✓ API_TOKEN is set - WiFi changes will be persistent")
+    logger.info("="*70)
+    logger.info("SETTINGS-UI STARTING")
+    logger.info("="*70)
+    
+    if AUTH_ENABLED:
+        logger.info(f"✓ Password protection ENABLED (port {port})")
     else:
-        logger.warning("⚠ API_TOKEN not set - WiFi changes will be temporary (set API_TOKEN for persistence)")
+        logger.warning(f"⚠ Password protection DISABLED (port {port}) - set SETTINGS_PASSWORD to enable")
     
     # Log device UUID for reference
     if DEVICE_UUID:
-        logger.info(f"Device UUID: {DEVICE_UUID}")
+        logger.info(f"✓ Device UUID: {DEVICE_UUID}")
+    else:
+        logger.warning("⚠ DEVICE_UUID not set")
+    
+    # Check and log current WiFi connection
+    logger.info("")
+    logger.info("Current Network Status:")
+    logger.info("-" * 70)
+    current_wifi = get_current_wifi_connection()
+    
+    # Log available WiFi configurations
+    wifi_config = get_wifi_config()
+    configured_networks = [v for k, v in wifi_config.items() if v and 'SSID' in k and v != '***']
+    if configured_networks:
+        logger.info(f"✓ Found {len(configured_networks)} configured WiFi network(s):")
+        for ssid in configured_networks:
+            status = "← CONNECTED" if current_wifi and ssid in current_wifi else ""
+            logger.info(f"  • {ssid} {status}")
+    else:
+        logger.info("⚠ No WiFi networks configured in /mnt/boot/system-connections/")
+    
+    logger.info("="*70)
+    logger.info("")
     
     app.run(host='0.0.0.0', port=port, debug=False)
