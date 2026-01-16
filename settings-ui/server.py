@@ -388,11 +388,52 @@ def update_device_variables(updates):
         return False
 
 
+def remove_initial_wifi_configs():
+    """Remove WiFi config files from boot partition that were baked into the image.
+    This prevents the initial WiFi config (from image download) from taking precedence
+    over device variables set via the API."""
+    try:
+        boot_connections = '/mnt/boot/system-connections'
+        if not os.path.exists(boot_connections):
+            logger.warning(f"Boot connections directory not found: {boot_connections}")
+            return False
+        
+        # Common WiFi config filenames created during image download
+        initial_wifi_files = ['resin-wifi', 'balena-wifi', 'resin-sample', 'balena-sample']
+        removed = []
+        
+        for filename in initial_wifi_files:
+            filepath = os.path.join(boot_connections, filename)
+            if os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                    removed.append(filename)
+                    logger.info(f"Removed initial WiFi config: {filename}")
+                except Exception as e:
+                    logger.warning(f"Could not remove {filename}: {e}")
+        
+        if removed:
+            logger.info(f"Removed {len(removed)} initial WiFi config file(s): {', '.join(removed)}")
+            return True
+        else:
+            logger.info("No initial WiFi config files found to remove")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error removing initial WiFi configs: {e}")
+        return False
+
+
 def update_wifi_config(wifi_settings):
     """Update WiFi configuration via device variables and reboot device"""
     try:
         if not SUPERVISOR_ADDRESS or not SUPERVISOR_API_KEY or not DEVICE_UUID:
             return False, "Supervisor API not available"
+        
+        # CRITICAL: Remove initial WiFi configs from boot partition first
+        # This ensures device variables take precedence over the WiFi config
+        # that was baked into the image during download
+        remove_initial_wifi_configs()
         
         # Prepare device variables in balena format
         device_vars = {}
