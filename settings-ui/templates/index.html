@@ -347,9 +347,14 @@
                 <!-- WiFi Configuration -->
                 <div class="section">
                     <h2 class="section-title">📡 WiFi Configuration</h2>
-                    <p style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; color: #856404; border: 1px solid #ffeeba;">
+                    <p style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: #856404; border: 1px solid #ffeeba;">
                         ⚠️ <strong>Important:</strong> Changing WiFi settings will <strong>reboot the device</strong> to apply changes. 
                         The device will automatically try networks in order. Leave passwords as *** to keep existing passwords unchanged.
+                    </p>
+                    <p style="background: #d1ecf1; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; color: #0c5460; border: 1px solid #bee5eb;">
+                        💡 <strong>Persistence:</strong> For changes to persist across reboots, set <code>BALENA_API_KEY</code> environment variable 
+                        (Fleet or Device Variable) with your Balena API token from <a href="https://dashboard.balena-cloud.com/preferences/access-tokens" target="_blank" style="color: #0c5460; text-decoration: underline;">dashboard</a>. 
+                        Without it, WiFi changes are temporary and will be overwritten if you have WiFi variables set in the dashboard.
                     </p>
                     
                     <div class="form-group">

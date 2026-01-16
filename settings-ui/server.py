@@ -22,6 +22,10 @@ SUPERVISOR_ADDRESS = os.environ.get('BALENA_SUPERVISOR_ADDRESS', 'http://127.0.0
 SUPERVISOR_API_KEY = os.environ.get('BALENA_SUPERVISOR_API_KEY', '')
 DEVICE_UUID = os.environ.get('BALENA_DEVICE_UUID', '')
 
+# Balena Cloud API configuration (for persistent device variables)
+BALENA_API_URL = 'https://api.balena-cloud.com'
+BALENA_API_KEY = os.environ.get('BALENA_API_KEY', '')  # User API token from dashboard
+
 # Security configuration
 SETTINGS_PASSWORD = os.environ.get('SETTINGS_PASSWORD', '')  # If empty, no authentication required
 AUTH_ENABLED = bool(SETTINGS_PASSWORD)
@@ -345,7 +349,56 @@ def update_wifi_config(wifi_settings):
         if not device_vars:
             return False, "No WiFi settings to update"
         
-        # Set device configuration variables
+        # Strategy: Set device variables in Balena Cloud (persistent) if API key available,
+        # otherwise use Supervisor host-config (temporary until cloud sync)
+        persist_method = "temporary (host-config only)"
+        
+        if BALENA_API_KEY:
+            # Method 1: Set persistent device variables via Balena Cloud API
+            try:
+                headers = {
+                    'Authorization': f'Bearer {BALENA_API_KEY}',
+                    'Content-Type': 'application/json'
+                }
+                
+                # Get existing device variables to update or create
+                get_url = f"{BALENA_API_URL}/v6/device_environment_variable?$filter=device/uuid eq '{DEVICE_UUID}'"
+                existing_vars = requests.get(get_url, headers=headers, timeout=10).json().get('d', [])
+                
+                for var_name, var_value in device_vars.items():
+                    # Check if variable exists
+                    existing = next((v for v in existing_vars if v['name'] == var_name), None)
+                    
+                    if existing:
+                        # Update existing variable
+                        patch_url = f"{BALENA_API_URL}/v6/device_environment_variable({existing['id']})"
+                        requests.patch(patch_url, headers=headers, json={'value': var_value}, timeout=10)
+                    else:
+                        # Create new variable
+                        post_url = f"{BALENA_API_URL}/v6/device_environment_variable"
+                        payload = {
+                            'device': existing_vars[0]['device']['__id'] if existing_vars else None,
+                            'name': var_name,
+                            'value': var_value
+                        }
+                        # If we don't have device ID from existing vars, get it
+                        if not payload['device']:
+                            device_url = f"{BALENA_API_URL}/v6/device?$filter=uuid eq '{DEVICE_UUID}'&$select=id"
+                            device_data = requests.get(device_url, headers=headers, timeout=10).json().get('d', [])
+                            if device_data:
+                                payload['device'] = device_data[0]['id']
+                        
+                        if payload['device']:
+                            requests.post(post_url, headers=headers, json=payload, timeout=10)
+                
+                persist_method = "persistent (Balena Cloud API)"
+                logger.info(f"Successfully set {len(device_vars)} WiFi variables in Balena Cloud (persistent)")
+                
+            except Exception as e:
+                logger.warning(f"Failed to set persistent variables via Balena API: {e}. Falling back to host-config.")
+                persist_method = "temporary (host-config fallback)"
+        
+        # Method 2: Also set via Supervisor host-config for immediate effect
         url = f"{SUPERVISOR_ADDRESS}/v1/device/host-config?apikey={SUPERVISOR_API_KEY}"
         response = requests.patch(
             url,
@@ -354,7 +407,7 @@ def update_wifi_config(wifi_settings):
         )
         
         if response.status_code == 200:
-            logger.info(f"Successfully updated {len(device_vars)} WiFi settings")
+            logger.info(f"Successfully updated {len(device_vars)} WiFi settings via host-config ({persist_method})")
             
             # Trigger device reboot to apply WiFi changes
             reboot_url = f"{SUPERVISOR_ADDRESS}/v1/reboot?apikey={SUPERVISOR_API_KEY}"
@@ -362,7 +415,9 @@ def update_wifi_config(wifi_settings):
             
             if reboot_response.status_code == 202:
                 logger.info("Device reboot triggered to apply WiFi settings")
-                return True, "WiFi settings updated. Device will reboot to apply changes."
+                if "temporary" in persist_method:
+                    return True, "⚠️ WiFi updated temporarily (set BALENA_API_KEY for persistent changes). Device rebooting..."
+                return True, "WiFi settings saved persistently. Device will reboot to apply changes."
             else:
                 logger.warning(f"WiFi updated but reboot failed: {reboot_response.status_code}")
                 return True, "WiFi settings updated but manual reboot required."
