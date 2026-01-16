@@ -205,6 +205,14 @@ def get_wifi_config():
         
         if vars_response.status_code == 200:
             env_vars = vars_response.json().get('d', [])
+            
+            # Log what WiFi variables exist
+            wifi_vars = [v['name'] for v in env_vars if 'wifi' in v['name'].lower()]
+            if wifi_vars:
+                logger.info(f"Found WiFi variables in dashboard: {', '.join(wifi_vars)}")
+            else:
+                logger.info("No WiFi variables found in dashboard (using empty defaults)")
+            
             wifi_config = {}
             
             # Extract WiFi settings from device variables
@@ -552,7 +560,8 @@ def index():
                           current=current_config,
                           wifi_config=WIFI_CONFIG,
                           wifi_current=wifi_config,
-                          auth_enabled=AUTH_ENABLED)
+                          auth_enabled=AUTH_ENABLED,
+                          api_token_set=bool(API_TOKEN))
 
 
 @app.route('/api/config', methods=['GET'])
@@ -702,4 +711,15 @@ if __name__ == '__main__':
         logger.info(f"Starting settings UI server on port {port} (password protection enabled)")
     else:
         logger.warning(f"Starting settings UI server on port {port} (NO PASSWORD PROTECTION - set SETTINGS_PASSWORD to enable)")
+    
+    # Log API_TOKEN status for WiFi persistence
+    if API_TOKEN:
+        logger.info("✓ API_TOKEN is set - WiFi changes will be persistent")
+    else:
+        logger.warning("⚠ API_TOKEN not set - WiFi changes will be temporary (set API_TOKEN for persistence)")
+    
+    # Log device UUID for reference
+    if DEVICE_UUID:
+        logger.info(f"Device UUID: {DEVICE_UUID}")
+    
     app.run(host='0.0.0.0', port=port, debug=False)
