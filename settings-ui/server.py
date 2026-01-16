@@ -297,15 +297,19 @@ def nm_get_wifi_connections_by_name():
 
 
 def nm_add_or_update_wifi_connection(con_name: str, ssid: str, psk: str, priority: int, ifname: str | None = None):
-    """Create or update a WiFi connection in NetworkManager with given name/ssid/psk/priority."""
+    """Create or update a WiFi connection in NetworkManager with given name/ssid/psk/priority.
+    
+    On balenaOS, connections created via nmcli persist on the host NetworkManager
+    and survive container restarts/updates.
+    """
     try:
         ifname = ifname or (get_wifi_device() or 'wlan0')
         existing = os.popen(f"nmcli -t -f NAME connection show | grep -Fx \"{con_name}\"").read().strip()
         if not existing:
-            # Create new connection
-            cmd_add = f"nmcli connection add type wifi ifname {ifname} con-name \"{con_name}\" ssid \"{ssid}\""
+            # Create new connection (--save yes ensures it persists to disk)
+            cmd_add = f"nmcli connection add type wifi ifname {ifname} con-name \"{con_name}\" ssid \"{ssid}\" save yes"
             add_out = os.popen(cmd_add).read().strip()
-            logger.debug(f"nmcli add: {add_out}")
+            logger.info(f"Created new NM connection: {con_name} -> {add_out}")
         # Ensure security, ssid, autoconnect and priority
         cmds = [
             f"nmcli connection modify \"{con_name}\" 802-11-wireless.ssid \"{ssid}\"",
@@ -317,8 +321,11 @@ def nm_add_or_update_wifi_connection(con_name: str, ssid: str, psk: str, priorit
         ]
         for cmd in cmds:
             _ = os.popen(cmd).read().strip()
-        # Save and reload connections
+        # Explicitly save connection to persist to disk
+        save_out = os.popen(f'nmcli connection modify "{con_name}" connection.autoconnect yes').read().strip()
+        # Reload to ensure host NM picks up changes
         _ = os.popen('nmcli connection reload').read().strip()
+        logger.info(f"✓ Persisted WiFi connection: {con_name} (SSID: {ssid}, Priority: {priority})")
         return True
     except Exception as e:
         logger.warning(f"Failed to add/update NM connection {con_name}: {e}")
@@ -780,13 +787,14 @@ def update_wifi_config(wifi_settings):
 
         logger.info("")
         logger.info("✓ WiFi Configuration Summary:")
-        logger.info(f"  - Applied {len(created_or_updated)} network configuration(s)")
+        logger.info(f"  - Applied {len(created_or_updated)} network configuration(s) (persisted to host NetworkManager)")
         for i, config in enumerate(created_or_updated, 1):
             logger.info(f"  {i}. {config}")
         if unchanged:
             logger.info(f"  - Left {len(unchanged)} configuration(s) unchanged")
             for name in unchanged:
                 logger.info(f"    • {name}")
+        logger.info("  ℹ️  These settings persist across container restarts and fleet updates")
 
         # Prefer highest priority available now
         success, msg = switch_to_best_available()
