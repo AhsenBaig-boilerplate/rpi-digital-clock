@@ -344,6 +344,61 @@
                     </div>
                 </div>
                 
+                <!-- WiFi Configuration -->
+                <div class="section">
+                    <h2 class="section-title">📡 WiFi Configuration</h2>
+                    <p style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; color: #856404; border: 1px solid #ffeeba;">
+                        ⚠️ <strong>Important:</strong> Changing WiFi settings will <strong>reboot the device</strong> to apply changes. 
+                        The device will automatically try networks in order. Leave passwords as *** to keep existing passwords unchanged.
+                    </p>
+                    
+                    <div class="form-group">
+                        <label for="WIFI_SSID">{{ wifi_config.WIFI_SSID.label }}</label>
+                        <input type="text" id="WIFI_SSID" name="WIFI_SSID" 
+                               value="{{ wifi_current.WIFI_SSID }}" placeholder="MyHomeNetwork">
+                        <span class="help-text">{{ wifi_config.WIFI_SSID.help }}</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="WIFI_PSK">{{ wifi_config.WIFI_PSK.label }}</label>
+                        <input type="password" id="WIFI_PSK" name="WIFI_PSK" 
+                               value="{{ wifi_current.WIFI_PSK }}" placeholder="Password">
+                        <span class="help-text">{{ wifi_config.WIFI_PSK.help }}</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="WIFI_SSID_1">{{ wifi_config.WIFI_SSID_1.label }}</label>
+                        <input type="text" id="WIFI_SSID_1" name="WIFI_SSID_1" 
+                               value="{{ wifi_current.WIFI_SSID_1 }}" placeholder="OfficeNetwork (optional)">
+                        <span class="help-text">{{ wifi_config.WIFI_SSID_1.help }}</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="WIFI_PSK_1">{{ wifi_config.WIFI_PSK_1.label }}</label>
+                        <input type="password" id="WIFI_PSK_1" name="WIFI_PSK_1" 
+                               value="{{ wifi_current.WIFI_PSK_1 }}" placeholder="Password (optional)">
+                        <span class="help-text">{{ wifi_config.WIFI_PSK_1.help }}</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="WIFI_SSID_2">{{ wifi_config.WIFI_SSID_2.label }}</label>
+                        <input type="text" id="WIFI_SSID_2" name="WIFI_SSID_2" 
+                               value="{{ wifi_current.WIFI_SSID_2 }}" placeholder="MobileHotspot (optional)">
+                        <span class="help-text">{{ wifi_config.WIFI_SSID_2.help }}</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="WIFI_PSK_2">{{ wifi_config.WIFI_PSK_2.label }}</label>
+                        <input type="password" id="WIFI_PSK_2" name="WIFI_PSK_2" 
+                               value="{{ wifi_current.WIFI_PSK_2 }}" placeholder="Password (optional)">
+                        <span class="help-text">{{ wifi_config.WIFI_PSK_2.help }}</span>
+                    </div>
+                    
+                    <button type="button" class="btn-primary" onclick="saveWiFi()" style="width: 100%; margin-top: 10px;">
+                        📡 Save WiFi & Reboot Device
+                    </button>
+                </div>
+                
                 <!-- Screensaver -->
                 <div class="section">
                     <h2 class="section-title">🌙 Screensaver</h2>
@@ -382,6 +437,43 @@
     <script>
         const form = document.getElementById('settingsForm');
         const messageDiv = document.getElementById('message');
+        
+        async function saveWiFi() {
+            if (!confirm('⚠️ This will REBOOT the device to apply WiFi settings. Continue?')) {
+                return;
+            }
+            
+            showMessage('Updating WiFi configuration and rebooting device...', 'info');
+            
+            const wifiConfig = {
+                WIFI_SSID: document.getElementById('WIFI_SSID').value,
+                WIFI_PSK: document.getElementById('WIFI_PSK').value,
+                WIFI_SSID_1: document.getElementById('WIFI_SSID_1').value,
+                WIFI_PSK_1: document.getElementById('WIFI_PSK_1').value,
+                WIFI_SSID_2: document.getElementById('WIFI_SSID_2').value,
+                WIFI_PSK_2: document.getElementById('WIFI_PSK_2').value,
+            };
+            
+            try {
+                const response = await fetch('/api/wifi', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(wifiConfig)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    showMessage('✅ ' + result.message + ' You may lose connection temporarily.', 'success');
+                } else {
+                    showMessage('❌ Failed to update WiFi: ' + (result.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                showMessage('❌ Error updating WiFi: ' + error.message, 'error');
+            }
+        }
         
         async function restartClock() {
             showMessage('Restarting clock service...', 'info');

@@ -301,8 +301,9 @@ Access the settings UI from any device on the same network:
    - Display colors and date format
    - Burn-in prevention settings
    - Screensaver schedule
+   - **WiFi networks** - Configure primary and backup WiFi networks (triggers device reboot)
 
-Changes take effect after the clock restarts (automatically triggered by balena).
+Clock display settings take effect after the service restarts (automatically triggered). WiFi changes require a device reboot to apply.
 
 #### 🔒 Security (IMPORTANT!)
 
@@ -506,14 +507,21 @@ BALENA_HOST_CONFIG_wifi_ssid_2: "MobileHotspot"
 BALENA_HOST_CONFIG_wifi_psk_2: "hotspotpassword"
 ```
 
-Or use the **Settings UI** (port 8080) which provides a user-friendly form with WiFi configuration fields. Changes will automatically trigger a device reboot.
+**Configure via Settings UI (Port 8080):**
+
+The web interface provides a dedicated WiFi configuration section where you can set:
+- Primary WiFi network (SSID and password)
+- Up to 2 backup networks for automatic fallback
+- Changes trigger an automatic device reboot
+
+Navigate to `http://<device-ip>:8080` → WiFi Configuration section → Enter network details → Click "Save WiFi & Reboot Device"
 
 The device will automatically try each network in order until one connects.
 
 **Recommendations:**
 - **Method 1 (WiFi Connect)** - Best for initial setup or when you can't access the device remotely
-- **Method 2 (nmcli)** - Best for remote management when device is already online
-- **Web UI (port 8080)** - Best for all configuration changes including WiFi credentials
+- **Method 2 (nmcli)** - Best for quick remote WiFi changes without rebooting
+- **Web UI (port 8080)** - Best for persistent WiFi configuration with automatic fallback
 
 ## 🎨 Customization
 

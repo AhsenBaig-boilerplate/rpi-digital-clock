@@ -121,6 +121,40 @@ CONFIG_OPTIONS = {
     },
 }
 
+# WiFi configuration (separate from CONFIG_OPTIONS as it uses device variables)
+WIFI_CONFIG = {
+    'WIFI_SSID': {
+        'label': 'Primary WiFi Network',
+        'type': 'text',
+        'help': 'WiFi network name (SSID)'
+    },
+    'WIFI_PSK': {
+        'label': 'Primary WiFi Password',
+        'type': 'password',
+        'help': 'WiFi network password'
+    },
+    'WIFI_SSID_1': {
+        'label': 'Backup WiFi Network 1',
+        'type': 'text',
+        'help': 'Fallback WiFi network (optional)'
+    },
+    'WIFI_PSK_1': {
+        'label': 'Backup WiFi Password 1',
+        'type': 'password',
+        'help': 'Backup network password'
+    },
+    'WIFI_SSID_2': {
+        'label': 'Backup WiFi Network 2',
+        'type': 'text',
+        'help': 'Second fallback WiFi network (optional)'
+    },
+    'WIFI_PSK_2': {
+        'label': 'Backup WiFi Password 2',
+        'type': 'password',
+        'help': 'Second backup network password'
+    },
+}
+
 
 def login_required(f):
     """Decorator to require authentication if password is set"""
@@ -130,6 +164,47 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+def get_wifi_config():
+    """Get current WiFi configuration from device variables via Supervisor API"""
+    try:
+        if not SUPERVISOR_ADDRESS or not SUPERVISOR_API_KEY or not DEVICE_UUID:
+            logger.warning("Supervisor API not available for WiFi config")
+            return {key: '' for key in WIFI_CONFIG.keys()}
+        
+        # Get device configuration variables
+        url = f"{SUPERVISOR_ADDRESS}/v2/device/config?apikey={SUPERVISOR_API_KEY}"
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code == 200:
+            device_config = response.json()
+            wifi_config = {}
+            
+            # Extract WiFi settings from device config
+            # Map WIFI_SSID -> BALENA_HOST_CONFIG_wifi_ssid
+            for key in WIFI_CONFIG.keys():
+                if key == 'WIFI_SSID':
+                    wifi_config[key] = device_config.get('BALENA_HOST_CONFIG_wifi_ssid', '')
+                elif key == 'WIFI_PSK':
+                    wifi_config[key] = device_config.get('BALENA_HOST_CONFIG_wifi_psk', '***')
+                elif key == 'WIFI_SSID_1':
+                    wifi_config[key] = device_config.get('BALENA_HOST_CONFIG_wifi_ssid_1', '')
+                elif key == 'WIFI_PSK_1':
+                    wifi_config[key] = device_config.get('BALENA_HOST_CONFIG_wifi_psk_1', '***')
+                elif key == 'WIFI_SSID_2':
+                    wifi_config[key] = device_config.get('BALENA_HOST_CONFIG_wifi_ssid_2', '')
+                elif key == 'WIFI_PSK_2':
+                    wifi_config[key] = device_config.get('BALENA_HOST_CONFIG_wifi_psk_2', '***')
+            
+            return wifi_config
+        else:
+            logger.warning(f"Failed to get device config: {response.status_code}")
+            return {key: '' for key in WIFI_CONFIG.keys()}
+            
+    except Exception as e:
+        logger.error(f"Error loading WiFi config: {e}")
+        return {key: '' for key in WIFI_CONFIG.keys()}
 
 
 def get_current_config():
@@ -241,6 +316,65 @@ def update_device_variables(updates):
         return False
 
 
+def update_wifi_config(wifi_settings):
+    """Update WiFi configuration via device variables and reboot device"""
+    try:
+        if not SUPERVISOR_ADDRESS or not SUPERVISOR_API_KEY or not DEVICE_UUID:
+            return False, "Supervisor API not available"
+        
+        # Prepare device variables in balena format
+        device_vars = {}
+        
+        # Only set non-empty values
+        if wifi_settings.get('WIFI_SSID'):
+            device_vars['BALENA_HOST_CONFIG_wifi_ssid'] = wifi_settings['WIFI_SSID']
+            # Only set password if SSID is provided and password is not masked
+            if wifi_settings.get('WIFI_PSK') and wifi_settings['WIFI_PSK'] != '***':
+                device_vars['BALENA_HOST_CONFIG_wifi_psk'] = wifi_settings['WIFI_PSK']
+        
+        if wifi_settings.get('WIFI_SSID_1'):
+            device_vars['BALENA_HOST_CONFIG_wifi_ssid_1'] = wifi_settings['WIFI_SSID_1']
+            if wifi_settings.get('WIFI_PSK_1') and wifi_settings['WIFI_PSK_1'] != '***':
+                device_vars['BALENA_HOST_CONFIG_wifi_psk_1'] = wifi_settings['WIFI_PSK_1']
+        
+        if wifi_settings.get('WIFI_SSID_2'):
+            device_vars['BALENA_HOST_CONFIG_wifi_ssid_2'] = wifi_settings['WIFI_SSID_2']
+            if wifi_settings.get('WIFI_PSK_2') and wifi_settings['WIFI_PSK_2'] != '***':
+                device_vars['BALENA_HOST_CONFIG_wifi_psk_2'] = wifi_settings['WIFI_PSK_2']
+        
+        if not device_vars:
+            return False, "No WiFi settings to update"
+        
+        # Set device configuration variables
+        url = f"{SUPERVISOR_ADDRESS}/v1/device/host-config?apikey={SUPERVISOR_API_KEY}"
+        response = requests.patch(
+            url,
+            json=device_vars,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            logger.info(f"Successfully updated {len(device_vars)} WiFi settings")
+            
+            # Trigger device reboot to apply WiFi changes
+            reboot_url = f"{SUPERVISOR_ADDRESS}/v1/reboot?apikey={SUPERVISOR_API_KEY}"
+            reboot_response = requests.post(reboot_url, timeout=10)
+            
+            if reboot_response.status_code == 202:
+                logger.info("Device reboot triggered to apply WiFi settings")
+                return True, "WiFi settings updated. Device will reboot to apply changes."
+            else:
+                logger.warning(f"WiFi updated but reboot failed: {reboot_response.status_code}")
+                return True, "WiFi settings updated but manual reboot required."
+        else:
+            logger.error(f"Failed to update WiFi config: {response.status_code} - {response.text}")
+            return False, f"Failed to update WiFi: {response.text}"
+            
+    except Exception as e:
+        logger.error(f"Error updating WiFi config: {e}")
+        return False, str(e)
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """Login page"""
@@ -272,9 +406,12 @@ def logout():
 def index():
     """Render the settings form"""
     current_config = get_current_config()
+    wifi_config = get_wifi_config()
     return render_template('index.html', 
                           config=CONFIG_OPTIONS,
                           current=current_config,
+                          wifi_config=WIFI_CONFIG,
+                          wifi_current=wifi_config,
                           auth_enabled=AUTH_ENABLED)
 
 
@@ -319,6 +456,43 @@ def save_config():
 def health():
     """Health check endpoint"""
     return jsonify({'status': 'ok'})
+
+
+@app.route('/api/wifi', methods=['GET'])
+@login_required
+def get_wifi():
+    """API endpoint to get current WiFi configuration"""
+    return jsonify(get_wifi_config())
+
+
+@app.route('/api/wifi', methods=['POST'])
+@login_required
+def save_wifi():
+    """API endpoint to save WiFi configuration and reboot device"""
+    try:
+        wifi_settings = request.json
+        
+        # Validate keys
+        for key in wifi_settings.keys():
+            if key not in WIFI_CONFIG:
+                return jsonify({'success': False, 'error': f'Invalid key: {key}'}), 400
+        
+        success, message = update_wifi_config(wifi_settings)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': message
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': message
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error saving WiFi config: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/restart-clock', methods=['POST'])
