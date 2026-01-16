@@ -5,6 +5,8 @@ Runs on port 8080 and provides a simple form to update device variables
 """
 import os
 import logging
+import threading
+import time
 import secrets
 import requests
 from functools import wraps
@@ -30,6 +32,17 @@ API_TOKEN = os.environ.get('API_TOKEN', os.environ.get('BALENA_API_KEY', ''))
 # Security configuration
 SETTINGS_PASSWORD = os.environ.get('SETTINGS_PASSWORD', '')  # If empty, no authentication required
 AUTH_ENABLED = bool(SETTINGS_PASSWORD)
+
+# Auto-prefer WiFi behavior
+def _env_bool(name, default):
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    return str(val).lower() in ('1', 'true', 'yes', 'on')
+
+WIFI_AUTO_PREFER_ENABLED = _env_bool('WIFI_AUTO_PREFER_ENABLED', True)
+WIFI_AUTO_PREFER_INTERVAL_SECONDS = int(os.environ.get('WIFI_AUTO_PREFER_INTERVAL_SECONDS', '120'))
+WIFI_AUTO_PREFER_MIN_SIGNAL = int(os.environ.get('WIFI_AUTO_PREFER_MIN_SIGNAL', '40'))
 
 # Configuration options with defaults
 CONFIG_OPTIONS = {
@@ -240,7 +253,7 @@ def get_wifi_device():
         return None
 
 
-def switch_to_best_available():
+def switch_to_best_available(min_signal: int | None = None):
     """Switch to the highest-priority configured SSID that is currently visible.
 
     Priorities: primary=100, backup1=90, backup2=80. If already connected
@@ -258,7 +271,10 @@ def switch_to_best_available():
             return False, 'No WiFi device found'
 
         current = get_current_wifi_connection() or ''
-        visible = {n['ssid'] for n in scan_wifi_networks()}
+        scan = scan_wifi_networks()
+        if min_signal is not None:
+            scan = [n for n in scan if isinstance(n.get('signal'), int) and n['signal'] >= min_signal]
+        visible = {n['ssid'] for n in scan}
 
         cfg = get_wifi_config()
         candidates = []
@@ -299,6 +315,27 @@ def switch_to_best_available():
     except Exception as e:
         logger.error(f'Error switching WiFi: {e}')
         return False, str(e)
+
+
+def _auto_prefer_loop():
+    """Background worker to periodically prefer highest-priority visible SSID."""
+    if not WIFI_AUTO_PREFER_ENABLED:
+        logger.info('Auto-prefer WiFi is disabled via env')
+        return
+    logger.info(f'Auto-prefer WiFi enabled: interval={WIFI_AUTO_PREFER_INTERVAL_SECONDS}s, min_signal={WIFI_AUTO_PREFER_MIN_SIGNAL}')
+    while True:
+        try:
+            success, msg = switch_to_best_available(min_signal=WIFI_AUTO_PREFER_MIN_SIGNAL)
+            # Log only on successful switch or meaningful message
+            if success:
+                logger.info(f'Auto-prefer: {msg}')
+            else:
+                # reduce noise; only log when a switch was attempted and failed meaningfully
+                if msg.startswith('Failed'):
+                    logger.warning(f'Auto-prefer: {msg}')
+        except Exception as e:
+            logger.warning(f'Auto-prefer loop error: {e}')
+        time.sleep(WIFI_AUTO_PREFER_INTERVAL_SECONDS)
 
 
 def get_current_wifi_connection():
@@ -977,5 +1014,11 @@ if __name__ == '__main__':
     
     logger.info("="*70)
     logger.info("")
-    
+    # Start auto-prefer thread
+    try:
+        t = threading.Thread(target=_auto_prefer_loop, daemon=True)
+        t.start()
+    except Exception as e:
+        logger.warning(f'Could not start auto-prefer thread: {e}')
+
     app.run(host='0.0.0.0', port=port, debug=False)
