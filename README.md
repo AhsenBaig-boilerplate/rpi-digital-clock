@@ -321,15 +321,15 @@ To make WiFi changes persist across reboots and prevent dashboard variables from
 
 1. Go to [Balena Dashboard → Preferences → Access Tokens](https://dashboard.balena-cloud.com/preferences/access-tokens)
 2. Create a new API token (read/write permissions)
-3. Add Fleet or Device Variable: `BALENA_API_KEY` = `your_api_token`
+3. Add Fleet or Device Variable: `API_TOKEN` = `your_api_token`
 4. WiFi changes via settings-UI will now be stored persistently in Balena Cloud
 
-Without `BALENA_API_KEY`, WiFi changes are temporary and will be overwritten if you have `BALENA_HOST_CONFIG_wifi_*` variables set in the dashboard.
+Without `API_TOKEN`, WiFi changes are temporary and will be overwritten if you have `BALENA_HOST_CONFIG_wifi_*` variables set in the dashboard.
 
 **Recommendations:**
 - ✅ **Set a password** if your WiFi has guests or untrusted users
 - ✅ Use a strong password (at least 12 characters)
-- ✅ **Set BALENA_API_KEY** for persistent WiFi configuration
+- ✅ **Set API_TOKEN** for persistent WiFi configuration
 - ⚠️ Without a password, anyone on WiFi can change settings
 - 💡 Password is optional for private home networks
 
@@ -531,14 +531,14 @@ Navigate to `http://<device-ip>:8080` → WiFi Configuration section → Enter n
 The device will automatically try each network in order until one connects.
 
 **⚠️ Important for Persistence:**
-- **Without `BALENA_API_KEY`**: WiFi changes are temporary and will be overwritten by dashboard variables on next sync
-- **With `BALENA_API_KEY`**: WiFi changes are stored in Balena Cloud and persist across reboots
-- Set `BALENA_API_KEY` (Fleet or Device Variable) with your [Balena API token](https://dashboard.balena-cloud.com/preferences/access-tokens) for persistent configuration
+- **Without `API_TOKEN`**: WiFi changes are temporary and will be overwritten by dashboard variables on next sync
+- **With `API_TOKEN`**: WiFi changes are stored in Balena Cloud and persist across reboots
+- Set `API_TOKEN` (Fleet or Device Variable) with your [Balena API token](https://dashboard.balena-cloud.com/preferences/access-tokens) for persistent configuration
 
 **Recommendations:**
 - **Method 1 (WiFi Connect)** - Best for initial setup or when you can't access the device remotely
 - **Method 2 (nmcli)** - Best for quick remote WiFi changes without rebooting
-- **Web UI (port 8080)** - Best for persistent WiFi configuration with automatic fallback (requires BALENA_API_KEY)
+- **Web UI (port 8080)** - Best for persistent WiFi configuration with automatic fallback (requires API_TOKEN)
 
 ## 🎨 Customization
 
