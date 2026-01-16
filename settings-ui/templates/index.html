@@ -463,6 +463,18 @@
                     <button type="submit" class="btn-primary">💾 Save Settings</button>
                 </div>
             </form>
+            
+            <!-- Danger Zone -->
+            <div class="section" style="border-top: 2px solid #f8d7da; margin-top: 20px;">
+                <h2 class="section-title" style="color:#dc3545;">☠️ Danger Zone</h2>
+                <p style="background: #f8d7da; padding: 12px; border-radius: 6px; font-size: 13px; color: #721c24; border: 1px solid #f5c6cb; margin-bottom: 12px;">
+                    Clears ALL clock settings and WiFi configuration. This cannot be undone.
+                </p>
+                <button type="button" onclick="factoryReset()" style="background: #dc3545; color: white; padding: 12px 20px; border: none; border-radius: 6px; cursor: pointer;">
+                    🧨 Factory Reset (Clear All Settings)
+                </button>
+                <span id="reset-status" style="margin-left: 10px; color: #666;"></span>
+            </div>
         </div>
     </div>
     
@@ -721,6 +733,33 @@
         function resetForm() {
             if (confirm('Reset all settings to current values?')) {
                 location.reload();
+            }
+        }
+        
+        async function factoryReset() {
+            if (!confirm('⚠️ This will CLEAR ALL clock settings and WiFi configs. Continue?')) return;
+            if (!confirm('Are you absolutely sure? This cannot be undone.')) return;
+            
+            const statusSpan = document.getElementById('reset-status');
+            statusSpan.textContent = '⏳ Resetting...';
+            statusSpan.style.color = '#666';
+            try {
+                const response = await fetch('/api/settings/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reboot: true })
+                });
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    statusSpan.textContent = '✅ ' + result.message;
+                    statusSpan.style.color = '#28a745';
+                } else {
+                    statusSpan.textContent = '❌ ' + (result.error || 'Failed to reset');
+                    statusSpan.style.color = '#dc3545';
+                }
+            } catch (error) {
+                statusSpan.textContent = '❌ ' + error.message;
+                statusSpan.style.color = '#dc3545';
             }
         }
     </script>

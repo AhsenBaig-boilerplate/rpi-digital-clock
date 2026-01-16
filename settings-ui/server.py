@@ -994,6 +994,54 @@ def clear_wifi_configs():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/settings/reset', methods=['POST'])
+@login_required
+def factory_reset():
+    """Factory reset: clear clock settings and WiFi configs, optional reboot."""
+    logger.info("="*70)
+    logger.info("FACTORY RESET REQUEST RECEIVED")
+    logger.info("="*70)
+    try:
+        # Parse options
+        payload = request.json or {}
+        do_reboot = bool(payload.get('reboot', True))
+
+        # Clear clock settings
+        config_file = '/data/settings.yaml'
+        if os.path.exists(config_file):
+            try:
+                os.remove(config_file)
+                logger.info(f"✓ Cleared clock settings file: {config_file}")
+            except Exception as e:
+                logger.warning(f"Could not remove {config_file}: {e}")
+        else:
+            logger.info("Clock settings file not present; nothing to clear")
+
+        # Clear WiFi configs
+        wifi_cleared = remove_old_wifi_configs()
+        if wifi_cleared:
+            logger.info("✓ Cleared WiFi configs from /mnt/boot/system-connections")
+        else:
+            logger.warning("WiFi configs were not cleared (directory may have been empty or missing)")
+
+        # Optional reboot
+        if do_reboot and SUPERVISOR_ADDRESS and SUPERVISOR_API_KEY:
+            reboot_url = f"{SUPERVISOR_ADDRESS}/v1/reboot?apikey={SUPERVISOR_API_KEY}"
+            reboot_response = requests.post(reboot_url, timeout=10)
+            if reboot_response.status_code == 202:
+                logger.info("✓ Device reboot triggered after factory reset")
+                return jsonify({'success': True, 'message': 'Factory reset complete. Device rebooting...'}), 200
+            else:
+                logger.warning(f"Factory reset complete but reboot failed: {reboot_response.status_code}")
+                return jsonify({'success': True, 'message': 'Factory reset complete. Please reboot manually.'}), 200
+
+        return jsonify({'success': True, 'message': 'Factory reset complete.'}), 200
+
+    except Exception as e:
+        logger.error(f"Error during factory reset: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/restart-clock', methods=['POST'])
 @login_required
 def restart_clock():
