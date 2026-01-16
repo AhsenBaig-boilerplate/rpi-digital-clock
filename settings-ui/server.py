@@ -273,6 +273,10 @@ def switch_to_best_available(min_signal: int | None = None):
         if not device:
             return False, 'No WiFi device found'
 
+        # Reload connections so NetworkManager picks up any new/changed files
+        reload_result = os.popen('nmcli connection reload').read().strip()
+        logger.debug(f'nmcli connection reload: {reload_result}')
+
         current = get_current_wifi_connection() or ''
         scan = scan_wifi_networks()
         if min_signal is not None:
@@ -280,19 +284,22 @@ def switch_to_best_available(min_signal: int | None = None):
         visible = {n['ssid'] for n in scan}
 
         cfg = get_wifi_config()
+        # Map SSID -> (priority, filename) so we can call nmcli with the right connection name
         candidates = []
         if cfg.get('WIFI_SSID'):
-            candidates.append((cfg['WIFI_SSID'], 100))
+            candidates.append((cfg['WIFI_SSID'], 100, 'balena-wifi-primary'))
         if cfg.get('WIFI_SSID_1'):
-            candidates.append((cfg['WIFI_SSID_1'], 90))
+            candidates.append((cfg['WIFI_SSID_1'], 90, 'balena-wifi-backup1'))
         if cfg.get('WIFI_SSID_2'):
-            candidates.append((cfg['WIFI_SSID_2'], 80))
+            candidates.append((cfg['WIFI_SSID_2'], 80, 'balena-wifi-backup2'))
 
         # Pick highest priority among those visible
         best = None
-        for ssid, prio in sorted(candidates, key=lambda x: x[1], reverse=True):
+        best_filename = None
+        for ssid, prio, filename in sorted(candidates, key=lambda x: x[1], reverse=True):
             if ssid and ssid in visible:
                 best = ssid
+                best_filename = filename
                 break
 
         if not best:
@@ -301,9 +308,9 @@ def switch_to_best_available(min_signal: int | None = None):
         if current and current == best:
             return True, f'Already connected to best SSID: {best}'
 
-        # Bring up the chosen connection by ID (we set id=ssid in the config files)
-        cmd = f'nmcli connection up id "{best}" ifname {device}'
-        logger.info(f'Attempting switch to best SSID: {best} on {device}')
+        # Bring up the chosen connection by filename (the connection file name)
+        cmd = f'nmcli connection up "{best_filename}" ifname {device}'
+        logger.info(f'Attempting switch to best SSID: {best} (connection: {best_filename}) on {device}')
         result = os.popen(cmd).read().strip()
 
         # Re-check current connection
