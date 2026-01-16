@@ -350,6 +350,7 @@
                     
                     <p id="current-wifi-banner" style="background: #e9f7ff; padding: 12px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; color: #0c5460; border: 1px solid #bee5eb;">
                         📶 Connected WiFi: <strong id="current-wifi-ssid">{{ current_wifi_ssid if current_wifi_ssid else 'None' }}</strong>
+                        <span id="current-wifi-meta" style="margin-left:8px; color:#0c5460;"></span>
                     </p>
                     
                     <p style="background: #d4edda; padding: 15px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: #155724; border: 1px solid #c3e6cb;">
@@ -529,7 +530,17 @@
                 if (response.ok && result.success) {
                     const banner = document.getElementById('current-wifi-banner');
                     const ssidEl = document.getElementById('current-wifi-ssid');
+                    const metaEl = document.getElementById('current-wifi-meta');
                     ssidEl.textContent = result.ssid || 'None';
+                    let sourceLabel = '';
+                    if (result.source === 'primary') sourceLabel = '(primary)';
+                    else if (result.source === 'backup1') sourceLabel = '(backup 1)';
+                    else if (result.source === 'backup2') sourceLabel = '(backup 2)';
+                    else if (result.source === 'unconfigured') sourceLabel = '(unconfigured/OS)';
+                    else sourceLabel = '';
+                    const signalText = typeof result.signal === 'number' ? `${result.signal}%` : 'n/a';
+                    const secText = result.security ? 'secure' : 'open';
+                    metaEl.textContent = `${sourceLabel} • device: ${result.device || 'wlan0'} • signal: ${signalText} • ${secText}`;
                     banner.style.display = 'block';
                 }
             } catch (e) {

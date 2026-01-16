@@ -231,6 +231,9 @@ def scan_wifi_networks():
         networks.sort(key=lambda x: x['signal'], reverse=True)
 
         logger.info(f"📡 Found {len(networks)} WiFi network(s) in scan")
+        for n in networks:
+            sec = 'secure' if n.get('security') else 'open'
+            logger.info(f"  • {n.get('ssid')}  ({n.get('signal')}%, {sec})")
         return networks
 
     except Exception as e:
@@ -860,9 +863,46 @@ def get_wifi_current():
     """API endpoint to get current connected WiFi SSID"""
     try:
         ssid = get_current_wifi_connection()
+        source = 'unknown'
+        priority = None
+        device = None
+        signal = None
+        security = None
+
+        # Determine device
+        device = get_wifi_device()
+
+        # Determine if SSID matches our configured networks
+        cfg = get_wifi_config() if ssid else {}
+        if ssid:
+            if ssid == cfg.get('WIFI_SSID'):
+                source = 'primary'
+                priority = 100
+            elif ssid == cfg.get('WIFI_SSID_1'):
+                source = 'backup1'
+                priority = 90
+            elif ssid == cfg.get('WIFI_SSID_2'):
+                source = 'backup2'
+                priority = 80
+            else:
+                source = 'unconfigured'
+
+        # Try to enrich with current signal/security from latest scan
+        scan = scan_wifi_networks()
+        for n in scan:
+            if n.get('ssid') == ssid:
+                signal = n.get('signal')
+                security = n.get('security')
+                break
+
         return jsonify({
             'success': True,
-            'ssid': ssid
+            'ssid': ssid,
+            'source': source,
+            'priority': priority,
+            'device': device,
+            'signal': signal,
+            'security': security
         })
     except Exception as e:
         logger.error(f"Error getting current WiFi: {e}")
