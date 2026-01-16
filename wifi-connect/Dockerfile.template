@@ -1,5 +1,6 @@
-# Use balenablocks wifi-connect (newer, better D-Bus compatibility)
-FROM balenablocks/wifi-connect:%%BALENA_ARCH%%
+# Use balenablocks wifi-connect with explicit raspberry-pi architecture
+# %%BALENA_ARCH%% might resolve incorrectly for RPi Zero
+FROM balenablocks/wifi-connect:raspberry-pi
 
 # Set custom portal SSID and passphrase
 ENV PORTAL_SSID="DigitalClock Setup"
