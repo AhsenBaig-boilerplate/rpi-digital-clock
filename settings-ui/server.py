@@ -172,75 +172,42 @@ def login_required(f):
 
 
 def get_wifi_config():
-    """Get current WiFi configuration from device variables via Balena Cloud API"""
+    """Get current WiFi configuration by reading NetworkManager connection files"""
     try:
-        # WiFi config requires Balena Cloud API (Supervisor API doesn't expose device variables)
-        if not API_TOKEN or not DEVICE_UUID:
-            logger.info("API_TOKEN not set - cannot read WiFi config, showing empty fields")
-            return {key: '' for key in WIFI_CONFIG.keys()}
+        import re
         
-        # Get device ID first
-        headers = {
-            'Authorization': f'Bearer {API_TOKEN}',
-            'Content-Type': 'application/json'
-        }
+        boot_connections = '/mnt/boot/system-connections'
+        wifi_config = {key: '' for key in WIFI_CONFIG.keys()}
         
-        device_url = f"{BALENA_API_URL}/v6/device?$filter=uuid eq '{DEVICE_UUID}'&$select=id"
-        device_response = requests.get(device_url, headers=headers, timeout=10)
-        
-        if device_response.status_code != 200:
-            logger.warning(f"Failed to get device ID for WiFi config: {device_response.status_code}")
-            return {key: '' for key in WIFI_CONFIG.keys()}
-        
-        device_data = device_response.json().get('d', [])
-        if not device_data:
-            logger.warning(f"Device not found with UUID: {DEVICE_UUID}")
-            return {key: '' for key in WIFI_CONFIG.keys()}
-        
-        device_id = device_data[0]['id']
-        
-        # Get device environment variables
-        vars_url = f"{BALENA_API_URL}/v6/device_environment_variable?$filter=device eq {device_id}"
-        vars_response = requests.get(vars_url, headers=headers, timeout=10)
-        
-        if vars_response.status_code == 200:
-            env_vars = vars_response.json().get('d', [])
-            
-            # Log what WiFi variables exist
-            wifi_vars = [v['name'] for v in env_vars if 'wifi' in v['name'].lower()]
-            if wifi_vars:
-                logger.info(f"Found WiFi variables in dashboard: {', '.join(wifi_vars)}")
-            else:
-                logger.info("No WiFi variables found in dashboard (using empty defaults)")
-            
-            wifi_config = {}
-            
-            # Extract WiFi settings from device variables
-            # Map WIFI_SSID -> BALENA_HOST_CONFIG_wifi_ssid
-            for key in WIFI_CONFIG.keys():
-                if key == 'WIFI_SSID':
-                    var = next((v for v in env_vars if v['name'] == 'BALENA_HOST_CONFIG_wifi_ssid'), None)
-                    wifi_config[key] = var['value'] if var else ''
-                elif key == 'WIFI_PSK':
-                    var = next((v for v in env_vars if v['name'] == 'BALENA_HOST_CONFIG_wifi_psk'), None)
-                    wifi_config[key] = '***' if var else ''  # Mask password
-                elif key == 'WIFI_SSID_1':
-                    var = next((v for v in env_vars if v['name'] == 'BALENA_HOST_CONFIG_wifi_ssid_1'), None)
-                    wifi_config[key] = var['value'] if var else ''
-                elif key == 'WIFI_PSK_1':
-                    var = next((v for v in env_vars if v['name'] == 'BALENA_HOST_CONFIG_wifi_psk_1'), None)
-                    wifi_config[key] = '***' if var else ''
-                elif key == 'WIFI_SSID_2':
-                    var = next((v for v in env_vars if v['name'] == 'BALENA_HOST_CONFIG_wifi_ssid_2'), None)
-                    wifi_config[key] = var['value'] if var else ''
-                elif key == 'WIFI_PSK_2':
-                    var = next((v for v in env_vars if v['name'] == 'BALENA_HOST_CONFIG_wifi_psk_2'), None)
-                    wifi_config[key] = '***' if var else ''
-            
+        if not os.path.exists(boot_connections):
+            logger.warning(f"Boot connections directory not found: {boot_connections}")
             return wifi_config
-        else:
-            logger.warning(f"Failed to get device variables: {vars_response.status_code}")
-            return {key: '' for key in WIFI_CONFIG.keys()}
+        
+        # Read our WiFi config files (in priority order)
+        config_files = [
+            ('balena-wifi-primary', 'WIFI_SSID', 'WIFI_PSK'),
+            ('balena-wifi-backup1', 'WIFI_SSID_1', 'WIFI_PSK_1'),
+            ('balena-wifi-backup2', 'WIFI_SSID_2', 'WIFI_PSK_2')
+        ]
+        
+        for filename, ssid_key, psk_key in config_files:
+            filepath = os.path.join(boot_connections, filename)
+            if os.path.exists(filepath):
+                try:
+                    with open(filepath, 'r') as f:
+                        content = f.read()
+                        
+                        # Extract SSID
+                        ssid_match = re.search(r'^ssid=(.+)$', content, re.MULTILINE)
+                        if ssid_match:
+                            wifi_config[ssid_key] = ssid_match.group(1).strip()
+                            # Mask password (don't expose it)
+                            wifi_config[psk_key] = '***'
+                            logger.info(f"Found WiFi config: {filename} (SSID: {wifi_config[ssid_key]})")
+                except Exception as e:
+                    logger.warning(f"Could not read {filename}: {e}")
+        
+        return wifi_config
             
     except Exception as e:
         logger.error(f"Error loading WiFi config: {e}")
@@ -388,176 +355,167 @@ def update_device_variables(updates):
         return False
 
 
-def remove_initial_wifi_configs():
-    """Remove WiFi config files from boot partition that were baked into the image.
-    This prevents the initial WiFi config (from image download) from taking precedence
-    over device variables set via the API."""
+def create_networkmanager_wifi_file(ssid, password, priority, filename):
+    """Create a NetworkManager connection file for WiFi.
+    
+    Args:
+        ssid: WiFi network name
+        password: WiFi password (PSK)
+        priority: Connection priority (higher = preferred)
+        filename: File name to create in /mnt/boot/system-connections/
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        boot_connections = '/mnt/boot/system-connections'
+        if not os.path.exists(boot_connections):
+            logger.error(f"Boot connections directory not found: {boot_connections}")
+            return False
+        
+        filepath = os.path.join(boot_connections, filename)
+        
+        # NetworkManager connection file format
+        # See: https://docs.balena.io/reference/OS/network/#wifi-setup
+        config_content = f"""[connection]
+id={ssid}
+type=wifi
+autoconnect=true
+autoconnect-priority={priority}
+
+[wifi]
+mode=infrastructure
+ssid={ssid}
+
+[wifi-security]
+auth-alg=open
+key-mgmt=wpa-psk
+psk={password}
+
+[ipv4]
+method=auto
+
+[ipv6]
+addr-gen-mode=stable-privacy
+method=auto
+"""
+        
+        with open(filepath, 'w') as f:
+            f.write(config_content)
+        
+        # Set proper permissions (NetworkManager requires 600)
+        os.chmod(filepath, 0o600)
+        
+        logger.info(f"✓ Created WiFi config: {filename} (SSID: {ssid}, Priority: {priority})")
+        return True
+        
+    except Exception as e:
+        logger.error(f"✗ Failed to create WiFi config {filename}: {e}")
+        return False
+
+
+def remove_old_wifi_configs():
+    """Remove all WiFi config files from boot partition to ensure clean slate."""
     try:
         boot_connections = '/mnt/boot/system-connections'
         if not os.path.exists(boot_connections):
             logger.warning(f"Boot connections directory not found: {boot_connections}")
             return False
         
-        # Common WiFi config filenames created during image download
-        initial_wifi_files = ['resin-wifi', 'balena-wifi', 'resin-sample', 'balena-sample']
         removed = []
-        
-        for filename in initial_wifi_files:
+        # Remove all files (we'll recreate the ones we need)
+        for filename in os.listdir(boot_connections):
+            if filename.endswith('.ignore'):
+                continue  # Keep sample files
+            
             filepath = os.path.join(boot_connections, filename)
-            if os.path.exists(filepath):
+            if os.path.isfile(filepath):
                 try:
                     os.remove(filepath)
                     removed.append(filename)
-                    logger.info(f"Removed initial WiFi config: {filename}")
+                    logger.info(f"Removed old WiFi config: {filename}")
                 except Exception as e:
                     logger.warning(f"Could not remove {filename}: {e}")
         
         if removed:
-            logger.info(f"Removed {len(removed)} initial WiFi config file(s): {', '.join(removed)}")
+            logger.info(f"✓ Removed {len(removed)} old WiFi config file(s)")
             return True
         else:
-            logger.info("No initial WiFi config files found to remove")
+            logger.info("No old WiFi config files found")
             return False
             
     except Exception as e:
-        logger.error(f"Error removing initial WiFi configs: {e}")
+        logger.error(f"Error removing old WiFi configs: {e}")
         return False
 
 
 def update_wifi_config(wifi_settings):
-    """Update WiFi configuration via device variables and reboot device"""
+    """Update WiFi configuration by writing NetworkManager connection files and rebooting.
+    
+    This is the correct way per balena docs:
+    https://docs.balena.io/reference/OS/network/#wifi-setup
+    """
     try:
-        if not SUPERVISOR_ADDRESS or not SUPERVISOR_API_KEY or not DEVICE_UUID:
+        if not SUPERVISOR_ADDRESS or not SUPERVISOR_API_KEY:
             return False, "Supervisor API not available"
         
-        # CRITICAL: Remove initial WiFi configs from boot partition first
-        # This ensures device variables take precedence over the WiFi config
-        # that was baked into the image during download
-        remove_initial_wifi_configs()
+        # Step 1: Remove ALL old WiFi configs to ensure clean slate
+        remove_old_wifi_configs()
         
-        # Prepare device variables in balena format
-        device_vars = {}
+        # Step 2: Create new NetworkManager connection files
+        # Priority: higher number = preferred connection
+        configs_created = []
         
-        # Only set non-empty values
-        if wifi_settings.get('WIFI_SSID'):
-            device_vars['BALENA_HOST_CONFIG_wifi_ssid'] = wifi_settings['WIFI_SSID']
-            # Only set password if SSID is provided and password is not masked
-            if wifi_settings.get('WIFI_PSK') and wifi_settings['WIFI_PSK'] != '***':
-                device_vars['BALENA_HOST_CONFIG_wifi_psk'] = wifi_settings['WIFI_PSK']
-        
-        if wifi_settings.get('WIFI_SSID_1'):
-            device_vars['BALENA_HOST_CONFIG_wifi_ssid_1'] = wifi_settings['WIFI_SSID_1']
-            if wifi_settings.get('WIFI_PSK_1') and wifi_settings['WIFI_PSK_1'] != '***':
-                device_vars['BALENA_HOST_CONFIG_wifi_psk_1'] = wifi_settings['WIFI_PSK_1']
-        
-        if wifi_settings.get('WIFI_SSID_2'):
-            device_vars['BALENA_HOST_CONFIG_wifi_ssid_2'] = wifi_settings['WIFI_SSID_2']
-            if wifi_settings.get('WIFI_PSK_2') and wifi_settings['WIFI_PSK_2'] != '***':
-                device_vars['BALENA_HOST_CONFIG_wifi_psk_2'] = wifi_settings['WIFI_PSK_2']
-        
-        if not device_vars:
-            return False, "No WiFi settings to update"
-        
-        # Strategy: Set device variables in Balena Cloud (persistent) if API token available,
-        # otherwise use Supervisor host-config (temporary until cloud sync)
-        persist_method = "temporary (host-config only)"
-        
-        if API_TOKEN:
-            # Method 1: Set persistent device variables via Balena Cloud API
-            try:
-                logger.info(f"Attempting to set WiFi via Balena Cloud API for device {DEVICE_UUID}")
-                headers = {
-                    'Authorization': f'Bearer {API_TOKEN}',
-                    'Content-Type': 'application/json'
-                }
-                
-                # Get device ID first
-                device_url = f"{BALENA_API_URL}/v6/device?$filter=uuid eq '{DEVICE_UUID}'&$select=id"
-                device_response = requests.get(device_url, headers=headers, timeout=10)
-                logger.info(f"Device lookup response: {device_response.status_code}")
-                
-                if device_response.status_code != 200:
-                    raise Exception(f"Failed to get device ID: {device_response.status_code} - {device_response.text}")
-                
-                device_data = device_response.json().get('d', [])
-                if not device_data:
-                    raise Exception(f"Device not found with UUID: {DEVICE_UUID}")
-                
-                device_id = device_data[0]['id']
-                logger.info(f"Found device ID: {device_id}")
-                
-                # Get existing device variables
-                get_url = f"{BALENA_API_URL}/v6/device_environment_variable?$filter=device eq {device_id}"
-                existing_response = requests.get(get_url, headers=headers, timeout=10)
-                logger.info(f"Existing vars response: {existing_response.status_code}")
-                
-                if existing_response.status_code != 200:
-                    raise Exception(f"Failed to get existing variables: {existing_response.status_code}")
-                
-                existing_vars = existing_response.json().get('d', [])
-                logger.info(f"Found {len(existing_vars)} existing variables")
-                
-                # Update or create each variable
-                for var_name, var_value in device_vars.items():
-                    existing = next((v for v in existing_vars if v['name'] == var_name), None)
-                    
-                    if existing:
-                        # Update existing variable
-                        patch_url = f"{BALENA_API_URL}/v6/device_environment_variable({existing['id']})"
-                        patch_response = requests.patch(patch_url, headers=headers, json={'value': var_value}, timeout=10)
-                        if patch_response.status_code in [200, 201]:
-                            logger.info(f"✓ Updated {var_name} = {var_value[:20]}...")
-                        else:
-                            logger.error(f"✗ Failed to update {var_name}: {patch_response.status_code} - {patch_response.text}")
-                    else:
-                        # Create new variable
-                        post_url = f"{BALENA_API_URL}/v6/device_environment_variable"
-                        payload = {
-                            'device': device_id,
-                            'name': var_name,
-                            'value': var_value
-                        }
-                        post_response = requests.post(post_url, headers=headers, json=payload, timeout=10)
-                        if post_response.status_code in [200, 201]:
-                            logger.info(f"✓ Created {var_name} = {var_value[:20]}...")
-                        else:
-                            logger.error(f"✗ Failed to create {var_name}: {post_response.status_code} - {post_response.text}")
-                
-                persist_method = "persistent (Balena Cloud API)"
-                logger.info(f"✓ Successfully set {len(device_vars)} WiFi variables in Balena Cloud (persistent)")
-                
-            except Exception as e:
-                logger.error(f"✗ Failed to set persistent variables via Balena API: {e}. Falling back to host-config.")
-                persist_method = "temporary (host-config fallback)"
-        else:
-            logger.warning("API_TOKEN not set - WiFi changes will be temporary")
-        
-        # Method 2: Also set via Supervisor host-config for immediate effect
-        url = f"{SUPERVISOR_ADDRESS}/v1/device/host-config?apikey={SUPERVISOR_API_KEY}"
-        response = requests.patch(
-            url,
-            json=device_vars,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            logger.info(f"Successfully updated {len(device_vars)} WiFi settings via host-config ({persist_method})")
+        # Primary WiFi (priority 100)
+        if wifi_settings.get('WIFI_SSID') and wifi_settings.get('WIFI_PSK'):
+            ssid = wifi_settings['WIFI_SSID']
+            password = wifi_settings['WIFI_PSK']
             
-            # Trigger device reboot to apply WiFi changes
-            reboot_url = f"{SUPERVISOR_ADDRESS}/v1/reboot?apikey={SUPERVISOR_API_KEY}"
-            reboot_response = requests.post(reboot_url, timeout=10)
+            # Skip if password is masked (user didn't update it)
+            if password != '***':
+                if create_networkmanager_wifi_file(ssid, password, 100, 'balena-wifi-primary'):
+                    configs_created.append(f"{ssid} (primary)")
+                else:
+                    return False, f"Failed to create config for {ssid}"
+        
+        # Backup WiFi 1 (priority 90)
+        if wifi_settings.get('WIFI_SSID_1') and wifi_settings.get('WIFI_PSK_1'):
+            ssid = wifi_settings['WIFI_SSID_1']
+            password = wifi_settings['WIFI_PSK_1']
             
-            if reboot_response.status_code == 202:
-                logger.info("Device reboot triggered to apply WiFi settings")
-                if "temporary" in persist_method:
-                    return True, "⚠️ WiFi updated temporarily (set API_TOKEN for persistent changes). Device rebooting..."
-                return True, "WiFi settings saved persistently. Device will reboot to apply changes."
-            else:
-                logger.warning(f"WiFi updated but reboot failed: {reboot_response.status_code}")
-                return True, "WiFi settings updated but manual reboot required."
+            if password != '***':
+                if create_networkmanager_wifi_file(ssid, password, 90, 'balena-wifi-backup1'):
+                    configs_created.append(f"{ssid} (backup 1)")
+                else:
+                    logger.warning(f"Failed to create config for backup network {ssid}")
+        
+        # Backup WiFi 2 (priority 80)
+        if wifi_settings.get('WIFI_SSID_2') and wifi_settings.get('WIFI_PSK_2'):
+            ssid = wifi_settings['WIFI_SSID_2']
+            password = wifi_settings['WIFI_PSK_2']
+            
+            if password != '***':
+                if create_networkmanager_wifi_file(ssid, password, 80, 'balena-wifi-backup2'):
+                    configs_created.append(f"{ssid} (backup 2)")
+                else:
+                    logger.warning(f"Failed to create config for backup network {ssid}")
+        
+        if not configs_created:
+            return False, "No valid WiFi networks to configure (passwords may be masked)"
+        
+        logger.info(f"✓ Created {len(configs_created)} WiFi configuration(s): {', '.join(configs_created)}")
+        
+        # Step 3: Trigger device reboot to apply WiFi changes
+        # NetworkManager reads configs from /mnt/boot/system-connections on boot
+        reboot_url = f"{SUPERVISOR_ADDRESS}/v1/reboot?apikey={SUPERVISOR_API_KEY}"
+        reboot_response = requests.post(reboot_url, timeout=10)
+        
+        if reboot_response.status_code == 202:
+            logger.info("✓ Device reboot triggered - WiFi will be applied on next boot")
+            return True, f"WiFi settings saved ({len(configs_created)} network(s)). Device will reboot to apply changes."
         else:
-            logger.error(f"Failed to update WiFi config: {response.status_code} - {response.text}")
-            return False, f"Failed to update WiFi: {response.text}"
+            logger.warning(f"WiFi configs created but reboot failed: {reboot_response.status_code}")
+            return True, "WiFi settings saved but manual reboot required."
             
     except Exception as e:
         logger.error(f"Error updating WiFi config: {e}")
@@ -601,8 +559,7 @@ def index():
                           current=current_config,
                           wifi_config=WIFI_CONFIG,
                           wifi_current=wifi_config,
-                          auth_enabled=AUTH_ENABLED,
-                          api_token_set=bool(API_TOKEN))
+                          auth_enabled=AUTH_ENABLED)
 
 
 @app.route('/api/config', methods=['GET'])

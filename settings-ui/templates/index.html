@@ -348,17 +348,9 @@
                 <div class="section">
                     <h2 class="section-title">📡 WiFi Configuration</h2>
                     
-                    <!-- API_TOKEN Status Indicator -->
-                    {% if api_token_set %}
                     <p style="background: #d4edda; padding: 15px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: #155724; border: 1px solid #c3e6cb;">
-                        ✓ <strong>API_TOKEN is set</strong> - WiFi changes will be <strong>persistent</strong> across reboots.
+                        ✓ WiFi changes are saved to <code>/mnt/boot/system-connections/</code> and persist across reboots
                     </p>
-                    {% else %}
-                    <p style="background: #f8d7da; padding: 15px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: #721c24; border: 1px solid #f5c6cb;">
-                        ✗ <strong>API_TOKEN not set</strong> - WiFi changes will be <strong>temporary</strong> and may revert on reboot.
-                        Set <code>API_TOKEN</code> device variable with your <a href="https://dashboard.balena-cloud.com/preferences/access-tokens" target="_blank" style="color: #721c24; text-decoration: underline;">Balena API token</a> for persistence.
-                    </p>
-                    {% endif %}
                     
                     <p style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; color: #856404; border: 1px solid #ffeeba;">
                         ⚠️ <strong>Important:</strong> Changing WiFi settings will <strong>reboot the device</strong> to apply changes. 
