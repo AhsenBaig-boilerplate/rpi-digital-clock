@@ -18,10 +18,12 @@ services:
       
       # Timezone setting (e.g., America/New_York, Europe/London, Asia/Tokyo)
       # See https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
-      - TIMEZONE=America/New_York
+      # Commented out to allow settings-ui to control this value
+      # - TIMEZONE=America/New_York
       
       # Weather API settings (override config.yaml)
       # Get your free API key at https://openweathermap.org/api
+      # Note: Leave these uncommented if you want to use device variables instead of settings-ui
       - WEATHER_API_KEY=
       - WEATHER_LOCATION=New York,US
       - WEATHER_UNITS=metric
@@ -33,10 +35,11 @@ services:
       # - DATE_FORMAT=%A, %B %d, %Y
       
       # Display customization (for native renderer)
-      - COLOR=#00FF00
-      - TIME_SIZE=280
-      - DATE_SIZE=90
-      - FONT_PATH=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+      # Commented out to allow settings-ui to control these values
+      # - COLOR=#00FF00
+      # - TIME_SIZE=280
+      # - DATE_SIZE=90
+      # - FONT_PATH=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
       # - DISPLAY_ORIENTATION=landscape  # landscape or portrait
       # - FONT_FAMILY=Helvetica
       
