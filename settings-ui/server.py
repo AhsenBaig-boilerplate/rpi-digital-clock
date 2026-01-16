@@ -356,47 +356,72 @@ def update_wifi_config(wifi_settings):
         if BALENA_API_KEY:
             # Method 1: Set persistent device variables via Balena Cloud API
             try:
+                logger.info(f"Attempting to set WiFi via Balena Cloud API for device {DEVICE_UUID}")
                 headers = {
                     'Authorization': f'Bearer {BALENA_API_KEY}',
                     'Content-Type': 'application/json'
                 }
                 
-                # Get existing device variables to update or create
-                get_url = f"{BALENA_API_URL}/v6/device_environment_variable?$filter=device/uuid eq '{DEVICE_UUID}'"
-                existing_vars = requests.get(get_url, headers=headers, timeout=10).json().get('d', [])
+                # Get device ID first
+                device_url = f"{BALENA_API_URL}/v6/device?$filter=uuid eq '{DEVICE_UUID}'&$select=id"
+                device_response = requests.get(device_url, headers=headers, timeout=10)
+                logger.info(f"Device lookup response: {device_response.status_code}")
                 
+                if device_response.status_code != 200:
+                    raise Exception(f"Failed to get device ID: {device_response.status_code} - {device_response.text}")
+                
+                device_data = device_response.json().get('d', [])
+                if not device_data:
+                    raise Exception(f"Device not found with UUID: {DEVICE_UUID}")
+                
+                device_id = device_data[0]['id']
+                logger.info(f"Found device ID: {device_id}")
+                
+                # Get existing device variables
+                get_url = f"{BALENA_API_URL}/v6/device_environment_variable?$filter=device eq {device_id}"
+                existing_response = requests.get(get_url, headers=headers, timeout=10)
+                logger.info(f"Existing vars response: {existing_response.status_code}")
+                
+                if existing_response.status_code != 200:
+                    raise Exception(f"Failed to get existing variables: {existing_response.status_code}")
+                
+                existing_vars = existing_response.json().get('d', [])
+                logger.info(f"Found {len(existing_vars)} existing variables")
+                
+                # Update or create each variable
                 for var_name, var_value in device_vars.items():
-                    # Check if variable exists
                     existing = next((v for v in existing_vars if v['name'] == var_name), None)
                     
                     if existing:
                         # Update existing variable
                         patch_url = f"{BALENA_API_URL}/v6/device_environment_variable({existing['id']})"
-                        requests.patch(patch_url, headers=headers, json={'value': var_value}, timeout=10)
+                        patch_response = requests.patch(patch_url, headers=headers, json={'value': var_value}, timeout=10)
+                        if patch_response.status_code in [200, 201]:
+                            logger.info(f"✓ Updated {var_name} = {var_value[:20]}...")
+                        else:
+                            logger.error(f"✗ Failed to update {var_name}: {patch_response.status_code} - {patch_response.text}")
                     else:
                         # Create new variable
                         post_url = f"{BALENA_API_URL}/v6/device_environment_variable"
                         payload = {
-                            'device': existing_vars[0]['device']['__id'] if existing_vars else None,
+                            'device': device_id,
                             'name': var_name,
                             'value': var_value
                         }
-                        # If we don't have device ID from existing vars, get it
-                        if not payload['device']:
-                            device_url = f"{BALENA_API_URL}/v6/device?$filter=uuid eq '{DEVICE_UUID}'&$select=id"
-                            device_data = requests.get(device_url, headers=headers, timeout=10).json().get('d', [])
-                            if device_data:
-                                payload['device'] = device_data[0]['id']
-                        
-                        if payload['device']:
-                            requests.post(post_url, headers=headers, json=payload, timeout=10)
+                        post_response = requests.post(post_url, headers=headers, json=payload, timeout=10)
+                        if post_response.status_code in [200, 201]:
+                            logger.info(f"✓ Created {var_name} = {var_value[:20]}...")
+                        else:
+                            logger.error(f"✗ Failed to create {var_name}: {post_response.status_code} - {post_response.text}")
                 
                 persist_method = "persistent (Balena Cloud API)"
-                logger.info(f"Successfully set {len(device_vars)} WiFi variables in Balena Cloud (persistent)")
+                logger.info(f"✓ Successfully set {len(device_vars)} WiFi variables in Balena Cloud (persistent)")
                 
             except Exception as e:
-                logger.warning(f"Failed to set persistent variables via Balena API: {e}. Falling back to host-config.")
+                logger.error(f"✗ Failed to set persistent variables via Balena API: {e}. Falling back to host-config.")
                 persist_method = "temporary (host-config fallback)"
+        else:
+            logger.warning("BALENA_API_KEY not set - WiFi changes will be temporary")
         
         # Method 2: Also set via Supervisor host-config for immediate effect
         url = f"{SUPERVISOR_ADDRESS}/v1/device/host-config?apikey={SUPERVISOR_API_KEY}"
