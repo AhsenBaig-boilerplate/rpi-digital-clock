@@ -496,15 +496,17 @@ nmcli device wifi list
 
 **Configure multiple networks with fallback:**
 
-Set device variables (via dashboard or web UI on port 8080):
+Set device variables (via dashboard):
 ```
-WIFI_SSID: "HomeNetwork"
-WIFI_SSID_1: "OfficeNetwork"
-WIFI_SSID_2: "MobileHotspot"
-WIFI_PASSPHRASE: "homepassword"
-WIFI_PASSPHRASE_1: "officepassword"
-WIFI_PASSPHRASE_2: "hotspotpassword"
+BALENA_HOST_CONFIG_wifi_ssid: "HomeNetwork"
+BALENA_HOST_CONFIG_wifi_psk: "homepassword"
+BALENA_HOST_CONFIG_wifi_ssid_1: "OfficeNetwork"
+BALENA_HOST_CONFIG_wifi_psk_1: "officepassword"
+BALENA_HOST_CONFIG_wifi_ssid_2: "MobileHotspot"
+BALENA_HOST_CONFIG_wifi_psk_2: "hotspotpassword"
 ```
+
+Or use the **Settings UI** (port 8080) which provides a user-friendly form with WiFi configuration fields. Changes will automatically trigger a device reboot.
 
 The device will automatically try each network in order until one connects.
 
