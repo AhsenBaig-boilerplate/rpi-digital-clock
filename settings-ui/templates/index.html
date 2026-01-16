@@ -233,6 +233,44 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 30px;
+            overflow-x: auto;
+        }
+        
+        .tab {
+            padding: 15px 25px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 15px;
+            font-weight: 500;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+        
+        .tab:hover {
+            color: #667eea;
+        }
+        
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -248,10 +286,20 @@
         <div class="content">
             <div id="message" class="message"></div>
             
+            <!-- Tabs Navigation -->
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab(event, 'display-tab')">🖥️ Display</button>
+                <button class="tab" onclick="switchTab(event, 'weather-tab')">🌤️ Weather</button>
+                <button class="tab" onclick="switchTab(event, 'wifi-tab')">📶 WiFi</button>
+                <button class="tab" onclick="switchTab(event, 'advanced-tab')">⚙️ Advanced</button>
+                <button class="tab" onclick="switchTab(event, 'system-tab')">🔧 System</button>
+            </div>
+            
             <form id="settingsForm">
-                <!-- Weather Settings -->
-                <div class="section">
-                    <h2 class="section-title">🌤️ Weather Settings</h2>
+                <!-- Display Tab -->
+                <div id="display-tab" class="tab-content active">
+                    <div class="section">
+                        <h2 class="section-title">🖥️ Display Settings</h2>
                     
                     <div class="form-group checkbox-group">
                            <input type="checkbox" id="WEATHER_ENABLED" name="WEATHER_ENABLED" 
@@ -481,6 +529,25 @@
     <script>
         const form = document.getElementById('settingsForm');
         const messageDiv = document.getElementById('message');
+        
+        // Tab switching function
+        function switchTab(event, tabId) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Remove active from all tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabId).classList.add('active');
+            
+            // Mark tab as active
+            event.currentTarget.classList.add('active');
+        }
         
         // Scan for WiFi networks and populate dropdowns
         async function scanWiFiNetworks() {
