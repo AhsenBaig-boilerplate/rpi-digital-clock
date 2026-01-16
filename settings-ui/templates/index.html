@@ -422,6 +422,13 @@
                     <button type="button" class="btn-primary" onclick="saveWiFi()" style="width: 100%; margin-top: 10px;">
                         📡 Save WiFi & Reboot Device
                     </button>
+                    
+                    <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #ddd;">
+                        <button type="button" onclick="clearWifiConfigs()" style="background: #dc3545; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
+                            🗑️ Clear All WiFi Configs (Advanced)
+                        </button>
+                        <span id="clear-status" style="margin-left: 10px; color: #666;"></span>
+                    </div>
                 </div>
                 
                 <!-- Screensaver -->
@@ -582,6 +589,32 @@
                 }
             } catch (error) {
                 showMessage('❌ Error updating WiFi: ' + error.message, 'error');
+            }
+        }
+
+        async function clearWifiConfigs() {
+            if (!confirm('⚠️ This will DELETE all WiFi configs from /mnt/boot/system-connections. Continue?')) {
+                return;
+            }
+            const statusSpan = document.getElementById('clear-status');
+            statusSpan.textContent = '⏳ Clearing...';
+            statusSpan.style.color = '#666';
+            try {
+                const response = await fetch('/api/wifi/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    statusSpan.textContent = '✅ ' + result.message;
+                    statusSpan.style.color = '#28a745';
+                } else {
+                    statusSpan.textContent = '❌ ' + (result.error || 'Failed to clear');
+                    statusSpan.style.color = '#dc3545';
+                }
+            } catch (error) {
+                statusSpan.textContent = '❌ ' + error.message;
+                statusSpan.style.color = '#dc3545';
             }
         }
         

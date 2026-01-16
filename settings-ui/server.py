@@ -674,13 +674,13 @@ def update_wifi_config(wifi_settings):
             logger.error("Cannot update WiFi: Supervisor API not available")
             return False, "Supervisor API not available"
         
-        # Step 1: Remove ALL old WiFi configs to ensure clean slate
-        remove_old_wifi_configs()
-        
         logger.info("")
-        logger.info("Step 2: Creating new WiFi configuration files...")
+        logger.info("Step 1: Writing WiFi configuration files (non-destructive)...")
         # Priority: higher number = preferred connection
         configs_created = []
+        unchanged = []
+        # Read current SSIDs for validation
+        current_cfg = get_wifi_config()
         
         # Primary WiFi (priority 100)
         if wifi_settings.get('WIFI_SSID') and wifi_settings.get('WIFI_PSK'):
@@ -693,6 +693,12 @@ def update_wifi_config(wifi_settings):
                     configs_created.append(f"{ssid} (primary)")
                 else:
                     return False, f"Failed to create config for {ssid}"
+            else:
+                # If SSID unchanged and password masked, leave existing file intact
+                if ssid == current_cfg.get('WIFI_SSID'):
+                    unchanged.append(f"{ssid} (primary)")
+                else:
+                    return False, "Password required when changing primary SSID"
         
         # Backup WiFi 1 (priority 90)
         if wifi_settings.get('WIFI_SSID_1') and wifi_settings.get('WIFI_PSK_1'):
@@ -704,6 +710,11 @@ def update_wifi_config(wifi_settings):
                     configs_created.append(f"{ssid} (backup 1)")
                 else:
                     logger.warning(f"Failed to create config for backup network {ssid}")
+            else:
+                if ssid == current_cfg.get('WIFI_SSID_1'):
+                    unchanged.append(f"{ssid} (backup 1)")
+                else:
+                    return False, "Password required when changing backup 1 SSID"
         
         # Backup WiFi 2 (priority 80)
         if wifi_settings.get('WIFI_SSID_2') and wifi_settings.get('WIFI_PSK_2'):
@@ -715,19 +726,28 @@ def update_wifi_config(wifi_settings):
                     configs_created.append(f"{ssid} (backup 2)")
                 else:
                     logger.warning(f"Failed to create config for backup network {ssid}")
+            else:
+                if ssid == current_cfg.get('WIFI_SSID_2'):
+                    unchanged.append(f"{ssid} (backup 2)")
+                else:
+                    return False, "Password required when changing backup 2 SSID"
         
-        if not configs_created:
-            logger.warning("No valid WiFi networks to configure (passwords may be masked)")
-            return False, "No valid WiFi networks to configure (passwords may be masked)"
+        if not configs_created and not unchanged:
+            logger.warning("No valid WiFi updates provided (passwords may be masked or fields empty)")
+            return False, "No WiFi changes detected"
         
         logger.info("")
         logger.info("✓ WiFi Configuration Summary:")
         logger.info(f"  - Created {len(configs_created)} network configuration(s)")
         for i, config in enumerate(configs_created, 1):
             logger.info(f"  {i}. {config}")
+        if unchanged:
+            logger.info(f"  - Left {len(unchanged)} configuration(s) unchanged")
+            for name in unchanged:
+                logger.info(f"    • {name}")
         
         logger.info("")
-        logger.info("Step 3: Triggering device reboot to apply changes...")
+        logger.info("Step 2: Triggering device reboot to apply changes...")
         # Step 3: Trigger device reboot to apply WiFi changes
         # NetworkManager reads configs from /mnt/boot/system-connections on boot
         reboot_url = f"{SUPERVISOR_ADDRESS}/v1/reboot?apikey={SUPERVISOR_API_KEY}"
@@ -953,6 +973,24 @@ def save_wifi():
             
     except Exception as e:
         logger.error(f"Error saving WiFi config: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/wifi/clear', methods=['POST'])
+@login_required
+def clear_wifi_configs():
+    """Explicitly clear all WiFi NetworkManager connection files from boot partition."""
+    logger.info("="*60)
+    logger.info("WiFi Configuration CLEAR Request Received")
+    logger.info("="*60)
+    try:
+        ok = remove_old_wifi_configs()
+        if ok:
+            return jsonify({'success': True, 'message': 'All WiFi configs cleared from /mnt/boot/system-connections'}), 200
+        else:
+            return jsonify({'success': False, 'error': 'Failed to clear WiFi configs'}), 500
+    except Exception as e:
+        logger.error(f"Error clearing WiFi configs: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
