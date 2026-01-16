@@ -225,6 +225,82 @@ def scan_wifi_networks():
         return []
 
 
+def get_wifi_device():
+    """Return the first WiFi device name (e.g., wlan0) or None"""
+    try:
+        output = os.popen('nmcli -t -f DEVICE,TYPE,STATE dev').read().strip()
+        for line in output.split('\n'):
+            parts = line.split(':')
+            if len(parts) >= 3:
+                device, dev_type, state = parts[0], parts[1], parts[2]
+                if dev_type == 'wifi':
+                    return device
+        return None
+    except Exception:
+        return None
+
+
+def switch_to_best_available():
+    """Switch to the highest-priority configured SSID that is currently visible.
+
+    Priorities: primary=100, backup1=90, backup2=80. If already connected
+    to the best available, does nothing.
+    """
+    try:
+        import shutil
+
+        nmcli_path = shutil.which('nmcli')
+        if not nmcli_path:
+            return False, 'nmcli not available'
+
+        device = get_wifi_device()
+        if not device:
+            return False, 'No WiFi device found'
+
+        current = get_current_wifi_connection() or ''
+        visible = {n['ssid'] for n in scan_wifi_networks()}
+
+        cfg = get_wifi_config()
+        candidates = []
+        if cfg.get('WIFI_SSID'):
+            candidates.append((cfg['WIFI_SSID'], 100))
+        if cfg.get('WIFI_SSID_1'):
+            candidates.append((cfg['WIFI_SSID_1'], 90))
+        if cfg.get('WIFI_SSID_2'):
+            candidates.append((cfg['WIFI_SSID_2'], 80))
+
+        # Pick highest priority among those visible
+        best = None
+        for ssid, prio in sorted(candidates, key=lambda x: x[1], reverse=True):
+            if ssid and ssid in visible:
+                best = ssid
+                break
+
+        if not best:
+            return False, 'No configured SSIDs are currently visible'
+
+        if current and current == best:
+            return True, f'Already connected to best SSID: {best}'
+
+        # Bring up the chosen connection by ID (we set id=ssid in the config files)
+        cmd = f'nmcli connection up id "{best}" ifname {device}'
+        logger.info(f'Attempting switch to best SSID: {best} on {device}')
+        result = os.popen(cmd).read().strip()
+
+        # Re-check current connection
+        now = get_current_wifi_connection() or ''
+        if now == best:
+            logger.info(f'✓ Switched to SSID: {best}')
+            return True, f'Switched to SSID: {best}'
+        else:
+            logger.warning(f'Could not switch to {best}. nmcli output: {result}')
+            return False, f'Failed to switch. Output: {result}'
+
+    except Exception as e:
+        logger.error(f'Error switching WiFi: {e}')
+        return False, str(e)
+
+
 def get_current_wifi_connection():
     """Get the currently connected WiFi network SSID"""
     try:
@@ -753,6 +829,19 @@ def get_wifi_current():
         })
     except Exception as e:
         logger.error(f"Error getting current WiFi: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/wifi/switch-best', methods=['POST'])
+@login_required
+def api_switch_best_wifi():
+    """API endpoint to switch to the highest-priority available SSID"""
+    try:
+        success, message = switch_to_best_available()
+        status = 200 if success else 400
+        return jsonify({'success': success, 'message': message}), status
+    except Exception as e:
+        logger.error(f"Error switching WiFi: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

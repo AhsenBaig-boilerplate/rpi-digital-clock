@@ -367,6 +367,14 @@
                     </button>
                     <span id="scan-status" style="margin-left: 10px; color: #666;"></span>
                     
+                    <!-- Switch to best available -->
+                    <div style="margin-top:10px;">
+                        <button type="button" onclick="switchBestWifi()" style="background: #17a2b8; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
+                            🔁 Prefer Highest-Priority Available Now
+                        </button>
+                        <span id="switch-status" style="margin-left: 10px; color: #666;"></span>
+                    </div>
+                    
                     <div class="form-group">
                         <label for="WIFI_SSID">{{ wifi_config.WIFI_SSID.label }}</label>
                         <input type="text" id="WIFI_SSID" name="WIFI_SSID" list="wifi-networks-list"
@@ -563,6 +571,30 @@
                 }
             } catch (error) {
                 showMessage('❌ Error updating WiFi: ' + error.message, 'error');
+            }
+        }
+        
+        async function switchBestWifi() {
+            const statusSpan = document.getElementById('switch-status');
+            statusSpan.textContent = '⏳ Switching...';
+            statusSpan.style.color = '#666';
+            try {
+                const response = await fetch('/api/wifi/switch-best', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    statusSpan.textContent = '✅ ' + result.message;
+                    statusSpan.style.color = '#28a745';
+                } else {
+                    statusSpan.textContent = '❌ ' + (result.message || result.error || 'Failed to switch');
+                    statusSpan.style.color = '#dc3545';
+                }
+                await refreshCurrentWifi();
+            } catch (error) {
+                statusSpan.textContent = '❌ ' + error.message;
+                statusSpan.style.color = '#dc3545';
             }
         }
         
