@@ -370,42 +370,6 @@
                     </div>
                 </div>
                 
-                <!-- WiFi Settings -->
-                <div class="section">
-                    <h2 class="section-title">📡 WiFi Settings</h2>
-                    <div class="message info" style="display: block; margin-bottom: 15px;">
-                        ⚠️ <strong>Important:</strong> WiFi changes require device reboot. Device will automatically reboot after saving.
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="WIFI_SSID">{{ config.WIFI_SSID.label }}</label>
-                        <input type="text" id="WIFI_SSID" name="WIFI_SSID" 
-                               value="{{ current.WIFI_SSID }}" placeholder="MyHomeNetwork">
-                        <span class="help-text">{{ config.WIFI_SSID.help }}</span>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="WIFI_PASSPHRASE">{{ config.WIFI_PASSPHRASE.label }}</label>
-                        <input type="password" id="WIFI_PASSPHRASE" name="WIFI_PASSPHRASE" 
-                               value="{{ current.WIFI_PASSPHRASE }}" placeholder="Enter password">
-                        <span class="help-text">{{ config.WIFI_PASSPHRASE.help }}</span>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="WIFI_SSID_1">{{ config.WIFI_SSID_1.label }}</label>
-                        <input type="text" id="WIFI_SSID_1" name="WIFI_SSID_1" 
-                               value="{{ current.WIFI_SSID_1 }}" placeholder="OfficeNetwork (optional)">
-                        <span class="help-text">{{ config.WIFI_SSID_1.help }}</span>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="WIFI_PASSPHRASE_1">{{ config.WIFI_PASSPHRASE_1.label }}</label>
-                        <input type="password" id="WIFI_PASSPHRASE_1" name="WIFI_PASSPHRASE_1" 
-                               value="{{ current.WIFI_PASSPHRASE_1 }}" placeholder="Enter backup password (optional)">
-                        <span class="help-text">{{ config.WIFI_PASSPHRASE_1.help }}</span>
-                    </div>
-                </div>
-                
                 <div class="button-group">
                     <button type="button" class="btn-secondary" onclick="resetForm()">Reset</button>
                     <button type="button" class="btn-secondary" onclick="restartClock()">🔄 Restart Clock</button>

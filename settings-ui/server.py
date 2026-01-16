@@ -119,32 +119,6 @@ CONFIG_OPTIONS = {
         'default': '07:00',
         'help': 'Time to turn on display (24-hour format)'
     },
-    
-    # WiFi settings (applied as host config variables)
-    'WIFI_SSID': {
-        'label': 'WiFi Network Name (Primary)',
-        'type': 'text',
-        'default': '',
-        'help': 'Primary WiFi network SSID (device will reboot to apply)'
-    },
-    'WIFI_PASSPHRASE': {
-        'label': 'WiFi Password (Primary)',
-        'type': 'password',
-        'default': '',
-        'help': 'Password for primary WiFi network'
-    },
-    'WIFI_SSID_1': {
-        'label': 'WiFi Network Name (Backup)',
-        'type': 'text',
-        'default': '',
-        'help': 'Backup WiFi network SSID (optional)'
-    },
-    'WIFI_PASSPHRASE_1': {
-        'label': 'WiFi Password (Backup)',
-        'type': 'password',
-        'default': '',
-        'help': 'Password for backup WiFi network (optional)'
-    },
 }
 
 
@@ -188,64 +162,25 @@ def get_current_config():
 
 
 def update_device_variables(updates):
-    """Save configuration to shared config file and update WiFi via Supervisor API"""
+    """Save configuration to shared config file"""
     try:
         import yaml
         config_file = '/data/settings.yaml'
         
-        # Separate WiFi settings from regular config
-        wifi_settings = {}
-        regular_config = {}
-        
+        # Prepare configuration
+        config = {}
         for key, value in updates.items():
             # Convert checkbox values
             if CONFIG_OPTIONS[key]['type'] == 'checkbox':
                 value = value if isinstance(value, bool) else (value == 'true' or value == True)
-            
-            # WiFi settings need to be set as host config variables
-            if key.startswith('WIFI_'):
-                if value:  # Only save non-empty WiFi values
-                    wifi_settings[key] = value
-            else:
-                regular_config[key] = value
+            config[key] = value
         
-        config = regular_config
-        
-        # Write regular config to shared volume
+        # Write to shared volume
         os.makedirs('/data', exist_ok=True)
         with open(config_file, 'w') as f:
             yaml.safe_dump(config, f, default_flow_style=False)
         
-        logger.info(f"Successfully saved {len(config)} settings to {config_file}")
-        
-        # Update WiFi settings via Supervisor API if provided
-        if wifi_settings and SUPERVISOR_ADDRESS and SUPERVISOR_API_KEY:
-            try:
-                # Map to Balena host config format
-                host_config = {}
-                for key, value in wifi_settings.items():
-                    if key == 'WIFI_SSID':
-                        host_config['BALENA_HOST_CONFIG_wifi_ssid'] = value
-                    elif key == 'WIFI_PASSPHRASE':
-                        host_config['BALENA_HOST_CONFIG_wifi_psk'] = value
-                    elif key == 'WIFI_SSID_1':
-                        host_config['BALENA_HOST_CONFIG_wifi_ssid_1'] = value
-                    elif key == 'WIFI_PASSPHRASE_1':
-                        host_config['BALENA_HOST_CONFIG_wifi_psk_1'] = value
-                
-                # Use Supervisor v1 API to set device configuration
-                device_url = f"{SUPERVISOR_ADDRESS}/v1/device?apikey={SUPERVISOR_API_KEY}"
-                for var_name, var_value in host_config.items():
-                    patch_response = requests.patch(
-                        device_url,
-                        json={'network': {var_name.replace('BALENA_HOST_CONFIG_', ''): var_value}},
-                        timeout=10
-                    )
-                    logger.info(f"Set WiFi config {var_name}: {patch_response.status_code}")
-                
-                logger.info(f"WiFi settings updated. Device will reboot to apply changes.")
-            except Exception as wifi_error:
-                logger.warning(f"Could not update WiFi settings: {wifi_error}. Set manually as device variables.")
+        logger.info(f"Successfully saved {len(updates)} settings to {config_file}")
         
         # Trigger clock restart to apply new settings
         # Try multiple approaches to restart the clock service
