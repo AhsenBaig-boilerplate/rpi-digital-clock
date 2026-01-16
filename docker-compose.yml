@@ -79,23 +79,24 @@ services:
       - "/dev/i2c-1:/dev/i2c-1"  # I2C for RTC module (only used if RTC_ENABLED=true)
       - "/dev/rtc0:/dev/rtc0"     # RTC device (only used if RTC_ENABLED=true)
 
-  # WiFi Connect service - provides captive portal for WiFi and settings configuration
-  wifi-connect:
-    build: ./wifi-connect
-    restart: on-failure
-    network_mode: host
-    privileged: true
-    labels:
-      io.balena.features.dbus: '1'
-      io.balena.features.firmware: '1'
-    cap_add:
-      - NET_ADMIN
-    environment:
-      DBUS_SYSTEM_BUS_ADDRESS: "unix:path=/host/run/dbus/system_bus_socket"
-      # Portal configuration
-      PORTAL_SSID: "DigitalClock Setup"
-      PORTAL_PASSPHRASE: "clocksetup"
-      ACTIVITY_TIMEOUT: "300"  # Exit portal after 5 min of inactivity
+  # WiFi Connect service - DISABLED due to D-Bus compatibility issues with RPi Zero
+  # Use Balena dashboard device variables to configure WiFi instead:
+  #   BALENA_HOST_CONFIG_wifi_ssid / BALENA_HOST_CONFIG_wifi_psk
+  # wifi-connect:
+  #   build: ./wifi-connect
+  #   restart: on-failure
+  #   network_mode: host
+  #   privileged: true
+  #   labels:
+  #     io.balena.features.dbus: '1'
+  #     io.balena.features.firmware: '1'
+  #   cap_add:
+  #     - NET_ADMIN
+  #   environment:
+  #     DBUS_SYSTEM_BUS_ADDRESS: "unix:path=/host/run/dbus/system_bus_socket"
+  #     PORTAL_SSID: "DigitalClock Setup"
+  #     PORTAL_PASSPHRASE: "clocksetup"
+  #     ACTIVITY_TIMEOUT: "300"
 
   # Settings UI service - custom web interface for clock configuration
   settings-ui:
@@ -105,11 +106,6 @@ services:
     restart: always
     network_mode: host
     environment:
-      # Access to Balena API for setting device variables
-      BALENA_SUPERVISOR_ADDRESS: "${BALENA_SUPERVISOR_ADDRESS}"
-      BALENA_SUPERVISOR_API_KEY: "${BALENA_SUPERVISOR_API_KEY}"
-      BALENA_DEVICE_UUID: "${BALENA_DEVICE_UUID}"
-      BALENA_APP_ID: "${BALENA_APP_ID}"
       PORT: "8080"
       # Security: Set SETTINGS_PASSWORD to require authentication (recommended!)
       # If not set, anyone on WiFi can access settings without password

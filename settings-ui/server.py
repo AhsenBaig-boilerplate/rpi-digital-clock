@@ -44,7 +44,7 @@ CONFIG_OPTIONS = {
     'WEATHER_ENABLED': {
         'label': 'Show Weather',
         'type': 'checkbox',
-        'default': 'true',
+        'default': True,
         'help': 'Display weather information on clock'
     },
     
@@ -76,7 +76,7 @@ CONFIG_OPTIONS = {
     'DISPLAY_DATE': {
         'label': 'Show Date',
         'type': 'checkbox',
-        'default': 'true',
+        'default': True,
         'help': 'Display date below time'
     },
     
@@ -84,19 +84,19 @@ CONFIG_OPTIONS = {
     'SHIFT_ENABLED': {
         'label': 'Enable Burn-in Prevention',
         'type': 'checkbox',
-        'default': 'true',
+        'default': True,
         'help': 'Shift display position periodically to prevent burn-in'
     },
     'SHIFT_INTERVAL': {
         'label': 'Shift Interval (seconds)',
         'type': 'number',
-        'default': '600',
+        'default': 600,
         'help': 'How often to shift the display'
     },
     'SHIFT_RANGE': {
         'label': 'Shift Range (pixels)',
         'type': 'number',
-        'default': '20',
+        'default': 20,
         'help': 'Maximum pixels to shift in any direction'
     },
     
@@ -104,7 +104,7 @@ CONFIG_OPTIONS = {
     'SCREENSAVER_ENABLED': {
         'label': 'Enable Screensaver',
         'type': 'checkbox',
-        'default': 'false',
+        'default': False,
         'help': 'Turn off display during specified hours'
     },
     'SCREENSAVER_START': {
@@ -188,9 +188,10 @@ def update_device_variables(updates):
         
         try:
             if SUPERVISOR_ADDRESS and SUPERVISOR_API_KEY:
-                # Method 1: Try with BALENA_APP_ID if available
+                # Method 1: Try with BALENA_APP_ID if available and valid
                 app_id = os.environ.get("BALENA_APP_ID", "")
-                if app_id:
+                # Ignore placeholder values like "${BALENA_APP_ID}"
+                if app_id and not str(app_id).startswith("${"):
                     url = f"{SUPERVISOR_ADDRESS}/v2/applications/{app_id}/restart-service?apikey={SUPERVISOR_API_KEY}"
                     response = requests.post(
                         url,
@@ -331,9 +332,22 @@ def restart_clock():
                 'error': 'Supervisor API not available'
             }), 500
         
-        # Get current app state
+        # Try BALENA_APP_ID first if valid
+        app_id_env = os.environ.get('BALENA_APP_ID', '')
+        if app_id_env and not str(app_id_env).startswith('${'):
+            restart_url = f"{SUPERVISOR_ADDRESS}/v2/applications/{app_id_env}/restart-service?apikey={SUPERVISOR_API_KEY}"
+            restart_response = requests.post(
+                restart_url,
+                json={'serviceName': 'clock'},
+                timeout=30
+            )
+            if restart_response.status_code == 200:
+                logger.info(f"Manually triggered clock restart for app {app_id_env}")
+                return jsonify({'success': True, 'message': 'Clock service restarted successfully'})
+        
+        # Fallback: Get current app state to determine app ID
         state_url = f"{SUPERVISOR_ADDRESS}/v2/applications/state?apikey={SUPERVISOR_API_KEY}"
-        state_response = requests.get(state_url, timeout=5)
+        state_response = requests.get(state_url, timeout=10)
         
         if state_response.status_code == 200:
             apps = state_response.json()
@@ -344,7 +358,7 @@ def restart_clock():
                     restart_response = requests.post(
                         restart_url,
                         json={'serviceName': 'clock'},
-                        timeout=5
+                        timeout=30
                     )
                     if restart_response.status_code == 200:
                         logger.info(f"Manually triggered clock restart for app {app_id}")

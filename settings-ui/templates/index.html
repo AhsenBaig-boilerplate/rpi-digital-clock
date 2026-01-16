@@ -254,8 +254,8 @@
                     <h2 class="section-title">🌤️ Weather Settings</h2>
                     
                     <div class="form-group checkbox-group">
-                        <input type="checkbox" id="WEATHER_ENABLED" name="WEATHER_ENABLED" 
-                               {% if current.WEATHER_ENABLED == 'true' %}checked{% endif %}>
+                           <input type="checkbox" id="WEATHER_ENABLED" name="WEATHER_ENABLED" 
+                               {% if current.WEATHER_ENABLED %}checked{% endif %}>
                         <label for="WEATHER_ENABLED">{{ config.WEATHER_ENABLED.label }}</label>
                     </div>
                     <span class="help-text">{{ config.WEATHER_ENABLED.help }}</span>
@@ -311,8 +311,8 @@
                     </div>
                     
                     <div class="form-group checkbox-group">
-                        <input type="checkbox" id="DISPLAY_DATE" name="DISPLAY_DATE" 
-                               {% if current.DISPLAY_DATE == 'true' %}checked{% endif %}>
+                           <input type="checkbox" id="DISPLAY_DATE" name="DISPLAY_DATE" 
+                               {% if current.DISPLAY_DATE %}checked{% endif %}>
                         <label for="DISPLAY_DATE">{{ config.DISPLAY_DATE.label }}</label>
                     </div>
                     <span class="help-text">{{ config.DISPLAY_DATE.help }}</span>
@@ -323,8 +323,8 @@
                     <h2 class="section-title">🛡️ Burn-in Prevention</h2>
                     
                     <div class="form-group checkbox-group">
-                        <input type="checkbox" id="SHIFT_ENABLED" name="SHIFT_ENABLED" 
-                               {% if current.SHIFT_ENABLED == 'true' %}checked{% endif %}>
+                           <input type="checkbox" id="SHIFT_ENABLED" name="SHIFT_ENABLED" 
+                               {% if current.SHIFT_ENABLED %}checked{% endif %}>
                         <label for="SHIFT_ENABLED">{{ config.SHIFT_ENABLED.label }}</label>
                     </div>
                     <span class="help-text">{{ config.SHIFT_ENABLED.help }}</span>
@@ -349,8 +349,8 @@
                     <h2 class="section-title">🌙 Screensaver</h2>
                     
                     <div class="form-group checkbox-group">
-                        <input type="checkbox" id="SCREENSAVER_ENABLED" name="SCREENSAVER_ENABLED" 
-                               {% if current.SCREENSAVER_ENABLED == 'true' %}checked{% endif %}>
+                           <input type="checkbox" id="SCREENSAVER_ENABLED" name="SCREENSAVER_ENABLED" 
+                               {% if current.SCREENSAVER_ENABLED %}checked{% endif %}>
                         <label for="SCREENSAVER_ENABLED">{{ config.SCREENSAVER_ENABLED.label }}</label>
                     </div>
                     <span class="help-text">{{ config.SCREENSAVER_ENABLED.help }}</span>
