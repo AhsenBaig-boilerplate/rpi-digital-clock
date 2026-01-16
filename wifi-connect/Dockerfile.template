@@ -1,6 +1,7 @@
-# Use balenablocks wifi-connect with explicit raspberry-pi architecture
-# %%BALENA_ARCH%% might resolve incorrectly for RPi Zero
-FROM balenablocks/wifi-connect:raspberry-pi
+# Use balenalabs wifi-connect with rpi architecture (for RPi Zero/1)
+# Supported archs: aarch64, armv7hf, amd64, rpi
+# Source: https://github.com/balenablocks/wifi-connect
+FROM bh.cr/balenalabs/wifi-connect-rpi
 
 # Set custom portal SSID and passphrase
 ENV PORTAL_SSID="DigitalClock Setup"
