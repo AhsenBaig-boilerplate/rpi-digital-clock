@@ -357,10 +357,17 @@
                         The device will automatically try networks in order. Leave passwords as *** to keep existing passwords unchanged.
                     </p>
                     
+                    <!-- Scan button -->
+                    <button type="button" onclick="scanWiFiNetworks()" style="background: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; margin-bottom: 15px;">
+                        📡 Scan for WiFi Networks
+                    </button>
+                    <span id="scan-status" style="margin-left: 10px; color: #666;"></span>
+                    
                     <div class="form-group">
                         <label for="WIFI_SSID">{{ wifi_config.WIFI_SSID.label }}</label>
-                        <input type="text" id="WIFI_SSID" name="WIFI_SSID" 
-                               value="{{ wifi_current.WIFI_SSID }}" placeholder="MyHomeNetwork">
+                        <input type="text" id="WIFI_SSID" name="WIFI_SSID" list="wifi-networks-list"
+                               value="{{ wifi_current.WIFI_SSID }}" placeholder="Select from list or type network name">
+                        <datalist id="wifi-networks-list"></datalist>
                         <span class="help-text">{{ wifi_config.WIFI_SSID.help }}</span>
                     </div>
                     
@@ -373,8 +380,8 @@
                     
                     <div class="form-group">
                         <label for="WIFI_SSID_1">{{ wifi_config.WIFI_SSID_1.label }}</label>
-                        <input type="text" id="WIFI_SSID_1" name="WIFI_SSID_1" 
-                               value="{{ wifi_current.WIFI_SSID_1 }}" placeholder="OfficeNetwork (optional)">
+                        <input type="text" id="WIFI_SSID_1" name="WIFI_SSID_1" list="wifi-networks-list"
+                               value="{{ wifi_current.WIFI_SSID_1 }}" placeholder="Select from list or type network name (optional)">
                         <span class="help-text">{{ wifi_config.WIFI_SSID_1.help }}</span>
                     </div>
                     
@@ -387,8 +394,8 @@
                     
                     <div class="form-group">
                         <label for="WIFI_SSID_2">{{ wifi_config.WIFI_SSID_2.label }}</label>
-                        <input type="text" id="WIFI_SSID_2" name="WIFI_SSID_2" 
-                               value="{{ wifi_current.WIFI_SSID_2 }}" placeholder="MobileHotspot (optional)">
+                        <input type="text" id="WIFI_SSID_2" name="WIFI_SSID_2" list="wifi-networks-list"
+                               value="{{ wifi_current.WIFI_SSID_2 }}" placeholder="Select from list or type network name (optional)">
                         <span class="help-text">{{ wifi_config.WIFI_SSID_2.help }}</span>
                     </div>
                     
@@ -442,6 +449,65 @@
     <script>
         const form = document.getElementById('settingsForm');
         const messageDiv = document.getElementById('message');
+        
+        // Scan for WiFi networks and populate dropdowns
+        async function scanWiFiNetworks() {
+            const scanButton = event.target;
+            const statusSpan = document.getElementById('scan-status');
+            
+            scanButton.disabled = true;
+            scanButton.textContent = '⏳ Scanning...';
+            statusSpan.textContent = '';
+            
+            try {
+                const response = await fetch('/api/wifi/scan');
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    const datalist = document.getElementById('wifi-networks-list');
+                    datalist.innerHTML = ''; // Clear existing options
+                    
+                    if (result.networks && result.networks.length > 0) {
+                        result.networks.forEach(network => {
+                            const option = document.createElement('option');
+                            const signalBars = getSignalBars(network.signal);
+                            const securityIcon = network.security ? '🔒' : '🔓';
+                            option.value = network.ssid;
+                            option.textContent = `${network.ssid} ${signalBars} ${securityIcon}`;
+                            datalist.appendChild(option);
+                        });
+                        
+                        statusSpan.textContent = `✅ Found ${result.count} network(s)`;
+                        statusSpan.style.color = '#28a745';
+                    } else {
+                        statusSpan.textContent = '⚠️ No networks found';
+                        statusSpan.style.color = '#ffc107';
+                    }
+                } else {
+                    statusSpan.textContent = '❌ Scan failed';
+                    statusSpan.style.color = '#dc3545';
+                }
+            } catch (error) {
+                statusSpan.textContent = '❌ Error: ' + error.message;
+                statusSpan.style.color = '#dc3545';
+            } finally {
+                scanButton.disabled = false;
+                scanButton.textContent = '📡 Scan for WiFi Networks';
+            }
+        }
+        
+        // Convert signal strength to visual bars
+        function getSignalBars(signal) {
+            if (signal >= 75) return '▂▄▆█';
+            if (signal >= 50) return '▂▄▆';
+            if (signal >= 25) return '▂▄';
+            return '▂';
+        }
+        
+        // Auto-scan on page load
+        window.addEventListener('load', () => {
+            scanWiFiNetworks();
+        });
         
         async function saveWiFi() {
             if (!confirm('⚠️ This will REBOOT the device to apply WiFi settings. Continue?')) {

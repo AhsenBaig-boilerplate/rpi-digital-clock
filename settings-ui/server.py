@@ -161,6 +161,52 @@ WIFI_CONFIG = {
 }
 
 
+def scan_wifi_networks():
+    """Scan for available WiFi networks and return list of SSIDs with signal strength.
+    Returns list of dicts with 'ssid', 'signal', 'security' keys.
+    """
+    try:
+        # Use nmcli to scan for WiFi networks
+        # Format: SSID:SIGNAL:SECURITY
+        result = os.popen('nmcli -t -f ssid,signal,security dev wifi list').read().strip()
+        
+        if not result:
+            logger.warning("WiFi scan returned no results")
+            return []
+        
+        networks = []
+        seen_ssids = set()
+        
+        for line in result.split('\n'):
+            if not line or line.startswith('--'):
+                continue
+            
+            parts = line.split(':', 2)
+            if len(parts) >= 2:
+                ssid = parts[0].strip()
+                signal = parts[1].strip() if len(parts) > 1 else '0'
+                security = parts[2].strip() if len(parts) > 2 else ''
+                
+                # Skip empty SSIDs and duplicates (take strongest signal)
+                if ssid and ssid not in seen_ssids:
+                    seen_ssids.add(ssid)
+                    networks.append({
+                        'ssid': ssid,
+                        'signal': int(signal) if signal.isdigit() else 0,
+                        'security': security
+                    })
+        
+        # Sort by signal strength (strongest first)
+        networks.sort(key=lambda x: x['signal'], reverse=True)
+        
+        logger.info(f"📡 Found {len(networks)} WiFi network(s) in scan")
+        return networks
+        
+    except Exception as e:
+        logger.error(f"Error scanning WiFi networks: {e}")
+        return []
+
+
 def get_current_wifi_connection():
     """Get the currently connected WiFi network SSID"""
     try:
@@ -638,6 +684,26 @@ def health():
     return jsonify({'status': 'ok'})
 
 
+@app.route('/api/wifi/scan', methods=['GET'])
+@login_required
+def scan_wifi():
+    """API endpoint to scan and return available WiFi networks"""
+    try:
+        networks = scan_wifi_networks()
+        return jsonify({
+            'success': True,
+            'networks': networks,
+            'count': len(networks)
+        })
+    except Exception as e:
+        logger.error(f"Error in WiFi scan endpoint: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'networks': []
+        }), 500
+
+
 @app.route('/api/wifi', methods=['GET'])
 @login_required
 def get_wifi():
@@ -649,8 +715,12 @@ def get_wifi():
 @login_required
 def save_wifi():
     """API endpoint to save WiFi configuration and reboot device"""
+    logger.info("="*60)
+    logger.info("WiFi Configuration Update Request Received")
+    logger.info("="*60)
     try:
         wifi_settings = request.json
+        logger.info(f"WiFi settings payload: {wifi_settings.keys() if wifi_settings else 'None'}")
         
         # Validate keys
         for key in wifi_settings.keys():
