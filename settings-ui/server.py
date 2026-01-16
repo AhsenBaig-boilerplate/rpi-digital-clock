@@ -1098,16 +1098,34 @@ def save_wifi():
 @app.route('/api/wifi/clear', methods=['POST'])
 @login_required
 def clear_wifi_configs():
-    """Explicitly clear our WiFi NetworkManager connections."""
+    """Explicitly clear ALL WiFi NetworkManager connections (not just our managed ones)."""
     logger.info("="*60)
     logger.info("WiFi Configuration CLEAR Request Received")
     logger.info("="*60)
     try:
-        ok_primary = nm_delete_wifi_connection('balena-wifi-primary')
-        ok_b1 = nm_delete_wifi_connection('balena-wifi-backup1')
-        ok_b2 = nm_delete_wifi_connection('balena-wifi-backup2')
-        if ok_primary or ok_b1 or ok_b2:
-            return jsonify({'success': True, 'message': 'Cleared WiFi connections from NetworkManager'}), 200
+        # Get all WiFi connections
+        all_wifi_conns = []
+        conns_output = os.popen("nmcli -t -f NAME,TYPE connection show").read().strip()
+        for line in conns_output.split('\n'):
+            if not line:
+                continue
+            parts = line.split(':', 1)
+            if len(parts) >= 2 and parts[1] == 'wifi':
+                all_wifi_conns.append(parts[0])
+        
+        if not all_wifi_conns:
+            logger.info("No WiFi connections found to clear")
+            return jsonify({'success': True, 'message': 'No WiFi connections to clear'}), 200
+        
+        # Delete all WiFi connections
+        cleared_count = 0
+        for conn_name in all_wifi_conns:
+            if nm_delete_wifi_connection(conn_name):
+                cleared_count += 1
+                logger.info(f"✓ Deleted WiFi connection: {conn_name}")
+        
+        if cleared_count > 0:
+            return jsonify({'success': True, 'message': f'Cleared {cleared_count} WiFi connection(s) from NetworkManager'}), 200
         return jsonify({'success': True, 'message': 'No WiFi connections to clear'}), 200
     except Exception as e:
         logger.error(f"Error clearing WiFi configs: {e}")
@@ -1137,13 +1155,24 @@ def factory_reset():
         else:
             logger.info("Clock settings file not present; nothing to clear")
 
-        # Clear WiFi configs (NetworkManager connections)
-        any_cleared = False
-        for name in ('balena-wifi-primary', 'balena-wifi-backup1', 'balena-wifi-backup2'):
-            if nm_delete_wifi_connection(name):
-                any_cleared = True
-        if any_cleared:
-            logger.info("✓ Cleared WiFi connections from NetworkManager")
+        # Clear ALL WiFi configs (NetworkManager connections)
+        all_wifi_conns = []
+        conns_output = os.popen("nmcli -t -f NAME,TYPE connection show").read().strip()
+        for line in conns_output.split('\n'):
+            if not line:
+                continue
+            parts = line.split(':', 1)
+            if len(parts) >= 2 and parts[1] == 'wifi':
+                all_wifi_conns.append(parts[0])
+        
+        cleared_count = 0
+        for conn_name in all_wifi_conns:
+            if nm_delete_wifi_connection(conn_name):
+                cleared_count += 1
+                logger.info(f"✓ Deleted WiFi connection: {conn_name}")
+        
+        if cleared_count > 0:
+            logger.info(f"✓ Cleared {cleared_count} WiFi connection(s) from NetworkManager")
         else:
             logger.info("No WiFi connections found to clear in NetworkManager")
 
