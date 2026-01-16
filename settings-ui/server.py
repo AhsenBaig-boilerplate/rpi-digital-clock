@@ -454,8 +454,12 @@ def create_networkmanager_wifi_file(ssid, password, priority, filename):
     try:
         boot_connections = '/mnt/boot/system-connections'
         if not os.path.exists(boot_connections):
-            logger.error(f"Boot connections directory not found: {boot_connections}")
-            return False
+            try:
+                os.makedirs(boot_connections, exist_ok=True)
+                logger.info(f"Created boot connections directory: {boot_connections}")
+            except Exception as e:
+                logger.error(f"Could not create boot connections directory {boot_connections}: {e}")
+                return False
         
         filepath = os.path.join(boot_connections, filename)
         
@@ -504,8 +508,14 @@ def remove_old_wifi_configs():
     try:
         boot_connections = '/mnt/boot/system-connections'
         if not os.path.exists(boot_connections):
-            logger.error(f"Boot connections directory not found: {boot_connections}")
-            return False
+            try:
+                os.makedirs(boot_connections, exist_ok=True)
+                logger.info(f"Created boot connections directory: {boot_connections}")
+                # Nothing to remove since directory was missing
+                return True
+            except Exception as e:
+                logger.error(f"Could not create boot connections directory {boot_connections}: {e}")
+                return False
         
         removed = []
         # Remove all files (we'll recreate the ones we need)
