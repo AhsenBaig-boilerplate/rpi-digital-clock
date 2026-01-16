@@ -118,6 +118,8 @@ services:
       - 'clock-config:/data'  # Shared with clock service
       # Mount host DBus for nmcli to query NetworkManager
       - '/run/dbus:/host/run/dbus'
+      # Mount boot partition for persistent WiFi NetworkManager configs
+      - '/mnt/boot/system-connections:/mnt/boot/system-connections'
 
 volumes:
   clock-config:
