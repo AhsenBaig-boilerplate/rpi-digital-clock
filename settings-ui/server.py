@@ -313,7 +313,6 @@ def nm_add_or_update_wifi_connection(con_name: str, ssid: str, psk: str, priorit
         # Ensure security, ssid, autoconnect and priority
         cmds = [
             f"nmcli connection modify \"{con_name}\" 802-11-wireless.ssid \"{ssid}\"",
-            f"nmcli connection modify \"{con_name}\" 802-11-wireless.security 'wpa-psk'",
             f"nmcli connection modify \"{con_name}\" wifi-sec.key-mgmt wpa-psk",
             f"nmcli connection modify \"{con_name}\" wifi-sec.psk \"{psk}\"",
             f"nmcli connection modify \"{con_name}\" connection.autoconnect yes",
