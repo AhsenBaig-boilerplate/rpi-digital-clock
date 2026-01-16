@@ -79,24 +79,19 @@ services:
       - "/dev/i2c-1:/dev/i2c-1"  # I2C for RTC module (only used if RTC_ENABLED=true)
       - "/dev/rtc0:/dev/rtc0"     # RTC device (only used if RTC_ENABLED=true)
 
-  # WiFi Connect service - DISABLED due to D-Bus compatibility issues with RPi Zero
-  # Use Balena dashboard device variables to configure WiFi instead:
-  #   BALENA_HOST_CONFIG_wifi_ssid / BALENA_HOST_CONFIG_wifi_psk
-  # wifi-connect:
-  #   build: ./wifi-connect
-  #   restart: on-failure
-  #   network_mode: host
-  #   privileged: true
-  #   labels:
-  #     io.balena.features.dbus: '1'
-  #     io.balena.features.firmware: '1'
-  #   cap_add:
-  #     - NET_ADMIN
-  #   environment:
-  #     DBUS_SYSTEM_BUS_ADDRESS: "unix:path=/host/run/dbus/system_bus_socket"
-  #     PORTAL_SSID: "DigitalClock Setup"
-  #     PORTAL_PASSPHRASE: "clocksetup"
-  #     ACTIVITY_TIMEOUT: "300"
+  # WiFi Connect service - captive portal for WiFi configuration
+  wifi-connect:
+    build: ./wifi-connect
+    restart: on-failure
+    network_mode: host
+    privileged: true
+    labels:
+      io.balena.features.dbus: '1'
+      io.balena.features.firmware: '1'
+    cap_add:
+      - NET_ADMIN
+    environment:
+      DBUS_SYSTEM_BUS_ADDRESS: "unix:path=/host/run/dbus/system_bus_socket"
 
   # Settings UI service - custom web interface for clock configuration
   settings-ui:

@@ -1,3 +1,6 @@
-# Use specific wifi-connect version compatible with RPi Zero
-# Version 4.4.5 is stable for ARMv6
-FROM bh.cr/balenalabs/wifi-connect-rpi:4.4.5
+# Use balenablocks wifi-connect (newer, better D-Bus compatibility)
+FROM balenablocks/wifi-connect:%%BALENA_ARCH%%
+
+# Set custom portal SSID and passphrase
+ENV PORTAL_SSID="DigitalClock Setup"
+ENV PORTAL_PASSPHRASE="clocksetup"
