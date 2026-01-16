@@ -256,6 +256,26 @@ def get_wifi_device():
         return None
 
 
+def list_nm_wifi_connections():
+    """Return a mapping of SSID -> connection NAME for existing WiFi connections."""
+    try:
+        conns_output = os.popen("nmcli -t -f NAME,TYPE connection show").read().strip()
+        ssid_to_name = {}
+        for line in conns_output.split('\n'):
+            if not line:
+                continue
+            name, ctype = (line.split(':', 1) + [''])[:2]
+            if ctype != 'wifi':
+                continue
+            ssid = os.popen(f"nmcli -g 802-11-wireless.ssid connection show \"{name}\"").read().strip()
+            if ssid:
+                ssid_to_name[ssid] = name
+        return ssid_to_name
+    except Exception as e:
+        logger.warning(f"Failed to list NM wifi connections: {e}")
+        return {}
+
+
 def switch_to_best_available(min_signal: int | None = None):
     """Switch to the highest-priority configured SSID that is currently visible.
 
@@ -308,10 +328,18 @@ def switch_to_best_available(min_signal: int | None = None):
         if current and current == best:
             return True, f'Already connected to best SSID: {best}'
 
-        # Bring up the chosen connection by filename (the connection file name)
-        cmd = f'nmcli connection up "{best_filename}" ifname {device}'
-        logger.info(f'Attempting switch to best SSID: {best} (connection: {best_filename}) on {device}')
-        result = os.popen(cmd).read().strip()
+        # Try to bring up an existing NM connection matching the SSID
+        ssid_to_name = list_nm_wifi_connections()
+        if best in ssid_to_name:
+            conn_name = ssid_to_name[best]
+            cmd = f'nmcli -w 15 connection up "{conn_name}" ifname {device}'
+            logger.info(f'Attempting switch to best SSID: {best} (connection: {conn_name}) on {device}')
+            result = os.popen(cmd).read().strip()
+        else:
+            # Fallback: ask NM to connect by SSID (will use saved secrets if available)
+            cmd = f'nmcli -w 20 device wifi connect "{best}" ifname {device}'
+            logger.info(f'Attempting switch via direct connect to SSID: {best} on {device}')
+            result = os.popen(cmd).read().strip()
 
         # Re-check current connection
         now = get_current_wifi_connection() or ''
