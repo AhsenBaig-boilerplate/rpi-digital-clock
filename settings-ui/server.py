@@ -981,6 +981,26 @@ def get_wifi_current():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/wifi/debug', methods=['GET'])
+@login_required
+def wifi_debug():
+    """Debug endpoint to show all NM connections and config state"""
+    try:
+        all_conns = os.popen("nmcli -t -f NAME,TYPE,DEVICE connection show").read().strip()
+        name_to_ssid = nm_get_wifi_connections_by_name()
+        wifi_config = get_wifi_config()
+        
+        return jsonify({
+            'success': True,
+            'all_nm_connections': all_conns.split('\n') if all_conns else [],
+            'wifi_connections_map': name_to_ssid,
+            'parsed_wifi_config': wifi_config
+        })
+    except Exception as e:
+        logger.error(f"Error in debug endpoint: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/wifi/switch-best', methods=['POST'])
 @login_required
 def api_switch_best_wifi():
