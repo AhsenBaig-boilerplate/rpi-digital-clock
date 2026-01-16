@@ -108,11 +108,16 @@ services:
       # Security: Set SETTINGS_PASSWORD to require authentication (recommended!)
       # If not set, anyone on WiFi can access settings without password
       SETTINGS_PASSWORD: ""  # Set this to enable password protection!
+      # Enable access to host NetworkManager via DBus for WiFi scanning
+      DBUS_SYSTEM_BUS_ADDRESS: "unix:path=/host/run/dbus/system_bus_socket"
     labels:
       io.balena.features.supervisor-api: '1'
       io.balena.features.balena-api: '1'
+      io.balena.features.dbus: '1'
     volumes:
       - 'clock-config:/data'  # Shared with clock service
+      # Mount host DBus for nmcli to query NetworkManager
+      - '/run/dbus:/host/run/dbus'
 
 volumes:
   clock-config:

@@ -166,27 +166,45 @@ def scan_wifi_networks():
     Returns list of dicts with 'ssid', 'signal', 'security' keys.
     """
     try:
+        import shutil
+
+        # Ensure nmcli is available
+        nmcli_path = shutil.which('nmcli')
+        if not nmcli_path:
+            logger.warning("nmcli not found in container. Install network-manager and ensure DBus is mounted.")
+            logger.warning("Hint: This service requires io.balena.features.dbus and /run/dbus mounted.")
+            return []
+
+        # Ensure DBus socket is reachable
+        dbus_addr = os.environ.get('DBUS_SYSTEM_BUS_ADDRESS', '')
+        dbus_sock = '/host/run/dbus/system_bus_socket'
+        if not dbus_addr:
+            logger.warning("DBUS_SYSTEM_BUS_ADDRESS not set; cannot query host NetworkManager.")
+        if not os.path.exists(dbus_sock):
+            logger.warning(f"Host DBus socket not found at {dbus_sock}; WiFi scan may fail.")
+
         # Use nmcli to scan for WiFi networks
         # Format: SSID:SIGNAL:SECURITY
-        result = os.popen('nmcli -t -f ssid,signal,security dev wifi list').read().strip()
-        
+        cmd = "nmcli -t -f ssid,signal,security dev wifi list"
+        result = os.popen(cmd).read().strip()
+
         if not result:
             logger.warning("WiFi scan returned no results")
             return []
-        
+
         networks = []
         seen_ssids = set()
-        
+
         for line in result.split('\n'):
             if not line or line.startswith('--'):
                 continue
-            
+
             parts = line.split(':', 2)
             if len(parts) >= 2:
                 ssid = parts[0].strip()
                 signal = parts[1].strip() if len(parts) > 1 else '0'
                 security = parts[2].strip() if len(parts) > 2 else ''
-                
+
                 # Skip empty SSIDs and duplicates (take strongest signal)
                 if ssid and ssid not in seen_ssids:
                     seen_ssids.add(ssid)
@@ -195,13 +213,13 @@ def scan_wifi_networks():
                         'signal': int(signal) if signal.isdigit() else 0,
                         'security': security
                     })
-        
+
         # Sort by signal strength (strongest first)
         networks.sort(key=lambda x: x['signal'], reverse=True)
-        
+
         logger.info(f"📡 Found {len(networks)} WiFi network(s) in scan")
         return networks
-        
+
     except Exception as e:
         logger.error(f"Error scanning WiFi networks: {e}")
         return []

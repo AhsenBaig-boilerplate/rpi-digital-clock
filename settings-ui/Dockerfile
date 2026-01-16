@@ -8,7 +8,9 @@ RUN apt-get update && \
         build-essential \
         gcc \
         libyaml-dev \
-        python3-dev && \
+        python3-dev \
+        network-manager \
+        dbus && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
