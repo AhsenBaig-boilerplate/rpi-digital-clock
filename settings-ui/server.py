@@ -351,10 +351,12 @@ def switch_to_best_available(min_signal: int | None = None):
 
         nmcli_path = shutil.which('nmcli')
         if not nmcli_path:
+            logger.warning('nmcli not available for switching')
             return False, 'nmcli not available'
 
         device = get_wifi_device()
         if not device:
+            logger.warning('No WiFi device found for switching')
             return False, 'No WiFi device found'
 
         # Reload connections so NetworkManager picks up any new/changed files
@@ -366,8 +368,10 @@ def switch_to_best_available(min_signal: int | None = None):
         if min_signal is not None:
             scan = [n for n in scan if isinstance(n.get('signal'), int) and n['signal'] >= min_signal]
         visible = {n['ssid'] for n in scan}
+        logger.info(f"Visible SSIDs for switching: {visible}")
 
         cfg = get_wifi_config()
+        logger.info(f"Configured WiFi from get_wifi_config: {cfg}")
         # Map SSID -> (priority, filename) so we can call nmcli with the right connection name
         candidates = []
         if cfg.get('WIFI_SSID'):
@@ -376,6 +380,8 @@ def switch_to_best_available(min_signal: int | None = None):
             candidates.append((cfg['WIFI_SSID_1'], 90, 'balena-wifi-backup1'))
         if cfg.get('WIFI_SSID_2'):
             candidates.append((cfg['WIFI_SSID_2'], 80, 'balena-wifi-backup2'))
+
+        logger.info(f"Candidates for switching: {candidates}")
 
         # Pick highest priority among those visible
         best = None
@@ -387,13 +393,16 @@ def switch_to_best_available(min_signal: int | None = None):
                 break
 
         if not best:
+            logger.warning('No configured SSIDs are currently visible')
             return False, 'No configured SSIDs are currently visible'
 
         if current and current == best:
+            logger.info(f'Already connected to best SSID: {best}')
             return True, f'Already connected to best SSID: {best}'
 
         # Try to bring up an existing NM connection matching the SSID
         ssid_to_name = list_nm_wifi_connections()
+        logger.info(f"NM WiFi connections map: {ssid_to_name}")
         if best in ssid_to_name:
             conn_name = ssid_to_name[best]
             cmd = f'nmcli -w 15 connection up "{conn_name}" ifname {device}'
@@ -415,7 +424,7 @@ def switch_to_best_available(min_signal: int | None = None):
             return False, f'Failed to switch. Output: {result}'
 
     except Exception as e:
-        logger.error(f'Error switching WiFi: {e}')
+        logger.error(f'Error switching WiFi: {e}', exc_info=True)
         return False, str(e)
 
 
@@ -479,6 +488,7 @@ def get_wifi_config():
     try:
         wifi_config = {key: '' for key in WIFI_CONFIG.keys()}
         name_to_ssid = nm_get_wifi_connections_by_name()
+        logger.debug(f"nm_get_wifi_connections_by_name returned: {name_to_ssid}")
         mapping = [
             ('balena-wifi-primary', 'WIFI_SSID', 'WIFI_PSK'),
             ('balena-wifi-backup1', 'WIFI_SSID_1', 'WIFI_PSK_1'),
