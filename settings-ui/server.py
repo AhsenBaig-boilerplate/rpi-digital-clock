@@ -276,6 +276,64 @@ def list_nm_wifi_connections():
         return {}
 
 
+def nm_get_wifi_connections_by_name():
+    """Return a mapping of connection NAME -> SSID for WiFi connections."""
+    try:
+        output = os.popen("nmcli -t -f NAME,TYPE connection show").read().strip()
+        name_to_ssid = {}
+        for line in output.split('\n'):
+            if not line:
+                continue
+            name, ctype = (line.split(':', 1) + [''])[:2]
+            if ctype != 'wifi':
+                continue
+            ssid = os.popen(f"nmcli -g 802-11-wireless.ssid connection show \"{name}\"").read().strip()
+            if ssid:
+                name_to_ssid[name] = ssid
+        return name_to_ssid
+    except Exception as e:
+        logger.warning(f"Failed to query NM connections: {e}")
+        return {}
+
+
+def nm_add_or_update_wifi_connection(con_name: str, ssid: str, psk: str, priority: int, ifname: str | None = None):
+    """Create or update a WiFi connection in NetworkManager with given name/ssid/psk/priority."""
+    try:
+        ifname = ifname or (get_wifi_device() or 'wlan0')
+        existing = os.popen(f"nmcli -t -f NAME connection show | grep -Fx \"{con_name}\"").read().strip()
+        if not existing:
+            # Create new connection
+            cmd_add = f"nmcli connection add type wifi ifname {ifname} con-name \"{con_name}\" ssid \"{ssid}\""
+            add_out = os.popen(cmd_add).read().strip()
+            logger.debug(f"nmcli add: {add_out}")
+        # Ensure security, ssid, autoconnect and priority
+        cmds = [
+            f"nmcli connection modify \"{con_name}\" 802-11-wireless.ssid \"{ssid}\"",
+            f"nmcli connection modify \"{con_name}\" 802-11-wireless.security 'wpa-psk'",
+            f"nmcli connection modify \"{con_name}\" wifi-sec.key-mgmt wpa-psk",
+            f"nmcli connection modify \"{con_name}\" wifi-sec.psk \"{psk}\"",
+            f"nmcli connection modify \"{con_name}\" connection.autoconnect yes",
+            f"nmcli connection modify \"{con_name}\" connection.autoconnect-priority {priority}",
+        ]
+        for cmd in cmds:
+            _ = os.popen(cmd).read().strip()
+        # Save and reload connections
+        _ = os.popen('nmcli connection reload').read().strip()
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to add/update NM connection {con_name}: {e}")
+        return False
+
+
+def nm_delete_wifi_connection(con_name: str):
+    try:
+        _ = os.popen(f"nmcli connection delete \"{con_name}\"").read().strip()
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to delete NM connection {con_name}: {e}")
+        return False
+
+
 def switch_to_best_available(min_signal: int | None = None):
     """Switch to the highest-priority configured SSID that is currently visible.
 
@@ -407,43 +465,25 @@ def login_required(f):
 
 
 def get_wifi_config():
-    """Get current WiFi configuration by reading NetworkManager connection files"""
+    """Get current WiFi configuration by querying NetworkManager connections.
+
+    We look for our managed connections by name and return their SSIDs.
+    Passwords are masked (***).
+    """
     try:
-        import re
-        
-        boot_connections = '/mnt/boot/system-connections'
         wifi_config = {key: '' for key in WIFI_CONFIG.keys()}
-        
-        if not os.path.exists(boot_connections):
-            logger.warning(f"Boot connections directory not found: {boot_connections}")
-            return wifi_config
-        
-        # Read our WiFi config files (in priority order)
-        config_files = [
+        name_to_ssid = nm_get_wifi_connections_by_name()
+        mapping = [
             ('balena-wifi-primary', 'WIFI_SSID', 'WIFI_PSK'),
             ('balena-wifi-backup1', 'WIFI_SSID_1', 'WIFI_PSK_1'),
-            ('balena-wifi-backup2', 'WIFI_SSID_2', 'WIFI_PSK_2')
+            ('balena-wifi-backup2', 'WIFI_SSID_2', 'WIFI_PSK_2'),
         ]
-        
-        for filename, ssid_key, psk_key in config_files:
-            filepath = os.path.join(boot_connections, filename)
-            if os.path.exists(filepath):
-                try:
-                    with open(filepath, 'r') as f:
-                        content = f.read()
-                        
-                        # Extract SSID
-                        ssid_match = re.search(r'^ssid=(.+)$', content, re.MULTILINE)
-                        if ssid_match:
-                            wifi_config[ssid_key] = ssid_match.group(1).strip()
-                            # Mask password (don't expose it)
-                            wifi_config[psk_key] = '***'
-                            logger.info(f"Found WiFi config: {filename} (SSID: {wifi_config[ssid_key]})")
-                except Exception as e:
-                    logger.warning(f"Could not read {filename}: {e}")
-        
+        for con_name, ssid_key, psk_key in mapping:
+            if con_name in name_to_ssid:
+                wifi_config[ssid_key] = name_to_ssid[con_name]
+                wifi_config[psk_key] = '***'
+                logger.info(f"Found WiFi config: {con_name} (SSID: {wifi_config[ssid_key]})")
         return wifi_config
-            
     except Exception as e:
         logger.error(f"Error loading WiFi config: {e}")
         return {key: '' for key in WIFI_CONFIG.keys()}
@@ -696,105 +736,65 @@ def remove_old_wifi_configs():
 
 
 def update_wifi_config(wifi_settings):
-    """Update WiFi configuration by writing NetworkManager connection files and rebooting.
-    
-    This is the correct way per balena docs:
-    https://docs.balena.io/reference/OS/network/#wifi-setup
-    """
+    """Update WiFi configuration using NetworkManager via nmcli (no reboot required)."""
     logger.info("")
     logger.info("Starting WiFi Configuration Update Process")
     logger.info("-" * 60)
     try:
-        if not SUPERVISOR_ADDRESS or not SUPERVISOR_API_KEY:
-            logger.error("Cannot update WiFi: Supervisor API not available")
-            return False, "Supervisor API not available"
-        
         logger.info("")
-        logger.info("Step 1: Writing WiFi configuration files (non-destructive)...")
-        # Priority: higher number = preferred connection
-        configs_created = []
+        logger.info("Step 1: Applying WiFi connections in NetworkManager (non-destructive)...")
+        created_or_updated = []
         unchanged = []
-        # Read current SSIDs for validation
+
         current_cfg = get_wifi_config()
-        
-        # Primary WiFi (priority 100)
-        if wifi_settings.get('WIFI_SSID') and wifi_settings.get('WIFI_PSK'):
-            ssid = wifi_settings['WIFI_SSID']
-            password = wifi_settings['WIFI_PSK']
-            
-            # Skip if password is masked (user didn't update it)
-            if password != '***':
-                if create_networkmanager_wifi_file(ssid, password, 100, 'balena-wifi-primary'):
-                    configs_created.append(f"{ssid} (primary)")
+        device = get_wifi_device() or 'wlan0'
+
+        def _apply(slot, prio, con_name):
+            ssid_key = f"WIFI_SSID{'' if slot == 0 else f'_{slot}'}"
+            psk_key = f"WIFI_PSK{'' if slot == 0 else f'_{slot}'}"
+            ssid = wifi_settings.get(ssid_key, '').strip()
+            psk = wifi_settings.get(psk_key, '').strip()
+            if not ssid:
+                return
+            if psk == '***':
+                # If SSID unchanged and password masked, leave as-is
+                if ssid == (current_cfg.get(ssid_key) or ''):
+                    unchanged.append(f"{ssid} ({'primary' if slot==0 else f'backup {slot}'})")
+                    return
                 else:
-                    return False, f"Failed to create config for {ssid}"
+                    raise ValueError(f"Password required when changing SSID for slot {slot}")
+            ok = nm_add_or_update_wifi_connection(con_name, ssid, psk, prio, ifname=device)
+            if ok:
+                created_or_updated.append(f"{ssid} ({'primary' if slot==0 else f'backup {slot}'})")
             else:
-                # If SSID unchanged and password masked, leave existing file intact
-                if ssid == current_cfg.get('WIFI_SSID'):
-                    unchanged.append(f"{ssid} (primary)")
-                else:
-                    return False, "Password required when changing primary SSID"
-        
-        # Backup WiFi 1 (priority 90)
-        if wifi_settings.get('WIFI_SSID_1') and wifi_settings.get('WIFI_PSK_1'):
-            ssid = wifi_settings['WIFI_SSID_1']
-            password = wifi_settings['WIFI_PSK_1']
-            
-            if password != '***':
-                if create_networkmanager_wifi_file(ssid, password, 90, 'balena-wifi-backup1'):
-                    configs_created.append(f"{ssid} (backup 1)")
-                else:
-                    logger.warning(f"Failed to create config for backup network {ssid}")
-            else:
-                if ssid == current_cfg.get('WIFI_SSID_1'):
-                    unchanged.append(f"{ssid} (backup 1)")
-                else:
-                    return False, "Password required when changing backup 1 SSID"
-        
-        # Backup WiFi 2 (priority 80)
-        if wifi_settings.get('WIFI_SSID_2') and wifi_settings.get('WIFI_PSK_2'):
-            ssid = wifi_settings['WIFI_SSID_2']
-            password = wifi_settings['WIFI_PSK_2']
-            
-            if password != '***':
-                if create_networkmanager_wifi_file(ssid, password, 80, 'balena-wifi-backup2'):
-                    configs_created.append(f"{ssid} (backup 2)")
-                else:
-                    logger.warning(f"Failed to create config for backup network {ssid}")
-            else:
-                if ssid == current_cfg.get('WIFI_SSID_2'):
-                    unchanged.append(f"{ssid} (backup 2)")
-                else:
-                    return False, "Password required when changing backup 2 SSID"
-        
-        if not configs_created and not unchanged:
-            logger.warning("No valid WiFi updates provided (passwords may be masked or fields empty)")
+                raise RuntimeError(f"Failed to apply connection for {ssid}")
+
+        # Apply in priority order
+        _apply(0, 100, 'balena-wifi-primary')
+        _apply(1, 90, 'balena-wifi-backup1')
+        _apply(2, 80, 'balena-wifi-backup2')
+
+        if not created_or_updated and not unchanged:
+            logger.warning("No valid WiFi updates provided (empty fields or masked only)")
             return False, "No WiFi changes detected"
-        
+
         logger.info("")
         logger.info("✓ WiFi Configuration Summary:")
-        logger.info(f"  - Created {len(configs_created)} network configuration(s)")
-        for i, config in enumerate(configs_created, 1):
+        logger.info(f"  - Applied {len(created_or_updated)} network configuration(s)")
+        for i, config in enumerate(created_or_updated, 1):
             logger.info(f"  {i}. {config}")
         if unchanged:
             logger.info(f"  - Left {len(unchanged)} configuration(s) unchanged")
             for name in unchanged:
                 logger.info(f"    • {name}")
-        
-        logger.info("")
-        logger.info("Step 2: Triggering device reboot to apply changes...")
-        # Step 3: Trigger device reboot to apply WiFi changes
-        # NetworkManager reads configs from /mnt/boot/system-connections on boot
-        reboot_url = f"{SUPERVISOR_ADDRESS}/v1/reboot?apikey={SUPERVISOR_API_KEY}"
-        reboot_response = requests.post(reboot_url, timeout=10)
-        
-        if reboot_response.status_code == 202:
-            logger.info("✓ Device reboot triggered - WiFi will be applied on next boot")
-            return True, f"WiFi settings saved ({len(configs_created)} network(s)). Device will reboot to apply changes."
+
+        # Prefer highest priority available now
+        success, msg = switch_to_best_available()
+        if success:
+            return True, f"WiFi settings applied. {msg}"
         else:
-            logger.warning(f"WiFi configs created but reboot failed: {reboot_response.status_code}")
-            return True, "WiFi settings saved but manual reboot required."
-            
+            return True, "WiFi settings applied. Switching deferred (no preferred SSID visible)."
+
     except Exception as e:
         logger.error(f"Error updating WiFi config: {e}")
         return False, str(e)
@@ -1014,16 +1014,17 @@ def save_wifi():
 @app.route('/api/wifi/clear', methods=['POST'])
 @login_required
 def clear_wifi_configs():
-    """Explicitly clear all WiFi NetworkManager connection files from boot partition."""
+    """Explicitly clear our WiFi NetworkManager connections."""
     logger.info("="*60)
     logger.info("WiFi Configuration CLEAR Request Received")
     logger.info("="*60)
     try:
-        ok = remove_old_wifi_configs()
-        if ok:
-            return jsonify({'success': True, 'message': 'All WiFi configs cleared from /mnt/boot/system-connections'}), 200
-        else:
-            return jsonify({'success': False, 'error': 'Failed to clear WiFi configs'}), 500
+        ok_primary = nm_delete_wifi_connection('balena-wifi-primary')
+        ok_b1 = nm_delete_wifi_connection('balena-wifi-backup1')
+        ok_b2 = nm_delete_wifi_connection('balena-wifi-backup2')
+        if ok_primary or ok_b1 or ok_b2:
+            return jsonify({'success': True, 'message': 'Cleared WiFi connections from NetworkManager'}), 200
+        return jsonify({'success': True, 'message': 'No WiFi connections to clear'}), 200
     except Exception as e:
         logger.error(f"Error clearing WiFi configs: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1052,12 +1053,15 @@ def factory_reset():
         else:
             logger.info("Clock settings file not present; nothing to clear")
 
-        # Clear WiFi configs
-        wifi_cleared = remove_old_wifi_configs()
-        if wifi_cleared:
-            logger.info("✓ Cleared WiFi configs from /mnt/boot/system-connections")
+        # Clear WiFi configs (NetworkManager connections)
+        any_cleared = False
+        for name in ('balena-wifi-primary', 'balena-wifi-backup1', 'balena-wifi-backup2'):
+            if nm_delete_wifi_connection(name):
+                any_cleared = True
+        if any_cleared:
+            logger.info("✓ Cleared WiFi connections from NetworkManager")
         else:
-            logger.warning("WiFi configs were not cleared (directory may have been empty or missing)")
+            logger.info("No WiFi connections found to clear in NetworkManager")
 
         # Optional reboot
         if do_reboot and SUPERVISOR_ADDRESS and SUPERVISOR_API_KEY:
@@ -1171,7 +1175,7 @@ if __name__ == '__main__':
             status = "← CONNECTED" if current_wifi and ssid in current_wifi else ""
             logger.info(f"  • {ssid} {status}")
     else:
-        logger.info("⚠ No WiFi networks configured in /mnt/boot/system-connections/")
+        logger.info("⚠ No WiFi networks configured (NetworkManager connections)")
     
     logger.info("="*70)
     logger.info("")

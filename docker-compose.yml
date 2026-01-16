@@ -116,10 +116,7 @@ services:
       io.balena.features.dbus: '1'
     volumes:
       - 'clock-config:/data'  # Shared with clock service
-      # Mount host DBus for nmcli to query NetworkManager
-      - '/run/dbus:/host/run/dbus'
-      # Mount boot partition for persistent WiFi NetworkManager configs
-      - '/mnt/boot/system-connections:/mnt/boot/system-connections'
+      # Host DBus is provided via io.balena.features.dbus label
 
 volumes:
   clock-config:
