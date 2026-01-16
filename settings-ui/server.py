@@ -172,39 +172,66 @@ def login_required(f):
 
 
 def get_wifi_config():
-    """Get current WiFi configuration from device variables via Supervisor API"""
+    """Get current WiFi configuration from device variables via Balena Cloud API"""
     try:
-        if not SUPERVISOR_ADDRESS or not SUPERVISOR_API_KEY or not DEVICE_UUID:
-            logger.warning("Supervisor API not available for WiFi config")
+        # WiFi config requires Balena Cloud API (Supervisor API doesn't expose device variables)
+        if not API_TOKEN or not DEVICE_UUID:
+            logger.info("API_TOKEN not set - cannot read WiFi config, showing empty fields")
             return {key: '' for key in WIFI_CONFIG.keys()}
         
-        # Get device configuration variables
-        url = f"{SUPERVISOR_ADDRESS}/v2/device/config?apikey={SUPERVISOR_API_KEY}"
-        response = requests.get(url, timeout=10)
+        # Get device ID first
+        headers = {
+            'Authorization': f'Bearer {API_TOKEN}',
+            'Content-Type': 'application/json'
+        }
         
-        if response.status_code == 200:
-            device_config = response.json()
+        device_url = f"{BALENA_API_URL}/v6/device?$filter=uuid eq '{DEVICE_UUID}'&$select=id"
+        device_response = requests.get(device_url, headers=headers, timeout=10)
+        
+        if device_response.status_code != 200:
+            logger.warning(f"Failed to get device ID for WiFi config: {device_response.status_code}")
+            return {key: '' for key in WIFI_CONFIG.keys()}
+        
+        device_data = device_response.json().get('d', [])
+        if not device_data:
+            logger.warning(f"Device not found with UUID: {DEVICE_UUID}")
+            return {key: '' for key in WIFI_CONFIG.keys()}
+        
+        device_id = device_data[0]['id']
+        
+        # Get device environment variables
+        vars_url = f"{BALENA_API_URL}/v6/device_environment_variable?$filter=device eq {device_id}"
+        vars_response = requests.get(vars_url, headers=headers, timeout=10)
+        
+        if vars_response.status_code == 200:
+            env_vars = vars_response.json().get('d', [])
             wifi_config = {}
             
-            # Extract WiFi settings from device config
+            # Extract WiFi settings from device variables
             # Map WIFI_SSID -> BALENA_HOST_CONFIG_wifi_ssid
             for key in WIFI_CONFIG.keys():
                 if key == 'WIFI_SSID':
-                    wifi_config[key] = device_config.get('BALENA_HOST_CONFIG_wifi_ssid', '')
+                    var = next((v for v in env_vars if v['name'] == 'BALENA_HOST_CONFIG_wifi_ssid'), None)
+                    wifi_config[key] = var['value'] if var else ''
                 elif key == 'WIFI_PSK':
-                    wifi_config[key] = device_config.get('BALENA_HOST_CONFIG_wifi_psk', '***')
+                    var = next((v for v in env_vars if v['name'] == 'BALENA_HOST_CONFIG_wifi_psk'), None)
+                    wifi_config[key] = '***' if var else ''  # Mask password
                 elif key == 'WIFI_SSID_1':
-                    wifi_config[key] = device_config.get('BALENA_HOST_CONFIG_wifi_ssid_1', '')
+                    var = next((v for v in env_vars if v['name'] == 'BALENA_HOST_CONFIG_wifi_ssid_1'), None)
+                    wifi_config[key] = var['value'] if var else ''
                 elif key == 'WIFI_PSK_1':
-                    wifi_config[key] = device_config.get('BALENA_HOST_CONFIG_wifi_psk_1', '***')
+                    var = next((v for v in env_vars if v['name'] == 'BALENA_HOST_CONFIG_wifi_psk_1'), None)
+                    wifi_config[key] = '***' if var else ''
                 elif key == 'WIFI_SSID_2':
-                    wifi_config[key] = device_config.get('BALENA_HOST_CONFIG_wifi_ssid_2', '')
+                    var = next((v for v in env_vars if v['name'] == 'BALENA_HOST_CONFIG_wifi_ssid_2'), None)
+                    wifi_config[key] = var['value'] if var else ''
                 elif key == 'WIFI_PSK_2':
-                    wifi_config[key] = device_config.get('BALENA_HOST_CONFIG_wifi_psk_2', '***')
+                    var = next((v for v in env_vars if v['name'] == 'BALENA_HOST_CONFIG_wifi_psk_2'), None)
+                    wifi_config[key] = '***' if var else ''
             
             return wifi_config
         else:
-            logger.warning(f"Failed to get device config: {response.status_code}")
+            logger.warning(f"Failed to get device variables: {vars_response.status_code}")
             return {key: '' for key in WIFI_CONFIG.keys()}
             
     except Exception as e:
