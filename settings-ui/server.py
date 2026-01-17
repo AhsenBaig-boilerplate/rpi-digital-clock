@@ -323,14 +323,13 @@ def nm_add_or_update_wifi_connection(con_name: str, ssid: str, psk: str, priorit
             add_out, add_err, rc = run_nmcli(cmd_add)
             logger.info(f"Created new NM connection: {con_name} -> {add_out or add_err or rc}")
         # Ensure security, ssid, autoconnect and priority
+        # CRITICAL: Set key-mgmt BEFORE setting psk to avoid "property is invalid" errors
         cmds = [
             # SSID set
             f"nmcli connection modify \"{con_name}\" 802-11-wireless.ssid \"{ssid}\"",
-            # Preferred: wifi-sec.* aliases
-            f"nmcli connection modify \"{con_name}\" wifi-sec.key-mgmt wpa-psk",
-            f"nmcli connection modify \"{con_name}\" wifi-sec.psk \"{psk}\"",
-            # Fallback to explicit group in case alias unsupported
+            # Set key-mgmt first to establish the security group
             f"nmcli connection modify \"{con_name}\" 802-11-wireless-security.key-mgmt wpa-psk",
+            # Now set the PSK (only after key-mgmt is established)
             f"nmcli connection modify \"{con_name}\" 802-11-wireless-security.psk \"{psk}\"",
             # Autoconnect + priority
             f"nmcli connection modify \"{con_name}\" connection.autoconnect yes",
@@ -402,44 +401,53 @@ def switch_to_best_available(min_signal: int | None = None):
 
         logger.info(f"Candidates for switching: {candidates}")
 
+
         # Pick highest priority among those visible
         best = None
         best_filename = None
+        logger.info(f"[SWITCH] Candidates (sorted): {sorted(candidates, key=lambda x: x[1], reverse=True)}")
+        logger.info(f"[SWITCH] Visible SSIDs: {visible}")
         for ssid, prio, filename in sorted(candidates, key=lambda x: x[1], reverse=True):
+            logger.info(f"[SWITCH] Checking candidate: SSID={ssid}, Priority={prio}, Filename={filename}")
             if ssid and ssid in visible:
                 best = ssid
                 best_filename = filename
+                logger.info(f"[SWITCH] Selected best: SSID={best}, Filename={best_filename}")
                 break
 
         if not best:
-            logger.warning('No configured SSIDs are currently visible')
+            logger.warning('[SWITCH] No configured SSIDs are currently visible')
             return False, 'No configured SSIDs are currently visible'
 
+        logger.info(f"[SWITCH] Current connection: {current}")
         if current and current == best:
-            logger.info(f'Already connected to best SSID: {best}')
+            logger.info(f'[SWITCH] Already connected to best SSID: {best}')
             return True, f'Already connected to best SSID: {best}'
 
         # Try to bring up an existing NM connection matching the SSID
         ssid_to_name = list_nm_wifi_connections()
-        logger.info(f"NM WiFi connections map: {ssid_to_name}")
+        logger.info(f"[SWITCH] NM WiFi connections map: {ssid_to_name}")
         if best in ssid_to_name:
             conn_name = ssid_to_name[best]
             cmd = f'nmcli -w 15 connection up "{conn_name}" ifname {device}'
-            logger.info(f'Attempting switch to best SSID: {best} (connection: {conn_name}) on {device}')
+            logger.info(f'[SWITCH] Attempting switch to best SSID: {best} (connection: {conn_name}) on {device}')
             result = os.popen(cmd).read().strip()
+            logger.info(f'[SWITCH] nmcli result: {result}')
         else:
             # Fallback: ask NM to connect by SSID (will use saved secrets if available)
             cmd = f'nmcli -w 20 device wifi connect "{best}" ifname {device}'
-            logger.info(f'Attempting switch via direct connect to SSID: {best} on {device}')
+            logger.info(f'[SWITCH] Attempting switch via direct connect to SSID: {best} on {device}')
             result = os.popen(cmd).read().strip()
+            logger.info(f'[SWITCH] nmcli result: {result}')
 
         # Re-check current connection
         now = get_current_wifi_connection() or ''
+        logger.info(f"[SWITCH] After nmcli, now connected to: {now}")
         if now == best:
-            logger.info(f'✓ Switched to SSID: {best}')
+            logger.info(f'[SWITCH] ✓ Switched to SSID: {best}')
             return True, f'Switched to SSID: {best}'
         else:
-            logger.warning(f'Could not switch to {best}. nmcli output: {result}')
+            logger.warning(f'[SWITCH] Could not switch to {best}. nmcli output: {result}')
             return False, f'Failed to switch. Output: {result}'
 
     except Exception as e:
