@@ -1194,6 +1194,81 @@ def factory_reset():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/system/info', methods=['GET'])
+@login_required
+def system_info():
+    """Get system information including build, device, and runtime details"""
+    try:
+        import json
+        import socket
+        from datetime import datetime
+        
+        info = {}
+        
+        # Build information from clock service
+        try:
+            build_info_path = '/data/build-info.json'
+            if os.path.exists(build_info_path):
+                with open(build_info_path, 'r') as f:
+                    build_data = json.load(f)
+                    info['build'] = {
+                        'version': build_data.get('git_version', 'unknown'),
+                        'git_sha': build_data.get('git_sha', 'unknown')[:7],
+                        'git_ref': build_data.get('git_ref', 'unknown'),
+                        'build_time': build_data.get('build_time', 'unknown')
+                    }
+            else:
+                info['build'] = {'version': 'unknown', 'git_sha': 'unknown', 'git_ref': 'unknown', 'build_time': 'unknown'}
+        except Exception as e:
+            logger.warning(f"Could not load build info: {e}")
+            info['build'] = {'version': 'unknown', 'error': str(e)}
+        
+        # balena device information
+        info['device'] = {
+            'uuid': DEVICE_UUID or 'unknown',
+            'type': os.environ.get('BALENA_DEVICE_TYPE', 'unknown'),
+            'app_name': os.environ.get('BALENA_APP_NAME', 'unknown'),
+            'hostname': socket.gethostname()
+        }
+        
+        # balenaOS and supervisor versions
+        info['balena'] = {
+            'os_version': os.environ.get('BALENA_HOST_OS_VERSION', 'unknown'),
+            'supervisor_version': os.environ.get('BALENA_SUPERVISOR_VERSION', 'unknown'),
+            'device_name_at_init': os.environ.get('BALENA_DEVICE_NAME_AT_INIT', 'unknown')
+        }
+        
+        # Network information
+        try:
+            hostname = socket.gethostname()
+            ip_address = socket.gethostbyname(hostname)
+            info['network'] = {
+                'ip_address': ip_address,
+                'hostname': hostname
+            }
+        except Exception as e:
+            info['network'] = {'ip_address': 'unknown', 'error': str(e)}
+        
+        # System uptime (from /proc/uptime)
+        try:
+            with open('/proc/uptime', 'r') as f:
+                uptime_seconds = float(f.readline().split()[0])
+                uptime_hours = int(uptime_seconds // 3600)
+                uptime_minutes = int((uptime_seconds % 3600) // 60)
+                info['uptime'] = f"{uptime_hours}h {uptime_minutes}m"
+        except Exception:
+            info['uptime'] = 'unknown'
+        
+        # Current time
+        info['current_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        return jsonify({'success': True, 'info': info})
+    
+    except Exception as e:
+        logger.error(f"Error getting system info: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/restart-clock', methods=['POST'])
 @login_required
 def restart_clock():

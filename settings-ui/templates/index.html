@@ -248,6 +248,12 @@
             display: block;
         }
         
+        /* Spinner animation */
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
         .info-banner {
             padding: 12px;
             border-radius: 6px;
@@ -543,6 +549,67 @@
             
             <!-- System Tab -->
             <div id="system-tab" class="tab-content">
+                <div class="section">
+                    <h2 class="section-title">ℹ️ System Information</h2>
+                    
+                    <div id="system-info-loading" style="text-align: center; padding: 20px;">
+                        <div style="display: inline-block; border: 3px solid #f3f3f3; border-top: 3px solid #667eea; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite;"></div>
+                        <p style="margin-top: 10px; color: #666;">Loading system information...</p>
+                    </div>
+                    
+                    <div id="system-info-content" style="display: none;">
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+                            <h3 style="margin-bottom: 10px; color: #667eea; font-size: 16px;">📦 Build Information</h3>
+                            <table style="width: 100%; font-size: 13px;">
+                                <tr><td style="padding: 4px 0; color: #666; width: 40%;">Version:</td><td id="info-version" style="font-family: monospace;">-</td></tr>
+                                <tr><td style="padding: 4px 0; color: #666;">Git SHA:</td><td id="info-git-sha" style="font-family: monospace;">-</td></tr>
+                                <tr><td style="padding: 4px 0; color: #666;">Git Ref:</td><td id="info-git-ref" style="font-family: monospace;">-</td></tr>
+                                <tr><td style="padding: 4px 0; color: #666;">Build Time:</td><td id="info-build-time" style="font-family: monospace;">-</td></tr>
+                            </table>
+                        </div>
+                        
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+                            <h3 style="margin-bottom: 10px; color: #667eea; font-size: 16px;">🔧 Device Information</h3>
+                            <table style="width: 100%; font-size: 13px;">
+                                <tr><td style="padding: 4px 0; color: #666; width: 40%;">Device UUID:</td><td id="info-device-uuid" style="font-family: monospace; font-size: 11px;">-</td></tr>
+                                <tr><td style="padding: 4px 0; color: #666;">Device Type:</td><td id="info-device-type">-</td></tr>
+                                <tr><td style="padding: 4px 0; color: #666;">App Name:</td><td id="info-app-name">-</td></tr>
+                                <tr><td style="padding: 4px 0; color: #666;">Hostname:</td><td id="info-hostname" style="font-family: monospace;">-</td></tr>
+                            </table>
+                        </div>
+                        
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+                            <h3 style="margin-bottom: 10px; color: #667eea; font-size: 16px;">🐳 balenaOS</h3>
+                            <table style="width: 100%; font-size: 13px;">
+                                <tr><td style="padding: 4px 0; color: #666; width: 40%;">OS Version:</td><td id="info-os-version" style="font-family: monospace;">-</td></tr>
+                                <tr><td style="padding: 4px 0; color: #666;">Supervisor:</td><td id="info-supervisor-version" style="font-family: monospace;">-</td></tr>
+                                <tr><td style="padding: 4px 0; color: #666;">Device Name:</td><td id="info-device-name">-</td></tr>
+                            </table>
+                        </div>
+                        
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+                            <h3 style="margin-bottom: 10px; color: #667eea; font-size: 16px;">🌐 Network</h3>
+                            <table style="width: 100%; font-size: 13px;">
+                                <tr><td style="padding: 4px 0; color: #666; width: 40%;">IP Address:</td><td id="info-ip-address" style="font-family: monospace;">-</td></tr>
+                            </table>
+                        </div>
+                        
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 6px;">
+                            <h3 style="margin-bottom: 10px; color: #667eea; font-size: 16px;">⏱️ Runtime</h3>
+                            <table style="width: 100%; font-size: 13px;">
+                                <tr><td style="padding: 4px 0; color: #666; width: 40%;">Uptime:</td><td id="info-uptime">-</td></tr>
+                                <tr><td style="padding: 4px 0; color: #666;">Current Time:</td><td id="info-current-time">-</td></tr>
+                            </table>
+                        </div>
+                        
+                        <div style="margin-top: 15px; text-align: right;">
+                            <button type="button" onclick="loadSystemInfo()" style="background: #6c757d; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
+                                🔄 Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="section">
                     <h2 class="section-title">🔧 System Actions</h2>
                     
@@ -877,10 +944,59 @@
             }
         }
         
+        async function loadSystemInfo() {
+            const loadingDiv = document.getElementById('system-info-loading');
+            const contentDiv = document.getElementById('system-info-content');
+            
+            loadingDiv.style.display = 'block';
+            contentDiv.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/system/info');
+                const result = await response.json();
+                
+                if (result.success && result.info) {
+                    const info = result.info;
+                    
+                    // Build Information
+                    document.getElementById('info-version').textContent = info.build?.version || 'Unknown';
+                    document.getElementById('info-git-sha').textContent = info.build?.git_sha || 'Unknown';
+                    document.getElementById('info-git-ref').textContent = info.build?.git_ref || 'Unknown';
+                    document.getElementById('info-build-time').textContent = info.build?.build_time || 'Unknown';
+                    
+                    // Device Information
+                    document.getElementById('info-device-uuid').textContent = info.device?.uuid || 'Unknown';
+                    document.getElementById('info-device-type').textContent = info.device?.type || 'Unknown';
+                    document.getElementById('info-app-name').textContent = info.device?.app_name || 'Unknown';
+                    document.getElementById('info-hostname').textContent = info.device?.hostname || 'Unknown';
+                    
+                    // balenaOS Information
+                    document.getElementById('info-os-version').textContent = info.balena?.os_version || 'Unknown';
+                    document.getElementById('info-supervisor-version').textContent = info.balena?.supervisor_version || 'Unknown';
+                    document.getElementById('info-device-name').textContent = info.balena?.device_name || 'Unknown';
+                    
+                    // Network Information
+                    document.getElementById('info-ip-address').textContent = info.network?.ip_address || 'Unknown';
+                    
+                    // Runtime Information
+                    document.getElementById('info-uptime').textContent = info.uptime || 'Unknown';
+                    document.getElementById('info-current-time').textContent = info.current_time || 'Unknown';
+                    
+                    loadingDiv.style.display = 'none';
+                    contentDiv.style.display = 'block';
+                } else {
+                    loadingDiv.innerHTML = '<p style="color: #dc3545;">❌ Failed to load system information</p>';
+                }
+            } catch (error) {
+                loadingDiv.innerHTML = '<p style="color: #dc3545;">❌ Error: ' + error.message + '</p>';
+            }
+        }
+        
         // Auto-scan and refresh on page load
         window.addEventListener('load', () => {
             scanWiFiNetworks();
             refreshCurrentWifi();
+            loadSystemInfo();
         });
     </script>
 </body>
