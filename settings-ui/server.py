@@ -43,7 +43,7 @@ def _env_bool(name, default):
 
 WIFI_AUTO_PREFER_ENABLED = _env_bool('WIFI_AUTO_PREFER_ENABLED', True)
 WIFI_AUTO_PREFER_INTERVAL_SECONDS = int(os.environ.get('WIFI_AUTO_PREFER_INTERVAL_SECONDS', '120'))
-WIFI_AUTO_PREFER_MIN_SIGNAL = int(os.environ.get('WIFI_AUTO_PREFER_MIN_SIGNAL', '40'))
+WIFI_AUTO_PREFER_MIN_SIGNAL = int(os.environ.get('WIFI_AUTO_PREFER_MIN_SIGNAL', '50'))
 
 # Configuration options with defaults
 CONFIG_OPTIONS = {
