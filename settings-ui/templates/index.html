@@ -640,16 +640,29 @@
         
         // Tab switching function
         function switchTab(event, tabId) {
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            
-            document.getElementById(tabId).classList.add('active');
-            event.currentTarget.classList.add('active');
+            try {
+                // Remove active class from all tabs and content
+                document.querySelectorAll('.tab-content').forEach(tab => {
+                    tab.classList.remove('active');
+                });
+                
+                document.querySelectorAll('.tab').forEach(tab => {
+                    tab.classList.remove('active');
+                });
+                
+                // Add active class to selected tab and content
+                const targetTab = document.getElementById(tabId);
+                if (targetTab) {
+                    targetTab.classList.add('active');
+                }
+                
+                // Add active class to clicked tab button
+                if (event && event.currentTarget) {
+                    event.currentTarget.classList.add('active');
+                }
+            } catch (error) {
+                console.error('Error switching tabs:', error);
+            }
         }
         
         // Form submit handlers
