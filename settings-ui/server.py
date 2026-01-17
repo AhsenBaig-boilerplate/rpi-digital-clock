@@ -266,11 +266,13 @@ def list_nm_wifi_connections():
             if not line:
                 continue
             name, ctype = (line.split(':', 1) + [''])[:2]
-            if ctype != 'wifi':
+            # Accept both 'wifi' and '802-11-wireless' as type strings
+            if ctype != 'wifi' and ctype != '802-11-wireless':
                 continue
             ssid = os.popen(f"nmcli -g 802-11-wireless.ssid connection show \"{name}\"").read().strip()
             if ssid:
                 ssid_to_name[ssid] = name
+        logger.debug(f"[list_nm] SSID to NAME map: {ssid_to_name}")
         return ssid_to_name
     except Exception as e:
         logger.warning(f"Failed to list NM wifi connections: {e}")
