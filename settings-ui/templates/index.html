@@ -70,13 +70,6 @@
         
         .section {
             margin-bottom: 30px;
-            padding-bottom: 30px;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        
-        .section:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
         }
         
         .section-title {
@@ -105,6 +98,7 @@
         }
         
         input[type="text"],
+        input[type="password"],
         input[type="number"],
         input[type="time"],
         select {
@@ -117,6 +111,7 @@
         }
         
         input[type="text"]:focus,
+        input[type="password"]:focus,
         input[type="number"]:focus,
         input[type="time"]:focus,
         select:focus {
@@ -156,7 +151,6 @@
         }
         
         button {
-            flex: 1;
             padding: 14px 24px;
             border: none;
             border-radius: 6px;
@@ -169,6 +163,7 @@
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
+            flex: 1;
         }
         
         .btn-primary:hover {
@@ -214,26 +209,6 @@
             display: block;
         }
         
-        .loading {
-            text-align: center;
-            padding: 20px;
-        }
-        
-        .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
         /* Tabs */
         .tabs {
             display: flex;
@@ -253,6 +228,7 @@
             border-bottom: 3px solid transparent;
             transition: all 0.3s;
             white-space: nowrap;
+            flex-shrink: 0;
         }
         
         .tab:hover {
@@ -270,6 +246,37 @@
         
         .tab-content.active {
             display: block;
+        }
+        
+        .info-banner {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 13px;
+        }
+        
+        .info-banner.blue {
+            background: #e9f7ff;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .info-banner.green {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .info-banner.yellow {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        
+        .info-banner.red {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
         }
     </style>
 </head>
@@ -295,342 +302,344 @@
                 <button class="tab" onclick="switchTab(event, 'system-tab')">🔧 System</button>
             </div>
             
-            <form id="settingsForm">
-                <!-- Display Tab -->
-                <div id="display-tab" class="tab-content active">
+            <!-- Display Tab -->
+            <div id="display-tab" class="tab-content active">
+                <form id="displayForm">
                     <div class="section">
                         <h2 class="section-title">🖥️ Display Settings</h2>
-                    
-                    <div class="form-group checkbox-group">
-                           <input type="checkbox" id="WEATHER_ENABLED" name="WEATHER_ENABLED" 
-                               {% if current.WEATHER_ENABLED %}checked{% endif %}>
-                        <label for="WEATHER_ENABLED">{{ config.WEATHER_ENABLED.label }}</label>
+                        
+                        <div class="form-group">
+                            <label for="TIMEZONE">{{ config.TIMEZONE.label }}</label>
+                            <select id="TIMEZONE" name="TIMEZONE">
+                                {% for tz in config.TIMEZONE.options %}
+                                <option value="{{ tz }}" {% if current.TIMEZONE == tz %}selected{% endif %}>
+                                    {{ tz }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <span class="help-text">{{ config.TIMEZONE.help }}</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="DISPLAY_COLOR">{{ config.DISPLAY_COLOR.label }}</label>
+                            <input type="color" id="DISPLAY_COLOR" name="DISPLAY_COLOR" 
+                                   value="{{ current.DISPLAY_COLOR }}">
+                            <span class="help-text">{{ config.DISPLAY_COLOR.help }}</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="TIME_FORMAT">{{ config.TIME_FORMAT.label }}</label>
+                            <select id="TIME_FORMAT" name="TIME_FORMAT">
+                                {% for fmt in config.TIME_FORMAT.options %}
+                                <option value="{{ fmt }}" {% if current.TIME_FORMAT == fmt %}selected{% endif %}>
+                                    {{ fmt }}-hour
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <span class="help-text">{{ config.TIME_FORMAT.help }}</span>
+                        </div>
+                        
+                        <div class="form-group checkbox-group">
+                            <input type="checkbox" id="DISPLAY_DATE" name="DISPLAY_DATE" 
+                                   {% if current.DISPLAY_DATE %}checked{% endif %}>
+                            <label for="DISPLAY_DATE">{{ config.DISPLAY_DATE.label }}</label>
+                        </div>
+                        <span class="help-text">{{ config.DISPLAY_DATE.help }}</span>
                     </div>
-                    <span class="help-text">{{ config.WEATHER_ENABLED.help }}</span>
                     
-                    <div class="form-group">
-                        <label for="WEATHER_LOCATION">{{ config.WEATHER_LOCATION.label }}</label>
-                        <input type="text" id="WEATHER_LOCATION" name="WEATHER_LOCATION" 
-                               value="{{ current.WEATHER_LOCATION }}">
-                        <span class="help-text">{{ config.WEATHER_LOCATION.help }}</span>
+                    <div class="section">
+                        <h2 class="section-title">🛡️ Burn-in Prevention</h2>
+                        
+                        <div class="form-group checkbox-group">
+                            <input type="checkbox" id="SHIFT_ENABLED" name="SHIFT_ENABLED" 
+                                   {% if current.SHIFT_ENABLED %}checked{% endif %}>
+                            <label for="SHIFT_ENABLED">{{ config.SHIFT_ENABLED.label }}</label>
+                        </div>
+                        <span class="help-text">{{ config.SHIFT_ENABLED.help }}</span>
+                        
+                        <div class="form-group">
+                            <label for="SHIFT_INTERVAL">{{ config.SHIFT_INTERVAL.label }}</label>
+                            <input type="number" id="SHIFT_INTERVAL" name="SHIFT_INTERVAL" 
+                                   value="{{ current.SHIFT_INTERVAL }}" min="60" max="3600">
+                            <span class="help-text">{{ config.SHIFT_INTERVAL.help }}</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="SHIFT_RANGE">{{ config.SHIFT_RANGE.label }}</label>
+                            <input type="number" id="SHIFT_RANGE" name="SHIFT_RANGE" 
+                                   value="{{ current.SHIFT_RANGE }}" min="5" max="100">
+                            <span class="help-text">{{ config.SHIFT_RANGE.help }}</span>
+                        </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label for="WEATHER_API_KEY">{{ config.WEATHER_API_KEY.label }}</label>
-                        <input type="text" id="WEATHER_API_KEY" name="WEATHER_API_KEY" 
-                               value="{{ current.WEATHER_API_KEY }}" placeholder="Enter API key">
-                        <span class="help-text">{{ config.WEATHER_API_KEY.help }}</span>
+                    <div class="button-group">
+                        <button type="button" class="btn-secondary" onclick="resetForm('displayForm')">Reset</button>
+                        <button type="submit" class="btn-primary">💾 Save Display Settings</button>
                     </div>
-                </div>
-                
-                <!-- Display Settings -->
+                </form>
+            </div>
+            
+            <!-- Weather Tab -->
+            <div id="weather-tab" class="tab-content">
+                <form id="weatherForm">
+                    <div class="section">
+                        <h2 class="section-title">🌤️ Weather Settings</h2>
+                        
+                        <div class="form-group checkbox-group">
+                            <input type="checkbox" id="WEATHER_ENABLED" name="WEATHER_ENABLED" 
+                                   {% if current.WEATHER_ENABLED %}checked{% endif %}>
+                            <label for="WEATHER_ENABLED">{{ config.WEATHER_ENABLED.label }}</label>
+                        </div>
+                        <span class="help-text">{{ config.WEATHER_ENABLED.help }}</span>
+                        
+                        <div class="form-group">
+                            <label for="WEATHER_LOCATION">{{ config.WEATHER_LOCATION.label }}</label>
+                            <input type="text" id="WEATHER_LOCATION" name="WEATHER_LOCATION" 
+                                   value="{{ current.WEATHER_LOCATION }}">
+                            <span class="help-text">{{ config.WEATHER_LOCATION.help }}</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="WEATHER_API_KEY">{{ config.WEATHER_API_KEY.label }}</label>
+                            <input type="text" id="WEATHER_API_KEY" name="WEATHER_API_KEY" 
+                                   value="{{ current.WEATHER_API_KEY }}" placeholder="Enter API key">
+                            <span class="help-text">{{ config.WEATHER_API_KEY.help }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button type="button" class="btn-secondary" onclick="resetForm('weatherForm')">Reset</button>
+                        <button type="submit" class="btn-primary">💾 Save Weather Settings</button>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- WiFi Tab -->
+            <div id="wifi-tab" class="tab-content">
                 <div class="section">
-                    <h2 class="section-title">🖥️ Display Settings</h2>
+                    <h2 class="section-title">📶 WiFi Configuration</h2>
                     
-                    <div class="form-group">
-                        <label for="TIMEZONE">{{ config.TIMEZONE.label }}</label>
-                        <select id="TIMEZONE" name="TIMEZONE">
-                            {% for tz in config.TIMEZONE.options %}
-                            <option value="{{ tz }}" {% if current.TIMEZONE == tz %}selected{% endif %}>
-                                {{ tz }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                        <span class="help-text">{{ config.TIMEZONE.help }}</span>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="DISPLAY_COLOR">{{ config.DISPLAY_COLOR.label }}</label>
-                        <input type="color" id="DISPLAY_COLOR" name="DISPLAY_COLOR" 
-                               value="{{ current.DISPLAY_COLOR }}">
-                        <span class="help-text">{{ config.DISPLAY_COLOR.help }}</span>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="TIME_FORMAT">{{ config.TIME_FORMAT.label }}</label>
-                        <select id="TIME_FORMAT" name="TIME_FORMAT">
-                            {% for fmt in config.TIME_FORMAT.options %}
-                            <option value="{{ fmt }}" {% if current.TIME_FORMAT == fmt %}selected{% endif %}>
-                                {{ fmt }}-hour
-                            </option>
-                            {% endfor %}
-                        </select>
-                        <span class="help-text">{{ config.TIME_FORMAT.help }}</span>
-                    </div>
-                    
-                    <div class="form-group checkbox-group">
-                           <input type="checkbox" id="DISPLAY_DATE" name="DISPLAY_DATE" 
-                               {% if current.DISPLAY_DATE %}checked{% endif %}>
-                        <label for="DISPLAY_DATE">{{ config.DISPLAY_DATE.label }}</label>
-                    </div>
-                    <span class="help-text">{{ config.DISPLAY_DATE.help }}</span>
-                </div>
-                
-                <!-- Burn-in Prevention -->
-                <div class="section">
-                    <h2 class="section-title">🛡️ Burn-in Prevention</h2>
-                    
-                    <div class="form-group checkbox-group">
-                           <input type="checkbox" id="SHIFT_ENABLED" name="SHIFT_ENABLED" 
-                               {% if current.SHIFT_ENABLED %}checked{% endif %}>
-                        <label for="SHIFT_ENABLED">{{ config.SHIFT_ENABLED.label }}</label>
-                    </div>
-                    <span class="help-text">{{ config.SHIFT_ENABLED.help }}</span>
-                    
-                    <div class="form-group">
-                        <label for="SHIFT_INTERVAL">{{ config.SHIFT_INTERVAL.label }}</label>
-                        <input type="number" id="SHIFT_INTERVAL" name="SHIFT_INTERVAL" 
-                               value="{{ current.SHIFT_INTERVAL }}" min="60" max="3600">
-                        <span class="help-text">{{ config.SHIFT_INTERVAL.help }}</span>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="SHIFT_RANGE">{{ config.SHIFT_RANGE.label }}</label>
-                        <input type="number" id="SHIFT_RANGE" name="SHIFT_RANGE" 
-                               value="{{ current.SHIFT_RANGE }}" min="5" max="100">
-                        <span class="help-text">{{ config.SHIFT_RANGE.help }}</span>
-                    </div>
-                </div>
-                
-                <!-- WiFi Configuration -->
-                <div class="section">
-                    <h2 class="section-title">📡 WiFi Configuration</h2>
-                    
-                    <p id="current-wifi-banner" style="background: #e9f7ff; padding: 12px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; color: #0c5460; border: 1px solid #bee5eb;">
+                    <div id="current-wifi-banner" class="info-banner blue">
                         📶 Connected WiFi: <strong id="current-wifi-ssid">{{ current_wifi_ssid if current_wifi_ssid else 'None' }}</strong>
-                        <span id="current-wifi-meta" style="margin-left:8px; color:#0c5460;"></span>
-                    </p>
+                        <span id="current-wifi-meta" style="margin-left:8px;"></span>
+                    </div>
                     
-                    <p style="background: #d4edda; padding: 15px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: #155724; border: 1px solid #c3e6cb;">
+                    <div class="info-banner green">
                         ✓ WiFi settings are stored in <strong>NetworkManager</strong> and persist across reboots and fleet updates
-                    </p>
+                    </div>
                     
-                    <p style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; color: #856404; border: 1px solid #ffeeba;">
+                    <div class="info-banner yellow">
                         ℹ️ <strong>Note:</strong> Changes apply immediately and the device will prefer the highest-priority visible network. 
                         Leave passwords as *** to keep existing passwords unchanged.
-                    </p>
+                    </div>
                     
-                    <!-- Scan button -->
-                    <button type="button" onclick="scanWiFiNetworks()" style="background: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; margin-bottom: 15px;">
-                        📡 Scan for WiFi Networks
-                    </button>
-                    <span id="scan-status" style="margin-left: 10px; color: #666;"></span>
+                    <!-- WiFi Actions -->
+                    <div style="margin-bottom: 20px;">
+                        <button type="button" onclick="scanWiFiNetworks()" style="background: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; margin-right: 10px;">
+                            📡 Scan for WiFi Networks
+                        </button>
+                        <span id="scan-status" style="color: #666;"></span>
+                    </div>
                     
-                    <!-- Switch to best available -->
-                    <div style="margin-top:10px;">
+                    <div style="margin-bottom: 20px;">
                         <button type="button" onclick="switchBestWifi()" style="background: #17a2b8; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
                             🔁 Prefer Highest-Priority Available Now
                         </button>
                         <span id="switch-status" style="margin-left: 10px; color: #666;"></span>
                     </div>
                     
-                    <div class="form-group">
-                        <label for="WIFI_SSID">{{ wifi_config.WIFI_SSID.label }}</label>
-                        <input type="text" id="WIFI_SSID" name="WIFI_SSID" list="wifi-networks-list"
-                               value="{{ wifi_current.WIFI_SSID }}" placeholder="Select from list or type network name">
-                        <datalist id="wifi-networks-list"></datalist>
-                        <span class="help-text">{{ wifi_config.WIFI_SSID.help }}</span>
-                    </div>
+                    <form id="wifiForm">
+                        <div class="form-group">
+                            <label for="WIFI_SSID">{{ wifi_config.WIFI_SSID.label }}</label>
+                            <input type="text" id="WIFI_SSID" name="WIFI_SSID" list="wifi-networks-list"
+                                   value="{{ wifi_current.WIFI_SSID }}" placeholder="Select from list or type network name">
+                            <datalist id="wifi-networks-list"></datalist>
+                            <span class="help-text">{{ wifi_config.WIFI_SSID.help }}</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="WIFI_PSK">{{ wifi_config.WIFI_PSK.label }}</label>
+                            <input type="password" id="WIFI_PSK" name="WIFI_PSK" 
+                                   value="{{ wifi_current.WIFI_PSK }}" placeholder="Password">
+                            <span class="help-text">{{ wifi_config.WIFI_PSK.help }}</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="WIFI_SSID_1">{{ wifi_config.WIFI_SSID_1.label }}</label>
+                            <input type="text" id="WIFI_SSID_1" name="WIFI_SSID_1" list="wifi-networks-list"
+                                   value="{{ wifi_current.WIFI_SSID_1 }}" placeholder="Select from list or type network name (optional)">
+                            <span class="help-text">{{ wifi_config.WIFI_SSID_1.help }}</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="WIFI_PSK_1">{{ wifi_config.WIFI_PSK_1.label }}</label>
+                            <input type="password" id="WIFI_PSK_1" name="WIFI_PSK_1" 
+                                   value="{{ wifi_current.WIFI_PSK_1 }}" placeholder="Password (optional)">
+                            <span class="help-text">{{ wifi_config.WIFI_PSK_1.help }}</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="WIFI_SSID_2">{{ wifi_config.WIFI_SSID_2.label }}</label>
+                            <input type="text" id="WIFI_SSID_2" name="WIFI_SSID_2" list="wifi-networks-list"
+                                   value="{{ wifi_current.WIFI_SSID_2 }}" placeholder="Select from list or type network name (optional)">
+                            <span class="help-text">{{ wifi_config.WIFI_SSID_2.help }}</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="WIFI_PSK_2">{{ wifi_config.WIFI_PSK_2.label }}</label>
+                            <input type="password" id="WIFI_PSK_2" name="WIFI_PSK_2" 
+                                   value="{{ wifi_current.WIFI_PSK_2 }}" placeholder="Password (optional)">
+                            <span class="help-text">{{ wifi_config.WIFI_PSK_2.help }}</span>
+                        </div>
+                        
+                        <button type="submit" class="btn-primary" style="width: 100%;">
+                            📡 Save WiFi Configuration
+                        </button>
+                    </form>
                     
-                    <div class="form-group">
-                        <label for="WIFI_PSK">{{ wifi_config.WIFI_PSK.label }}</label>
-                        <input type="password" id="WIFI_PSK" name="WIFI_PSK" 
-                               value="{{ wifi_current.WIFI_PSK }}" placeholder="Password">
-                        <span class="help-text">{{ wifi_config.WIFI_PSK.help }}</span>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="WIFI_SSID_1">{{ wifi_config.WIFI_SSID_1.label }}</label>
-                        <input type="text" id="WIFI_SSID_1" name="WIFI_SSID_1" list="wifi-networks-list"
-                               value="{{ wifi_current.WIFI_SSID_1 }}" placeholder="Select from list or type network name (optional)">
-                        <span class="help-text">{{ wifi_config.WIFI_SSID_1.help }}</span>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="WIFI_PSK_1">{{ wifi_config.WIFI_PSK_1.label }}</label>
-                        <input type="password" id="WIFI_PSK_1" name="WIFI_PSK_1" 
-                               value="{{ wifi_current.WIFI_PSK_1 }}" placeholder="Password (optional)">
-                        <span class="help-text">{{ wifi_config.WIFI_PSK_1.help }}</span>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="WIFI_SSID_2">{{ wifi_config.WIFI_SSID_2.label }}</label>
-                        <input type="text" id="WIFI_SSID_2" name="WIFI_SSID_2" list="wifi-networks-list"
-                               value="{{ wifi_current.WIFI_SSID_2 }}" placeholder="Select from list or type network name (optional)">
-                        <span class="help-text">{{ wifi_config.WIFI_SSID_2.help }}</span>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="WIFI_PSK_2">{{ wifi_config.WIFI_PSK_2.label }}</label>
-                        <input type="password" id="WIFI_PSK_2" name="WIFI_PSK_2" 
-                               value="{{ wifi_current.WIFI_PSK_2 }}" placeholder="Password (optional)">
-                        <span class="help-text">{{ wifi_config.WIFI_PSK_2.help }}</span>
-                    </div>
-                    
-                    <button type="button" class="btn-primary" onclick="saveWiFi()" style="width: 100%; margin-top: 10px;">
-                        📡 Save WiFi & Reboot Device
-                    </button>
-                    
-                    <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #ddd;">
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px dashed #ddd;">
                         <button type="button" onclick="clearWifiConfigs()" style="background: #dc3545; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
-                            🗑️ Clear All WiFi Configs (Advanced)
+                            🗑️ Clear All WiFi Configs
                         </button>
                         <span id="clear-status" style="margin-left: 10px; color: #666;"></span>
                     </div>
                 </div>
-                
-                <!-- Screensaver -->
-                <div class="section">
-                    <h2 class="section-title">🌙 Screensaver</h2>
-                    
-                    <div class="form-group checkbox-group">
-                           <input type="checkbox" id="SCREENSAVER_ENABLED" name="SCREENSAVER_ENABLED" 
-                               {% if current.SCREENSAVER_ENABLED %}checked{% endif %}>
-                        <label for="SCREENSAVER_ENABLED">{{ config.SCREENSAVER_ENABLED.label }}</label>
-                    </div>
-                    <span class="help-text">{{ config.SCREENSAVER_ENABLED.help }}</span>
-                    
-                    <div class="form-group">
-                        <label for="SCREENSAVER_START">{{ config.SCREENSAVER_START.label }}</label>
-                        <input type="time" id="SCREENSAVER_START" name="SCREENSAVER_START" 
-                               value="{{ current.SCREENSAVER_START }}">
-                        <span class="help-text">{{ config.SCREENSAVER_START.help }}</span>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="SCREENSAVER_END">{{ config.SCREENSAVER_END.label }}</label>
-                        <input type="time" id="SCREENSAVER_END" name="SCREENSAVER_END" 
-                               value="{{ current.SCREENSAVER_END }}">
-                        <span class="help-text">{{ config.SCREENSAVER_END.help }}</span>
-                    </div>
-                </div>
-                
-                <div class="button-group">
-                    <button type="button" class="btn-secondary" onclick="resetForm()">Reset</button>
-                    <button type="button" class="btn-secondary" onclick="restartClock()">🔄 Restart Clock</button>
-                    <button type="submit" class="btn-primary">💾 Save Settings</button>
-                </div>
-            </form>
+            </div>
             
-            <!-- Danger Zone -->
-            <div class="section" style="border-top: 2px solid #f8d7da; margin-top: 20px;">
-                <h2 class="section-title" style="color:#dc3545;">☠️ Danger Zone</h2>
-                <p style="background: #f8d7da; padding: 12px; border-radius: 6px; font-size: 13px; color: #721c24; border: 1px solid #f5c6cb; margin-bottom: 12px;">
-                    Clears ALL clock settings and WiFi configuration. This cannot be undone.
-                </p>
-                <button type="button" onclick="factoryReset()" style="background: #dc3545; color: white; padding: 12px 20px; border: none; border-radius: 6px; cursor: pointer;">
-                    🧨 Factory Reset (Clear All Settings)
-                </button>
-                <span id="reset-status" style="margin-left: 10px; color: #666;"></span>
+            <!-- Advanced Tab -->
+            <div id="advanced-tab" class="tab-content">
+                <form id="advancedForm">
+                    <div class="section">
+                        <h2 class="section-title">🌙 Screensaver</h2>
+                        
+                        <div class="form-group checkbox-group">
+                            <input type="checkbox" id="SCREENSAVER_ENABLED" name="SCREENSAVER_ENABLED" 
+                                   {% if current.SCREENSAVER_ENABLED %}checked{% endif %}>
+                            <label for="SCREENSAVER_ENABLED">{{ config.SCREENSAVER_ENABLED.label }}</label>
+                        </div>
+                        <span class="help-text">{{ config.SCREENSAVER_ENABLED.help }}</span>
+                        
+                        <div class="form-group">
+                            <label for="SCREENSAVER_START">{{ config.SCREENSAVER_START.label }}</label>
+                            <input type="time" id="SCREENSAVER_START" name="SCREENSAVER_START" 
+                                   value="{{ current.SCREENSAVER_START }}">
+                            <span class="help-text">{{ config.SCREENSAVER_START.help }}</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="SCREENSAVER_END">{{ config.SCREENSAVER_END.label }}</label>
+                            <input type="time" id="SCREENSAVER_END" name="SCREENSAVER_END" 
+                                   value="{{ current.SCREENSAVER_END }}">
+                            <span class="help-text">{{ config.SCREENSAVER_END.help }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button type="button" class="btn-secondary" onclick="resetForm('advancedForm')">Reset</button>
+                        <button type="submit" class="btn-primary">💾 Save Advanced Settings</button>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- System Tab -->
+            <div id="system-tab" class="tab-content">
+                <div class="section">
+                    <h2 class="section-title">🔧 System Actions</h2>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <button type="button" onclick="restartClock()" style="background: #17a2b8; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px;">
+                            🔄 Restart Clock Service
+                        </button>
+                        <span id="restart-status" style="margin-left: 10px; color: #666;"></span>
+                    </div>
+                </div>
+                
+                <div class="section" style="border-top: 2px solid #f8d7da; padding-top: 30px;">
+                    <h2 class="section-title" style="color:#dc3545;">☠️ Danger Zone</h2>
+                    <div class="info-banner red">
+                        Clears ALL clock settings and WiFi configuration. This cannot be undone.
+                    </div>
+                    <button type="button" onclick="factoryReset()" style="background: #dc3545; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px;">
+                        🧨 Factory Reset (Clear All Settings)
+                    </button>
+                    <span id="reset-status" style="margin-left: 10px; color: #666;"></span>
+                </div>
             </div>
         </div>
     </div>
     
     <script>
-        const form = document.getElementById('settingsForm');
         const messageDiv = document.getElementById('message');
         
         // Tab switching function
         function switchTab(event, tabId) {
-            // Hide all tab contents
             document.querySelectorAll('.tab-content').forEach(tab => {
                 tab.classList.remove('active');
             });
             
-            // Remove active from all tabs
             document.querySelectorAll('.tab').forEach(tab => {
                 tab.classList.remove('active');
             });
             
-            // Show selected tab
             document.getElementById(tabId).classList.add('active');
-            
-            // Mark tab as active
             event.currentTarget.classList.add('active');
         }
         
-        // Scan for WiFi networks and populate dropdowns
-        async function scanWiFiNetworks() {
-            const scanButton = event.target;
-            const statusSpan = document.getElementById('scan-status');
+        // Form submit handlers
+        document.getElementById('displayForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            saveSettings('displayForm');
+        });
+        
+        document.getElementById('weatherForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            saveSettings('weatherForm');
+        });
+        
+        document.getElementById('wifiForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            saveWiFi();
+        });
+        
+        document.getElementById('advancedForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            saveSettings('advancedForm');
+        });
+        
+        async function saveSettings(formId) {
+            const form = document.getElementById(formId);
+            const formData = new FormData(form);
+            const config = {};
             
-            scanButton.disabled = true;
-            scanButton.textContent = '⏳ Scanning...';
-            statusSpan.textContent = '';
+            for (const [key, value] of formData.entries()) {
+                config[key] = value;
+            }
+            
+            const checkboxes = form.querySelectorAll('input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                config[cb.name] = cb.checked;
+            });
+            
+            showMessage('Saving configuration...', 'info');
             
             try {
-                const response = await fetch('/api/wifi/scan');
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(config)
+                });
+                
                 const result = await response.json();
                 
-                if (response.ok && result.success) {
-                    const datalist = document.getElementById('wifi-networks-list');
-                    datalist.innerHTML = ''; // Clear existing options
-                    
-                    if (result.networks && result.networks.length > 0) {
-                        result.networks.forEach(network => {
-                            const option = document.createElement('option');
-                            const signalBars = getSignalBars(network.signal);
-                            const securityIcon = network.security ? '🔒' : '🔓';
-                            option.value = network.ssid;
-                            option.textContent = `${network.ssid} ${signalBars} ${securityIcon}`;
-                            datalist.appendChild(option);
-                        });
-                        
-                        statusSpan.textContent = `✅ Found ${result.count} network(s)`;
-                        statusSpan.style.color = '#28a745';
-                    } else {
-                        statusSpan.textContent = '⚠️ No networks found';
-                        statusSpan.style.color = '#ffc107';
-                    }
+                if (result.success) {
+                    showMessage('✅ ' + result.message, 'success');
                 } else {
-                    statusSpan.textContent = '❌ Scan failed';
-                    statusSpan.style.color = '#dc3545';
+                    showMessage('❌ Error: ' + (result.error || 'Unknown error'), 'error');
                 }
             } catch (error) {
-                statusSpan.textContent = '❌ Error: ' + error.message;
-                statusSpan.style.color = '#dc3545';
-            } finally {
-                scanButton.disabled = false;
-                scanButton.textContent = '📡 Scan for WiFi Networks';
-            }
-        }
-        
-        // Convert signal strength to visual bars
-        function getSignalBars(signal) {
-            if (signal >= 75) return '▂▄▆█';
-            if (signal >= 50) return '▂▄▆';
-            if (signal >= 25) return '▂▄';
-            return '▂';
-        }
-        
-        // Auto-scan on page load
-        window.addEventListener('load', () => {
-            scanWiFiNetworks();
-            refreshCurrentWifi();
-        });
-
-        async function refreshCurrentWifi() {
-            try {
-                const response = await fetch('/api/wifi/current');
-                const result = await response.json();
-                if (response.ok && result.success) {
-                    const banner = document.getElementById('current-wifi-banner');
-                    const ssidEl = document.getElementById('current-wifi-ssid');
-                    const metaEl = document.getElementById('current-wifi-meta');
-                    ssidEl.textContent = result.ssid || 'None';
-                    let sourceLabel = '';
-                    if (result.source === 'primary') sourceLabel = '(primary)';
-                    else if (result.source === 'backup1') sourceLabel = '(backup 1)';
-                    else if (result.source === 'backup2') sourceLabel = '(backup 2)';
-                    else if (result.source === 'unconfigured') sourceLabel = '(unconfigured/OS)';
-                    else sourceLabel = '';
-                    const signalText = typeof result.signal === 'number' ? `${result.signal}%` : 'n/a';
-                    const secText = result.security ? 'secure' : 'open';
-                    metaEl.textContent = `${sourceLabel} • device: ${result.device || 'wlan0'} • signal: ${signalText} • ${secText}`;
-                    banner.style.display = 'block';
-                }
-            } catch (e) {
-                // Silently ignore UI refresh errors
+                showMessage('❌ Network error: ' + error.message, 'error');
             }
         }
         
@@ -662,7 +671,8 @@
                 const result = await response.json();
                 
                 if (response.ok && result.success) {
-                    showMessage('✅ ' + result.message + ' You may lose connection temporarily.', 'success');
+                    showMessage('✅ ' + result.message, 'success');
+                    setTimeout(() => refreshCurrentWifi(), 2000);
                 } else {
                     showMessage('❌ Failed to update WiFi: ' + (result.error || 'Unknown error'), 'error');
                 }
@@ -670,7 +680,81 @@
                 showMessage('❌ Error updating WiFi: ' + error.message, 'error');
             }
         }
-
+        
+        async function scanWiFiNetworks() {
+            const scanButton = event.target;
+            const statusSpan = document.getElementById('scan-status');
+            
+            scanButton.disabled = true;
+            scanButton.textContent = '⏳ Scanning...';
+            statusSpan.textContent = '';
+            
+            try {
+                const response = await fetch('/api/wifi/scan');
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    const datalist = document.getElementById('wifi-networks-list');
+                    datalist.innerHTML = '';
+                    
+                    if (result.networks && result.networks.length > 0) {
+                        result.networks.forEach(network => {
+                            const option = document.createElement('option');
+                            const signalBars = getSignalBars(network.signal);
+                            const securityIcon = network.security ? '🔒' : '🔓';
+                            option.value = network.ssid;
+                            option.textContent = `${network.ssid} ${signalBars} ${securityIcon}`;
+                            datalist.appendChild(option);
+                        });
+                        
+                        statusSpan.textContent = `✅ Found ${result.count} network(s)`;
+                        statusSpan.style.color = '#28a745';
+                    } else {
+                        statusSpan.textContent = '⚠️ No networks found';
+                        statusSpan.style.color = '#ffc107';
+                    }
+                } else {
+                    statusSpan.textContent = '❌ Scan failed';
+                    statusSpan.style.color = '#dc3545';
+                }
+            } catch (error) {
+                statusSpan.textContent = '❌ Error: ' + error.message;
+                statusSpan.style.color = '#dc3545';
+            } finally {
+                scanButton.disabled = false;
+                scanButton.textContent = '📡 Scan for WiFi Networks';
+            }
+        }
+        
+        function getSignalBars(signal) {
+            if (signal >= 75) return '▂▄▆█';
+            if (signal >= 50) return '▂▄▆';
+            if (signal >= 25) return '▂▄';
+            return '▂';
+        }
+        
+        async function refreshCurrentWifi() {
+            try {
+                const response = await fetch('/api/wifi/current');
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    const ssidEl = document.getElementById('current-wifi-ssid');
+                    const metaEl = document.getElementById('current-wifi-meta');
+                    ssidEl.textContent = result.ssid || 'None';
+                    let sourceLabel = '';
+                    if (result.source === 'primary') sourceLabel = '(primary)';
+                    else if (result.source === 'backup1') sourceLabel = '(backup 1)';
+                    else if (result.source === 'backup2') sourceLabel = '(backup 2)';
+                    else if (result.source === 'unconfigured') sourceLabel = '(unconfigured/OS)';
+                    const signalText = typeof result.signal === 'number' ? `${result.signal}%` : 'n/a';
+                    const secText = result.security ? 'secure' : 'open';
+                    metaEl.textContent = `${sourceLabel} • device: ${result.device || 'wlan0'} • signal: ${signalText} • ${secText}`;
+                }
+            } catch (e) {
+                // Silently ignore
+            }
+        }
+        
         async function clearWifiConfigs() {
             if (!confirm('⚠️ This will DELETE all WiFi connections from NetworkManager. Continue?')) {
                 return;
@@ -714,7 +798,7 @@
                     statusSpan.textContent = '❌ ' + (result.message || result.error || 'Failed to switch');
                     statusSpan.style.color = '#dc3545';
                 }
-                await refreshCurrentWifi();
+                setTimeout(() => refreshCurrentWifi(), 2000);
             } catch (error) {
                 statusSpan.textContent = '❌ ' + error.message;
                 statusSpan.style.color = '#dc3545';
@@ -722,7 +806,9 @@
         }
         
         async function restartClock() {
-            showMessage('Restarting clock service...', 'info');
+            const statusSpan = document.getElementById('restart-status');
+            statusSpan.textContent = '⏳ Restarting...';
+            statusSpan.style.color = '#666';
             
             try {
                 const response = await fetch('/api/restart-clock', {
@@ -735,71 +821,15 @@
                 const result = await response.json();
                 
                 if (response.ok && result.success) {
-                    showMessage('✓ Clock service restarted successfully!', 'success');
+                    statusSpan.textContent = '✅ ' + result.message;
+                    statusSpan.style.color = '#28a745';
                 } else {
-                    showMessage('Failed to restart clock: ' + (result.error || 'Unknown error'), 'error');
+                    statusSpan.textContent = '❌ ' + (result.error || 'Failed to restart');
+                    statusSpan.style.color = '#dc3545';
                 }
             } catch (error) {
-                showMessage('Error restarting clock: ' + error.message, 'error');
-            }
-        }
-        
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            // Collect form data
-            const formData = new FormData(form);
-            const config = {};
-            
-            // Get all input values
-            for (const [key, value] of formData.entries()) {
-                config[key] = value;
-            }
-            
-            // Handle checkboxes (unchecked boxes don't appear in FormData)
-            const checkboxes = form.querySelectorAll('input[type="checkbox"]');
-            checkboxes.forEach(cb => {
-                config[cb.name] = cb.checked;
-            });
-            
-            // Show loading state
-            showMessage('Saving configuration...', 'info');
-            
-            try {
-                const response = await fetch('/api/config', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(config)
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showMessage('✅ ' + result.message, 'success');
-                } else {
-                    showMessage('❌ Error: ' + (result.error || 'Unknown error'), 'error');
-                }
-            } catch (error) {
-                showMessage('❌ Network error: ' + error.message, 'error');
-            }
-        });
-        
-        function showMessage(text, type) {
-            messageDiv.textContent = text;
-            messageDiv.className = 'message ' + type + ' visible';
-            
-            if (type !== 'info') {
-                setTimeout(() => {
-                    messageDiv.className = 'message';
-                }, 5000);
-            }
-        }
-        
-        function resetForm() {
-            if (confirm('Reset all settings to current values?')) {
-                location.reload();
+                statusSpan.textContent = '❌ ' + error.message;
+                statusSpan.style.color = '#dc3545';
             }
         }
         
@@ -829,6 +859,29 @@
                 statusSpan.style.color = '#dc3545';
             }
         }
+        
+        function showMessage(text, type) {
+            messageDiv.textContent = text;
+            messageDiv.className = 'message ' + type + ' visible';
+            
+            if (type !== 'info') {
+                setTimeout(() => {
+                    messageDiv.className = 'message';
+                }, 5000);
+            }
+        }
+        
+        function resetForm(formId) {
+            if (confirm('Reset all settings to current values?')) {
+                location.reload();
+            }
+        }
+        
+        // Auto-scan and refresh on page load
+        window.addEventListener('load', () => {
+            scanWiFiNetworks();
+            refreshCurrentWifi();
+        });
     </script>
 </body>
 </html>
