@@ -281,16 +281,20 @@ def nm_get_wifi_connections_by_name():
     """Return a mapping of connection NAME -> SSID for WiFi connections."""
     try:
         output = os.popen("nmcli -t -f NAME,TYPE connection show").read().strip()
+        logger.debug(f"[NM] nmcli connection show output: {output}")
         name_to_ssid = {}
         for line in output.split('\n'):
             if not line:
                 continue
             name, ctype = (line.split(':', 1) + [''])[:2]
+            logger.debug(f"[NM] Checking connection: name={name}, type={ctype}")
             if ctype != 'wifi':
                 continue
             ssid = os.popen(f"nmcli -g 802-11-wireless.ssid connection show \"{name}\"").read().strip()
+            logger.debug(f"[NM] Connection {name} has SSID: {ssid}")
             if ssid:
                 name_to_ssid[name] = ssid
+        logger.info(f"[NM] Final name_to_ssid map: {name_to_ssid}")
         return name_to_ssid
     except Exception as e:
         logger.warning(f"Failed to query NM connections: {e}")
@@ -515,7 +519,7 @@ def get_wifi_config():
     try:
         wifi_config = {key: '' for key in WIFI_CONFIG.keys()}
         name_to_ssid = nm_get_wifi_connections_by_name()
-        logger.debug(f"nm_get_wifi_connections_by_name returned: {name_to_ssid}")
+        logger.info(f"[WIFI_CONFIG] nm_get_wifi_connections_by_name returned: {name_to_ssid}")
         mapping = [
             ('balena-wifi-primary', 'WIFI_SSID', 'WIFI_PSK'),
             ('balena-wifi-backup1', 'WIFI_SSID_1', 'WIFI_PSK_1'),
@@ -525,7 +529,10 @@ def get_wifi_config():
             if con_name in name_to_ssid:
                 wifi_config[ssid_key] = name_to_ssid[con_name]
                 wifi_config[psk_key] = '***'
-                logger.info(f"Found WiFi config: {con_name} (SSID: {wifi_config[ssid_key]})")
+                logger.info(f"[WIFI_CONFIG] Found WiFi config: {con_name} (SSID: {wifi_config[ssid_key]})")
+            else:
+                logger.warning(f"[WIFI_CONFIG] Connection {con_name} not found in name_to_ssid map")
+        logger.info(f"[WIFI_CONFIG] Final wifi_config: {wifi_config}")
         return wifi_config
     except Exception as e:
         logger.error(f"Error loading WiFi config: {e}")
