@@ -280,24 +280,43 @@ def list_nm_wifi_connections():
 def nm_get_wifi_connections_by_name():
     """Return a mapping of connection NAME -> SSID for WiFi connections."""
     try:
-        output = os.popen("nmcli -t -f NAME,TYPE connection show").read().strip()
-        logger.debug(f"[NM] nmcli connection show output: {output}")
+        cmd = "nmcli -t -f NAME,TYPE connection show"
+        logger.info(f"[NM] Executing: {cmd}")
+        output = os.popen(cmd).read().strip()
+        logger.info(f"[NM] Raw output length: {len(output)} chars")
+        logger.info(f"[NM] nmcli connection show output: [{output}]")
+        
+        if not output:
+            logger.warning("[NM] nmcli returned empty output - no connections found or DBus issue")
+            return {}
+            
         name_to_ssid = {}
-        for line in output.split('\n'):
+        lines = output.split('\n')
+        logger.info(f"[NM] Processing {len(lines)} lines")
+        
+        for i, line in enumerate(lines):
             if not line:
+                logger.debug(f"[NM] Line {i}: empty, skipping")
                 continue
-            name, ctype = (line.split(':', 1) + [''])[:2]
-            logger.debug(f"[NM] Checking connection: name={name}, type={ctype}")
-            if ctype != 'wifi':
+            parts = line.split(':', 1)
+            if len(parts) < 2:
+                logger.warning(f"[NM] Line {i}: malformed (no colon) - {line}")
                 continue
-            ssid = os.popen(f"nmcli -g 802-11-wireless.ssid connection show \"{name}\"").read().strip()
-            logger.debug(f"[NM] Connection {name} has SSID: {ssid}")
+            name, ctype = parts[0], parts[1]
+            logger.info(f"[NM] Line {i}: name='{name}', type='{ctype}'")
+            if ctype != 'wifi' and ctype != '802-11-wireless':
+                logger.debug(f"[NM] Skipping non-wifi connection: {name}")
+                continue
+            ssid_cmd = f"nmcli -g 802-11-wireless.ssid connection show \"{name}\""
+            logger.debug(f"[NM] Querying SSID for {name}: {ssid_cmd}")
+            ssid = os.popen(ssid_cmd).read().strip()
+            logger.info(f"[NM] Connection '{name}' has SSID: '{ssid}'")
             if ssid:
                 name_to_ssid[name] = ssid
         logger.info(f"[NM] Final name_to_ssid map: {name_to_ssid}")
         return name_to_ssid
     except Exception as e:
-        logger.warning(f"Failed to query NM connections: {e}")
+        logger.error(f"[NM] Exception in nm_get_wifi_connections_by_name: {e}", exc_info=True)
         return {}
 
 
