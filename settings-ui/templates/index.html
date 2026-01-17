@@ -769,8 +769,16 @@
                             const option = document.createElement('option');
                             const signalBars = getSignalBars(network.signal);
                             const securityIcon = network.security ? '🔒' : '🔓';
+                            const warningIcon = network.warnings && network.warnings.length > 0 ? ' ⚠️' : '';
+                            const securityType = network.security || 'Open';
                             option.value = network.ssid;
-                            option.textContent = `${network.ssid} ${signalBars} ${securityIcon}`;
+                            option.textContent = `${network.ssid} ${signalBars} ${securityIcon} ${securityType}${warningIcon}`;
+                            
+                            // Store warnings as data attribute for tooltip/display
+                            if (network.warnings && network.warnings.length > 0) {
+                                option.setAttribute('data-warnings', network.warnings.join('; '));
+                            }
+                            
                             datalist.appendChild(option);
                         });
                         
@@ -798,6 +806,7 @@
             if (signal >= 50) return '▂▄▆';
             if (signal >= 25) return '▂▄';
             return '▂';
+        }
         }
         
         async function refreshCurrentWifi() {

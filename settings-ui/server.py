@@ -177,7 +177,7 @@ WIFI_CONFIG = {
 
 def scan_wifi_networks():
     """Scan for available WiFi networks and return list of SSIDs with signal strength.
-    Returns list of dicts with 'ssid', 'signal', 'security' keys.
+    Returns list of dicts with 'ssid', 'signal', 'security', 'warnings' keys.
     """
     try:
         import shutil
@@ -196,6 +196,12 @@ def scan_wifi_networks():
             logger.warning("DBUS_SYSTEM_BUS_ADDRESS not set; cannot query host NetworkManager.")
         if not os.path.exists(dbus_sock):
             logger.warning(f"Host DBus socket not found at {dbus_sock}; WiFi scan may fail.")
+
+        # Detect device type for compatibility warnings
+        device_type = os.environ.get('BALENA_DEVICE_TYPE', '').lower()
+        is_rpi_zero = 'raspberry-pi' in device_type and 'zero' in device_type
+        is_rpi1 = 'raspberry-pi' in device_type and device_type.endswith('-1')
+        limited_wifi = is_rpi_zero or is_rpi1  # RPi Zero W and RPi 1 have limited WiFi
 
         # Use nmcli to scan for WiFi networks
         # Format: SSID:SIGNAL:SECURITY
@@ -222,10 +228,24 @@ def scan_wifi_networks():
                 # Skip empty SSIDs and duplicates (take strongest signal)
                 if ssid and ssid not in seen_ssids:
                     seen_ssids.add(ssid)
+                    
+                    # Check for compatibility issues
+                    warnings = []
+                    has_wpa3 = 'WPA3' in security.upper()
+                    
+                    if has_wpa3 and limited_wifi:
+                        warnings.append('WPA3 may not work on RPi Zero/1 - use WPA2 if connection fails')
+                    elif has_wpa3:
+                        warnings.append('WPA3 detected - ensure firmware/drivers support it')
+                    
+                    if int(signal) if signal.isdigit() else 0 < 50:
+                        warnings.append('Weak signal - connection may be unreliable')
+                    
                     networks.append({
                         'ssid': ssid,
                         'signal': int(signal) if signal.isdigit() else 0,
-                        'security': security
+                        'security': security,
+                        'warnings': warnings
                     })
 
         # Sort by signal strength (strongest first)
@@ -233,8 +253,10 @@ def scan_wifi_networks():
 
         logger.info(f"📡 Found {len(networks)} WiFi network(s) in scan")
         for n in networks:
-            sec = 'secure' if n.get('security') else 'open'
-            logger.info(f"  • {n.get('ssid')}  ({n.get('signal')}%, {sec})")
+            sec = n.get('security') or 'open'
+            warnings = n.get('warnings', [])
+            warning_str = f" ⚠️  {', '.join(warnings)}" if warnings else ""
+            logger.info(f"  • {n.get('ssid')}  ({n.get('signal')}%, {sec}){warning_str}")
         return networks
 
     except Exception as e:
