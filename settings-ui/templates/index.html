@@ -4,6 +4,36 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Digital Clock Settings</title>
+    <script>
+        // Define switchTab function in head to ensure it's available when inline onclick handlers are parsed
+        function switchTab(event, tabId) {
+            try {
+                // Remove active class from all tabs and content
+                document.querySelectorAll('.tab-content').forEach(tab => {
+                    tab.classList.remove('active');
+                });
+                
+                document.querySelectorAll('.tab').forEach(tab => {
+                    tab.classList.remove('active');
+                });
+                
+                // Add active class to selected tab and content
+                const targetTab = document.getElementById(tabId);
+                if (targetTab) {
+                    targetTab.classList.add('active');
+                } else {
+                    console.error('Tab not found:', tabId);
+                }
+                
+                // Add active class to clicked tab button
+                if (event && event.currentTarget) {
+                    event.currentTarget.classList.add('active');
+                }
+            } catch (error) {
+                console.error('Error switching tabs:', error);
+            }
+        }
+    </script>
     <style>
         * {
             margin: 0;
@@ -637,33 +667,6 @@
     
     <script>
         const messageDiv = document.getElementById('message');
-        
-        // Tab switching function
-        function switchTab(event, tabId) {
-            try {
-                // Remove active class from all tabs and content
-                document.querySelectorAll('.tab-content').forEach(tab => {
-                    tab.classList.remove('active');
-                });
-                
-                document.querySelectorAll('.tab').forEach(tab => {
-                    tab.classList.remove('active');
-                });
-                
-                // Add active class to selected tab and content
-                const targetTab = document.getElementById(tabId);
-                if (targetTab) {
-                    targetTab.classList.add('active');
-                }
-                
-                // Add active class to clicked tab button
-                if (event && event.currentTarget) {
-                    event.currentTarget.classList.add('active');
-                }
-            } catch (error) {
-                console.error('Error switching tabs:', error);
-            }
-        }
         
         // Form submit handlers
         document.getElementById('displayForm').addEventListener('submit', (e) => {

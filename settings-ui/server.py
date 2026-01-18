@@ -20,6 +20,33 @@ CORS(app)  # Enable CORS for all routes
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Cache infrastructure for network queries
+_cache = {}
+_cache_lock = threading.Lock()
+
+def _get_cached(key, ttl_seconds=30):
+    """Get cached value if not expired, returns (value, is_cached) tuple"""
+    with _cache_lock:
+        if key in _cache:
+            value, timestamp = _cache[key]
+            if time.time() - timestamp < ttl_seconds:
+                return value, True
+    return None, False
+
+def _set_cache(key, value):
+    """Set cached value with current timestamp"""
+    with _cache_lock:
+        _cache[key] = (value, time.time())
+
+def _invalidate_cache(*keys):
+    """Invalidate specific cache keys or all if no keys provided"""
+    with _cache_lock:
+        if keys:
+            for key in keys:
+                _cache.pop(key, None)
+        else:
+            _cache.clear()
+
 # Balena Supervisor API configuration
 SUPERVISOR_ADDRESS = os.environ.get('BALENA_SUPERVISOR_ADDRESS', 'http://127.0.0.1:48484')
 SUPERVISOR_API_KEY = os.environ.get('BALENA_SUPERVISOR_API_KEY', '')
@@ -175,10 +202,20 @@ WIFI_CONFIG = {
 }
 
 
-def scan_wifi_networks():
+def scan_wifi_networks(use_cache=True):
     """Scan for available WiFi networks and return list of SSIDs with signal strength.
     Returns list of dicts with 'ssid', 'signal', 'security', 'warnings' keys.
+    
+    Args:
+        use_cache: If True, return cached results if available (default True)
     """
+    # Check cache first
+    if use_cache:
+        cached, is_cached = _get_cached('scan_wifi_networks', ttl_seconds=30)
+        if is_cached:
+            logger.debug("Returning cached WiFi scan results")
+            return cached
+    
     try:
         import shutil
 
@@ -257,6 +294,9 @@ def scan_wifi_networks():
             warnings = n.get('warnings', [])
             warning_str = f" ⚠️  {', '.join(warnings)}" if warnings else ""
             logger.info(f"  • {n.get('ssid')}  ({n.get('signal')}%, {sec}){warning_str}")
+        
+        # Cache the results
+        _set_cache('scan_wifi_networks', networks)
         return networks
 
     except Exception as e:
@@ -510,6 +550,20 @@ def _auto_prefer_loop():
     logger.info(f'Auto-prefer WiFi enabled: interval={WIFI_AUTO_PREFER_INTERVAL_SECONDS}s, min_signal={WIFI_AUTO_PREFER_MIN_SIGNAL}')
     while True:
         try:
+            # Check if we're already on the primary network with good signal
+            current = get_current_wifi_connection() or ''
+            cfg = get_wifi_config(use_cache=True)
+            primary_ssid = cfg.get('WIFI_SSID', '')
+            
+            if current and current == primary_ssid:
+                # Already on primary, check signal strength
+                scan = scan_wifi_networks(use_cache=True)
+                current_network = next((n for n in scan if n['ssid'] == current), None)
+                if current_network and current_network.get('signal', 0) >= 60:
+                    logger.debug(f'Auto-prefer: Already on primary "{current}" with good signal ({current_network["signal"]}%), skipping')
+                    time.sleep(WIFI_AUTO_PREFER_INTERVAL_SECONDS)
+                    continue
+            
             success, msg = switch_to_best_available(min_signal=WIFI_AUTO_PREFER_MIN_SIGNAL)
             # Log only on successful switch or meaningful message
             if success:
@@ -553,12 +607,22 @@ def login_required(f):
     return decorated_function
 
 
-def get_wifi_config():
+def get_wifi_config(use_cache=True):
     """Get current WiFi configuration by querying NetworkManager connections.
 
     We look for our managed connections by name and return their SSIDs.
     Passwords are masked (***).
+    
+    Args:
+        use_cache: If True, return cached results if available (default True)
     """
+    # Check cache first
+    if use_cache:
+        cached, is_cached = _get_cached('get_wifi_config', ttl_seconds=30)
+        if is_cached:
+            logger.debug("Returning cached WiFi config")
+            return cached
+    
     try:
         wifi_config = {key: '' for key in WIFI_CONFIG.keys()}
         name_to_ssid = nm_get_wifi_connections_by_name()
@@ -576,6 +640,9 @@ def get_wifi_config():
             else:
                 logger.warning(f"[WIFI_CONFIG] Connection {con_name} not found in name_to_ssid map")
         logger.info(f"[WIFI_CONFIG] Final wifi_config: {wifi_config}")
+        
+        # Cache the results
+        _set_cache('get_wifi_config', wifi_config)
         return wifi_config
     except Exception as e:
         logger.error(f"Error loading WiFi config: {e}")
@@ -984,7 +1051,8 @@ def health():
 def scan_wifi():
     """API endpoint to scan and return available WiFi networks"""
     try:
-        networks = scan_wifi_networks()
+        # Force fresh scan when explicitly requested (don't use cache)
+        networks = scan_wifi_networks(use_cache=False)
         return jsonify({
             'success': True,
             'networks': networks,
@@ -1137,6 +1205,9 @@ def save_wifi():
         
         success, message = update_wifi_config(wifi_settings)
         
+        # Invalidate cache when config changes
+        _invalidate_cache('get_wifi_config', 'scan_wifi_networks')
+        
         if success:
             return jsonify({
                 'success': True,
@@ -1181,6 +1252,9 @@ def clear_wifi_configs():
             if nm_delete_wifi_connection(conn_name):
                 cleared_count += 1
                 logger.info(f"✓ Deleted WiFi connection: {conn_name}")
+        
+        # Invalidate cache when connections are cleared
+        _invalidate_cache('get_wifi_config', 'scan_wifi_networks')
         
         if cleared_count > 0:
             return jsonify({'success': True, 'message': f'Cleared {cleared_count} WiFi connection(s) from NetworkManager'}), 200
