@@ -30,6 +30,16 @@
                 if (event && event.currentTarget) {
                     event.currentTarget.classList.add('active');
                 }
+                
+                // Load system info when System tab is clicked
+                if (tabId === 'system-tab') {
+                    const contentDiv = document.getElementById('system-info-content');
+                    if (contentDiv && contentDiv.style.display === 'none') {
+                        if (typeof loadSystemInfo === 'function') {
+                            loadSystemInfo();
+                        }
+                    }
+                }
             } catch (error) {
                 console.error('Error switching tabs:', error);
             }
@@ -1167,9 +1177,17 @@
             
             loadingDiv.style.display = 'block';
             contentDiv.style.display = 'none';
+            loadingDiv.innerHTML = '<div style="text-align:center;padding:20px;"><div style="display:inline-block;width:20px;height:20px;border:3px solid #667eea;border-radius:50%;border-top-color:transparent;animation:spin 1s linear infinite;"></div><p style="margin-top:10px;color:#666;">Loading system information...</p></div>';
             
             try {
-                const response = await fetch('/api/system/info');
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+                
+                const response = await fetch('/api/system/info', {
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                
                 const result = await response.json();
                 
                 if (result.success && result.info) {
@@ -1205,7 +1223,11 @@
                     loadingDiv.innerHTML = '<p style="color: #dc3545;">❌ Failed to load system information</p>';
                 }
             } catch (error) {
-                loadingDiv.innerHTML = '<p style="color: #dc3545;">❌ Error: ' + error.message + '</p>';
+                if (error.name === 'AbortError') {
+                    loadingDiv.innerHTML = '<p style="color: #dc3545;">❌ Request timeout. <button onclick="loadSystemInfo()" style="margin-left:10px;padding:4px 8px;border:none;background:#667eea;color:white;border-radius:4px;cursor:pointer;">Retry</button></p>';
+                } else {
+                    loadingDiv.innerHTML = '<p style="color: #dc3545;">❌ Error: ' + error.message + ' <button onclick="loadSystemInfo()" style="margin-left:10px;padding:4px 8px;border:none;background:#667eea;color:white;border-radius:4px;cursor:pointer;">Retry</button></p>';
+                }
             }
         }
         
@@ -1599,7 +1621,7 @@
         window.addEventListener('load', () => {
             scanWiFiNetworks();
             refreshCurrentWifi();
-            loadSystemInfo();
+            // Don't auto-load system info - only load when tab is clicked
             loadFaviconStatus();
             loadLogoStatus();
             initWeatherAutocomplete();
