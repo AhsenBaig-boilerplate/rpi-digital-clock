@@ -993,6 +993,11 @@
                 return;
             }
             const file = input.files[0];
+            if (file.size > 1024 * 1024) {
+                status.textContent = '❌ File too large (max 1MB)';
+                status.style.color = '#dc3545';
+                return;
+            }
             const formData = new FormData();
             formData.append('file', file);
             status.textContent = '⏳ Uploading...';
@@ -1061,7 +1066,8 @@
             messageDiv.textContent = text;
             messageDiv.className = 'message ' + type + ' visible';
             
-            if (type !== 'info') {
+            // Auto-dismiss success/error after 5s, keep info visible
+            if (type === 'success' || type === 'error') {
                 setTimeout(() => {
                     messageDiv.className = 'message';
                 }, 5000);
@@ -1131,6 +1137,11 @@
                 return;
             }
             const file = input.files[0];
+            if (file.size > 1024 * 1024) {
+                status.textContent = '❌ File too large (max 1MB)';
+                status.style.color = '#dc3545';
+                return;
+            }
             const formData = new FormData();
             formData.append('file', file);
             status.textContent = '⏳ Uploading...';
