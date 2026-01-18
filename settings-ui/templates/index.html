@@ -650,6 +650,17 @@
                         </button>
                         <span id="restart-status" style="margin-left: 10px; color: #666;"></span>
                     </div>
+
+                    <div class="section" style="margin-top: 20px;">
+                        <h3 class="section-title" style="font-size: 18px;">🎨 Branding (Favicon)</h3>
+                        <p style="margin: 8px 0 12px; color: #555;">Upload a custom site icon (PNG, SVG, or ICO). Max ~512 KB recommended.</p>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+                            <input type="file" id="favicon-file" accept=".png,.svg,.ico,.jpg,.jpeg" />
+                            <button type="button" onclick="uploadFavicon()" style="background: #007bff; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">⬆️ Upload</button>
+                            <button type="button" onclick="resetFavicon()" style="background: #6c757d; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">♻️ Reset</button>
+                            <span id="favicon-status" style="margin-left: 10px; color: #666;"></span>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="section" style="border-top: 2px solid #f8d7da; padding-top: 30px;">
@@ -953,6 +964,75 @@
             }
         }
         
+        async function uploadFavicon() {
+            const status = document.getElementById('favicon-status');
+            const input = document.getElementById('favicon-file');
+            if (!input || !input.files || input.files.length === 0) {
+                status.textContent = 'Please select a file.';
+                status.style.color = '#dc3545';
+                return;
+            }
+            const file = input.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+            status.textContent = '⏳ Uploading...';
+            status.style.color = '#666';
+            try {
+                const res = await fetch('/api/favicon', { method: 'POST', body: formData });
+                const json = await res.json();
+                if (res.ok && json.success) {
+                    status.textContent = '✅ Favicon updated';
+                    status.style.color = '#28a745';
+                    // Bust cache
+                    const link = document.querySelector('link[rel="icon"]');
+                    if (link) link.href = '/favicon.ico?v=' + Date.now();
+                } else {
+                    status.textContent = '❌ ' + (json.error || 'Upload failed');
+                    status.style.color = '#dc3545';
+                }
+            } catch (e) {
+                status.textContent = '❌ ' + e.message;
+                status.style.color = '#dc3545';
+            }
+        }
+
+        async function resetFavicon() {
+            const status = document.getElementById('favicon-status');
+            status.textContent = '⏳ Resetting...';
+            status.style.color = '#666';
+            try {
+                const res = await fetch('/api/favicon/reset', { method: 'POST' });
+                const json = await res.json();
+                if (res.ok && json.success) {
+                    status.textContent = '✅ Reset to default';
+                    status.style.color = '#28a745';
+                    const link = document.querySelector('link[rel="icon"]');
+                    if (link) link.href = '/favicon.ico?v=' + Date.now();
+                } else {
+                    status.textContent = '❌ ' + (json.error || 'Reset failed');
+                    status.style.color = '#dc3545';
+                }
+            } catch (e) {
+                status.textContent = '❌ ' + e.message;
+                status.style.color = '#dc3545';
+            }
+        }
+
+        async function loadFaviconStatus() {
+            const status = document.getElementById('favicon-status');
+            if (!status) return;
+            try {
+                const res = await fetch('/api/favicon/status');
+                const json = await res.json();
+                if (json.success) {
+                    status.textContent = json.custom ? ('Custom favicon (' + (json.ext || '') + ') in use') : 'Default favicon in use';
+                    status.style.color = '#666';
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+
         function showMessage(text, type) {
             messageDiv.textContent = text;
             messageDiv.className = 'message ' + type + ' visible';
@@ -1023,6 +1103,7 @@
             scanWiFiNetworks();
             refreshCurrentWifi();
             loadSystemInfo();
+            loadFaviconStatus();
         });
     </script>
 </body>

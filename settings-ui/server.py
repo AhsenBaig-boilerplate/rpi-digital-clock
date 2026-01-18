@@ -28,12 +28,72 @@ FAVICON_PNG_BASE64 = (
 @app.route('/favicon.ico')
 def favicon():
     try:
+        # Serve custom favicon from /data if present
+        candidates = [
+            ('/data/favicon.ico', 'image/x-icon'),
+            ('/data/favicon.png', 'image/png'),
+            ('/data/favicon.svg', 'image/svg+xml'),
+            ('/data/favicon.jpg', 'image/jpeg'),
+            ('/data/favicon.jpeg', 'image/jpeg'),
+        ]
+        for path, mime in candidates:
+            if os.path.exists(path):
+                with open(path, 'rb') as f:
+                    return Response(f.read(), mimetype=mime)
         import base64
         png_bytes = base64.b64decode(FAVICON_PNG_BASE64)
         return Response(png_bytes, mimetype='image/png')
     except Exception as e:
         logger.warning(f"Failed to serve favicon: {e}")
         return ("", 204)
+
+# ----- Favicon upload API -----
+ALLOWED_FAVICON_EXTS = {'.ico': 'image/x-icon', '.png': 'image/png', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg'}
+
+def _delete_existing_favicons():
+    for ext in ALLOWED_FAVICON_EXTS.keys():
+        path = f"/data/favicon{ext}"
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
+
+@app.route('/api/favicon/status', methods=['GET'])
+def favicon_status():
+    for ext in ALLOWED_FAVICON_EXTS.keys():
+        path = f"/data/favicon{ext}"
+        if os.path.exists(path):
+            return jsonify({"success": True, "custom": True, "ext": ext, "path": path})
+    return jsonify({"success": True, "custom": False})
+
+@app.route('/api/favicon', methods=['POST'])
+def upload_favicon():
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "No file part"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"success": False, "error": "No selected file"}), 400
+    _, ext = os.path.splitext(file.filename.lower())
+    if ext not in ALLOWED_FAVICON_EXTS:
+        return jsonify({"success": False, "error": f"Unsupported file type: {ext}"}), 400
+    try:
+        os.makedirs('/data', exist_ok=True)
+        _delete_existing_favicons()
+        dest = f"/data/favicon{ext}"
+        file.save(dest)
+        return jsonify({"success": True, "message": "Favicon uploaded", "ext": ext})
+    except Exception as e:
+        logger.exception("Upload favicon failed")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/favicon/reset', methods=['POST'])
+def reset_favicon():
+    try:
+        _delete_existing_favicons()
+        return jsonify({"success": True, "message": "Favicon reset"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # Cache infrastructure for network queries
 _cache = {}
