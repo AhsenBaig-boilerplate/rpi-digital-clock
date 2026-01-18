@@ -104,6 +104,75 @@ def reset_favicon():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+# ----- Logo upload & serving -----
+ALLOWED_LOGO_EXTS = {'.png': 'image/png', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.ico': 'image/x-icon'}
+
+def _delete_existing_logos():
+    for ext in ALLOWED_LOGO_EXTS.keys():
+        path = f"/data/logo{ext}"
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
+
+@app.route('/logo')
+def logo():
+    try:
+        for ext, mime in ALLOWED_LOGO_EXTS.items():
+            path = f"/data/logo{ext}"
+            if os.path.exists(path):
+                with open(path, 'rb') as f:
+                    return Response(f.read(), mimetype=mime)
+        return ("", 204)
+    except Exception as e:
+        logger.warning(f"Failed to serve logo: {e}")
+        return ("", 204)
+
+@app.route('/api/logo/status', methods=['GET'])
+def logo_status():
+    for ext in ALLOWED_LOGO_EXTS.keys():
+        path = f"/data/logo{ext}"
+        if os.path.exists(path):
+            return jsonify({"success": True, "custom": True, "ext": ext, "path": path})
+    return jsonify({"success": True, "custom": False})
+
+@app.route('/api/logo', methods=['POST'])
+def upload_logo():
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "No file part"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"success": False, "error": "No selected file"}), 400
+    _, ext = os.path.splitext(file.filename.lower())
+    if ext not in ALLOWED_LOGO_EXTS:
+        return jsonify({"success": False, "error": f"Unsupported file type: {ext}"}), 400
+    try:
+        os.makedirs('/data', exist_ok=True)
+        _delete_existing_logos()
+        dest = f"/data/logo{ext}"
+        if ext == '.svg':
+            content = file.read().decode('utf-8', errors='replace')
+            forbidden = ['<script', 'onerror', 'onload', 'onmouseover', 'onfocus', 'onmouseleave', 'onmouseenter', '<foreignObject']
+            if any(token.lower() in content.lower() for token in forbidden):
+                return jsonify({"success": False, "error": "Unsafe SVG content detected"}), 400
+            with open(dest, 'w', encoding='utf-8') as f:
+                f.write(content)
+        else:
+            file.save(dest)
+        return jsonify({"success": True, "message": "Logo uploaded", "ext": ext})
+    except Exception as e:
+        logger.exception("Upload logo failed")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/logo/reset', methods=['POST'])
+def reset_logo():
+    try:
+        _delete_existing_logos()
+        return jsonify({"success": True, "message": "Logo reset"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # Cache infrastructure for network queries
 _cache = {}
 _cache_lock = threading.Lock()

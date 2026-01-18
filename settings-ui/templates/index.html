@@ -323,7 +323,10 @@
             {% if auth_enabled %}
             <a href="/logout" class="logout-btn">🔒 Logout</a>
             {% endif %}
-            <h1>⏰ Digital Clock Settings</h1>
+            <div style="display:flex; align-items:center; gap:12px; justify-content:center;">
+                <img id="header-logo" src="/logo" alt="Logo" style="width:36px; height:36px; border-radius:6px; display:none;" onerror="this.style.display='none'" />
+                <h1>⏰ Digital Clock Settings</h1>
+            </div>
             <p>Configure your Raspberry Pi clock display</p>
         </div>
         
@@ -662,6 +665,20 @@
                         </div>
                         <div style="margin-top:10px; display:flex; align-items:center; gap:12px;">
                             <img id="favicon-preview" src="/favicon.ico" alt="Favicon preview" style="width:32px; height:32px; border-radius:4px; box-shadow:0 1px 3px rgba(0,0,0,0.2);" />
+                            <span style="color:#777; font-size:13px;">Preview</span>
+                        </div>
+                    </div>
+                    <div class="section" style="margin-top: 10px;">
+                        <h3 class="section-title" style="font-size: 18px;">🏷️ Branding (Header Logo)</h3>
+                        <p style="margin: 8px 0 12px; color: #555;">Upload a header logo (PNG, SVG, or JPG). Recommended size ~64×64.</p>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+                            <input type="file" id="logo-file" accept=".png,.svg,.jpg,.jpeg" />
+                            <button type="button" onclick="uploadLogo()" style="background: #007bff; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">⬆️ Upload</button>
+                            <button type="button" onclick="resetLogo()" style="background: #6c757d; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">♻️ Reset</button>
+                            <span id="logo-status" style="margin-left: 10px; color: #666;"></span>
+                        </div>
+                        <div style="margin-top:10px; display:flex; align-items:center; gap:12px;">
+                            <img id="logo-preview" src="/logo" alt="Logo preview" style="width:48px; height:48px; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.2);" onerror="this.src='';" />
                             <span style="color:#777; font-size:13px;">Preview</span>
                         </div>
                     </div>
@@ -1105,12 +1122,86 @@
             }
         }
         
+        async function uploadLogo() {
+            const status = document.getElementById('logo-status');
+            const input = document.getElementById('logo-file');
+            if (!input || !input.files || input.files.length === 0) {
+                status.textContent = 'Please select a file.';
+                status.style.color = '#dc3545';
+                return;
+            }
+            const file = input.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+            status.textContent = '⏳ Uploading...';
+            status.style.color = '#666';
+            try {
+                const res = await fetch('/api/logo', { method: 'POST', body: formData });
+                const json = await res.json();
+                if (res.ok && json.success) {
+                    status.textContent = '✅ Logo updated';
+                    status.style.color = '#28a745';
+                    const img = document.getElementById('logo-preview');
+                    if (img) img.src = '/logo?v=' + Date.now();
+                    const headerImg = document.getElementById('header-logo');
+                    if (headerImg) { headerImg.src = '/logo?v=' + Date.now(); headerImg.style.display = 'inline-block'; }
+                } else {
+                    status.textContent = '❌ ' + (json.error || 'Upload failed');
+                    status.style.color = '#dc3545';
+                }
+            } catch (e) {
+                status.textContent = '❌ ' + e.message;
+                status.style.color = '#dc3545';
+            }
+        }
+
+        async function resetLogo() {
+            const status = document.getElementById('logo-status');
+            status.textContent = '⏳ Resetting...';
+            status.style.color = '#666';
+            try {
+                const res = await fetch('/api/logo/reset', { method: 'POST' });
+                const json = await res.json();
+                if (res.ok && json.success) {
+                    status.textContent = '✅ Reset to default';
+                    status.style.color = '#28a745';
+                    const img = document.getElementById('logo-preview');
+                    if (img) img.src = '/logo?v=' + Date.now();
+                    const headerImg = document.getElementById('header-logo');
+                    if (headerImg) { headerImg.src = '/logo?v=' + Date.now(); headerImg.style.display = 'none'; }
+                } else {
+                    status.textContent = '❌ ' + (json.error || 'Reset failed');
+                    status.style.color = '#dc3545';
+                }
+            } catch (e) {
+                status.textContent = '❌ ' + e.message;
+                status.style.color = '#dc3545';
+            }
+        }
+
+        async function loadLogoStatus() {
+            const status = document.getElementById('logo-status');
+            const headerImg = document.getElementById('header-logo');
+            try {
+                const res = await fetch('/api/logo/status');
+                const json = await res.json();
+                if (json.success) {
+                    status.textContent = json.custom ? ('Custom logo (' + (json.ext || '') + ') in use') : 'No header logo set';
+                    status.style.color = '#666';
+                    if (headerImg) headerImg.style.display = json.custom ? 'inline-block' : 'none';
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+
         // Auto-scan and refresh on page load
         window.addEventListener('load', () => {
             scanWiFiNetworks();
             refreshCurrentWifi();
             loadSystemInfo();
             loadFaviconStatus();
+            loadLogoStatus();
         });
     </script>
 </body>
