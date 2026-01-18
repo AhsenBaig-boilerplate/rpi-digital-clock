@@ -81,7 +81,16 @@ def upload_favicon():
         os.makedirs('/data', exist_ok=True)
         _delete_existing_favicons()
         dest = f"/data/favicon{ext}"
-        file.save(dest)
+        # If SVG, perform minimal sanitization: block scripts and events
+        if ext == '.svg':
+            content = file.read().decode('utf-8', errors='replace')
+            forbidden = ['<script', 'onerror', 'onload', 'onmouseover', 'onfocus', 'onmouseleave', 'onmouseenter', '<foreignObject']
+            if any(token.lower() in content.lower() for token in forbidden):
+                return jsonify({"success": False, "error": "Unsafe SVG content detected"}), 400
+            with open(dest, 'w', encoding='utf-8') as f:
+                f.write(content)
+        else:
+            file.save(dest)
         return jsonify({"success": True, "message": "Favicon uploaded", "ext": ext})
     except Exception as e:
         logger.exception("Upload favicon failed")

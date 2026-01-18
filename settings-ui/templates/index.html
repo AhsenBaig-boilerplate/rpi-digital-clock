@@ -660,6 +660,10 @@
                             <button type="button" onclick="resetFavicon()" style="background: #6c757d; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">♻️ Reset</button>
                             <span id="favicon-status" style="margin-left: 10px; color: #666;"></span>
                         </div>
+                        <div style="margin-top:10px; display:flex; align-items:center; gap:12px;">
+                            <img id="favicon-preview" src="/favicon.ico" alt="Favicon preview" style="width:32px; height:32px; border-radius:4px; box-shadow:0 1px 3px rgba(0,0,0,0.2);" />
+                            <span style="color:#777; font-size:13px;">Preview</span>
+                        </div>
                     </div>
                 </div>
                 
@@ -985,6 +989,8 @@
                     // Bust cache
                     const link = document.querySelector('link[rel="icon"]');
                     if (link) link.href = '/favicon.ico?v=' + Date.now();
+                    const img = document.getElementById('favicon-preview');
+                    if (img) img.src = '/favicon.ico?v=' + Date.now();
                 } else {
                     status.textContent = '❌ ' + (json.error || 'Upload failed');
                     status.style.color = '#dc3545';
@@ -1007,6 +1013,8 @@
                     status.style.color = '#28a745';
                     const link = document.querySelector('link[rel="icon"]');
                     if (link) link.href = '/favicon.ico?v=' + Date.now();
+                    const img = document.getElementById('favicon-preview');
+                    if (img) img.src = '/favicon.ico?v=' + Date.now();
                 } else {
                     status.textContent = '❌ ' + (json.error || 'Reset failed');
                     status.style.color = '#dc3545';
