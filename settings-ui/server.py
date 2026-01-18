@@ -11,7 +11,7 @@ import secrets
 import requests
 import subprocess
 from functools import wraps
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, Response
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -19,6 +19,21 @@ app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 CORS(app)  # Enable CORS for all routes
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Favicon (small transparent PNG to avoid 404s)
+FAVICON_PNG_BASE64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII="
+)
+
+@app.route('/favicon.ico')
+def favicon():
+    try:
+        import base64
+        png_bytes = base64.b64decode(FAVICON_PNG_BASE64)
+        return Response(png_bytes, mimetype='image/png')
+    except Exception as e:
+        logger.warning(f"Failed to serve favicon: {e}")
+        return ("", 204)
 
 # Cache infrastructure for network queries
 _cache = {}
