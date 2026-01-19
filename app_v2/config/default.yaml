@@ -1,0 +1,51 @@
+# Application Configuration
+app:
+  version: "2.0.0"
+  name: "RPI Digital Clock"
+
+# Timezone (IANA timezone string)
+timezone: "America/Los_Angeles"
+
+# Display Configuration
+display:
+  width: 800                    # Display width (0 = auto-detect)
+  height: 480                   # Display height (0 = auto-detect)
+  fullscreen: true              # Run in fullscreen mode
+  update_interval: 1000         # UI update interval in milliseconds
+  hide_cursor: true             # Hide mouse cursor in fullscreen
+
+# Weather Configuration
+weather:
+  enabled: true                 # Enable weather display
+  api_key: "your_api_key_here"  # OpenWeatherMap API key
+  location: "Los Angeles, US"   # City name
+  units: "imperial"             # 'imperial' (F, mph) or 'metric' (C, m/s)
+  cache_ttl: 900                # Cache duration in seconds (15 minutes)
+  update_frequency: 60          # Update every N seconds on display
+
+# RTC (Real-Time Clock) Hardware
+rtc:
+  enabled: true                 # Enable hardware RTC support
+  use_hardware: true            # Use hwclock if available
+  sync_on_startup: false        # Sync system time to RTC on startup
+
+# Health Monitoring
+health:
+  heartbeat_interval: 5         # Expected heartbeat frequency (seconds)
+  timeout: 15                   # Mark UI as frozen after this timeout (seconds)
+
+# Logging
+logging:
+  level: "INFO"                 # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
+# Time Format
+time:
+  format_24h: true              # Use 24-hour format (false = 12-hour with AM/PM)
+  show_seconds: true            # Display seconds
+  blink_separator: false        # Blink colon separator
+
+# Date Format
+date:
+  format: "%A, %B %d, %Y"       # strftime format string
+  show_weekday: true            # Display day of week

@@ -36,6 +36,7 @@ RUN python3 -c "import yaml, requests, numpy; from PIL import Image, ImageDraw, 
 
 # Copy application files
 COPY app/ .
+COPY app_v2/ /app/app_v2/
 
 # Set permissions
 RUN chmod +x framebuffer_clock.py start.sh
@@ -44,4 +45,5 @@ RUN chmod +x framebuffer_clock.py start.sh
 EXPOSE 8080
 
 # Start application
+# Use v1 by default, or set CLOCK_VERSION=v2 to use new architecture
 CMD ["./start.sh"]

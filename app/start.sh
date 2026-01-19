@@ -20,18 +20,31 @@ if [ "${PRINT_BUILD_INFO}" = "true" ]; then
 fi
 
 CLOCK_APP="framebuffer_clock.py"
-echo "=========================================="
-echo "Using PIL framebuffer renderer with RGB565 optimization"
-echo "========================================="
 
-echo "Launching: python3 $CLOCK_APP"
+# Check if v2 architecture should be used
+if [ "${CLOCK_VERSION}" = "v2" ]; then
+    CLOCK_APP="app_v2.main"
+    echo "=========================================="
+    echo "Using V2 Architecture (Tkinter + Clean Services)"
+    echo "=========================================="
+    echo "Launching: python3 -m $CLOCK_APP"
+else
+    echo "=========================================="
+    echo "Using PIL framebuffer renderer with RGB565 optimization"
+    echo "========================================="
+    echo "Launching: python3 $CLOCK_APP"
+fi
 
 # Monitor for restart flag and reload clock when settings change
 while true; do
-    python3 $CLOCK_APP &
+    if [ "${CLOCK_VERSION}" = "v2" ]; then
+        python3 -m $CLOCK_APP &
+    else
+        python3 $CLOCK_APP &
+    fi
     CLOCK_PID=$!
     
-    # Wait for either clock to exit or restart flag
+    # Monitor for restart flag and reload clock when settings change
     while kill -0 $CLOCK_PID 2>/dev/null; do
         if [ -f /tmp/restart_clock ]; then
             echo "Restart requested, reloading configuration..."

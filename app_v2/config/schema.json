@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RPI Digital Clock Configuration",
+  "description": "Configuration schema for RPI Digital Clock v2",
+  "type": "object",
+  "properties": {
+    "app": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Application version"
+        },
+        "name": {
+          "type": "string",
+          "description": "Application name"
+        }
+      }
+    },
+    "timezone": {
+      "type": "string",
+      "description": "IANA timezone string (e.g., 'America/Los_Angeles')",
+      "default": "UTC"
+    },
+    "display": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "description": "Display width in pixels (0 = auto-detect)",
+          "minimum": 0,
+          "default": 800
+        },
+        "height": {
+          "type": "integer",
+          "description": "Display height in pixels (0 = auto-detect)",
+          "minimum": 0,
+          "default": 480
+        },
+        "fullscreen": {
+          "type": "boolean",
+          "description": "Run in fullscreen mode",
+          "default": true
+        },
+        "update_interval": {
+          "type": "integer",
+          "description": "UI update interval in milliseconds",
+          "minimum": 100,
+          "default": 1000
+        },
+        "hide_cursor": {
+          "type": "boolean",
+          "description": "Hide mouse cursor in fullscreen",
+          "default": true
+        }
+      }
+    },
+    "weather": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable weather display",
+          "default": true
+        },
+        "api_key": {
+          "type": "string",
+          "description": "OpenWeatherMap API key"
+        },
+        "location": {
+          "type": "string",
+          "description": "City name (e.g., 'Los Angeles, US')",
+          "default": "Los Angeles, US"
+        },
+        "units": {
+          "type": "string",
+          "enum": ["imperial", "metric"],
+          "description": "Temperature and wind units",
+          "default": "imperial"
+        },
+        "cache_ttl": {
+          "type": "integer",
+          "description": "Cache duration in seconds",
+          "minimum": 60,
+          "default": 900
+        },
+        "update_frequency": {
+          "type": "integer",
+          "description": "Update frequency in seconds",
+          "minimum": 10,
+          "default": 60
+        }
+      }
+    },
+    "rtc": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable hardware RTC support",
+          "default": true
+        },
+        "use_hardware": {
+          "type": "boolean",
+          "description": "Use hardware clock if available",
+          "default": true
+        },
+        "sync_on_startup": {
+          "type": "boolean",
+          "description": "Sync system time to RTC on startup",
+          "default": false
+        }
+      }
+    },
+    "health": {
+      "type": "object",
+      "properties": {
+        "heartbeat_interval": {
+          "type": "integer",
+          "description": "Expected heartbeat frequency in seconds",
+          "minimum": 1,
+          "default": 5
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Timeout before marking UI as frozen",
+          "minimum": 5,
+          "default": 15
+        }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+          "description": "Logging level",
+          "default": "INFO"
+        },
+        "format": {
+          "type": "string",
+          "description": "Log message format string",
+          "default": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+        }
+      }
+    },
+    "time": {
+      "type": "object",
+      "properties": {
+        "format_24h": {
+          "type": "boolean",
+          "description": "Use 24-hour format",
+          "default": true
+        },
+        "show_seconds": {
+          "type": "boolean",
+          "description": "Display seconds",
+          "default": true
+        },
+        "blink_separator": {
+          "type": "boolean",
+          "description": "Blink colon separator",
+          "default": false
+        }
+      }
+    },
+    "date": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "description": "Date format string (strftime)",
+          "default": "%A, %B %d, %Y"
+        },
+        "show_weekday": {
+          "type": "boolean",
+          "description": "Display day of week",
+          "default": true
+        }
+      }
+    }
+  }
+}
