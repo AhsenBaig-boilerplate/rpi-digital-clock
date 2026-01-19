@@ -40,6 +40,13 @@
                         }
                     }
                 }
+                
+                // Load WiFi scan when WiFi tab is clicked
+                if (tabId === 'wifi-tab') {
+                    if (typeof scanWiFiNetworks === 'function') {
+                        scanWiFiNetworks();
+                    }
+                }
             } catch (error) {
                 console.error('Error switching tabs:', error);
             }
@@ -1388,6 +1395,11 @@
         function initWeatherAutocomplete() {
             const input = document.getElementById('WEATHER_LOCATION');
             const resultsDiv = document.getElementById('weather-autocomplete-results');
+            if (!input || !resultsDiv) {
+                console.warn('Weather autocomplete elements not found');
+                return;
+            }
+            
             let selectedIndex = -1;
 
             input.addEventListener('input', function() {
@@ -1465,7 +1477,7 @@
 
         // Auto-scan and refresh on page load
         window.addEventListener('load', () => {
-            scanWiFiNetworks();
+            // Don't auto-scan WiFi networks - only when WiFi tab is clicked
             refreshCurrentWifi();
             // Don't auto-load system info - only load when tab is clicked
             loadFaviconStatus();
